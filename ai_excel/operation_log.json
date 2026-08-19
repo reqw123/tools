@@ -1,0 +1,1602 @@
+[
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 20 列的數量：50.0 -> 777",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 50.0,
+            "new_value": 777,
+            "old_formula": "50",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 13:43:16"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 20 列的數量：777.0 -> 777",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 777.0,
+            "new_value": 777,
+            "old_formula": "777",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 14:06:29"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "在 谷樺 115.6.26 新增 紅盤 9 件",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 6,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "紅盤",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 9,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 660.0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C6*D6",
+            "is_new_row": true
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 14:07:48"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "在 谷樺 115.6.26 新增 紅盤 9 件",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 6,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "紅盤",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 9,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 660.0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C6*D6",
+            "is_new_row": true
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 14:09:57"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 12 列的數量：10.0 -> 20",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 12,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 10.0,
+            "new_value": 20,
+            "old_formula": "10",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 14:37:46"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "在 谷樺 115.6.26 新增 紅盤 9 件",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 6,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "紅盤",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 9,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 660.0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C6*D6",
+            "is_new_row": true
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:07:41"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "批次改名（限 7/1~7/10）：把 3 筆『機器麵線』改成『機器麵條』",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 8,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 12,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 13,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:11:27"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 8 列的數量：10.0 -> 88",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 8,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 10.0,
+            "new_value": 88,
+            "old_formula": "10",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:13:51"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "批次改名：把 4 筆『機器麵線』改成『機器麵條』",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 7,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 14,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 17,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:16:30"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "批次改名：把 7 筆『機器麵條』改成『飯』",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 7,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵條",
+            "new_value": "飯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 8,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵條",
+            "new_value": "飯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 12,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵條",
+            "new_value": "飯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 13,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵條",
+            "new_value": "飯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 14,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵條",
+            "new_value": "飯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 17,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵條",
+            "new_value": "飯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵條",
+            "new_value": "飯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:17:26"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "批次改名：把 5 筆『紅盤』改成『綠杯』",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 4,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "紅盤",
+            "new_value": "綠杯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "紅盤",
+            "new_value": "綠杯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 9,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "紅盤",
+            "new_value": "綠杯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 16,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "紅盤",
+            "new_value": "綠杯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "紅盤",
+            "new_value": "綠杯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:19:07"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "批次改名：把 5 筆『綠杯』改成『洪』",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 4,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "綠杯",
+            "new_value": "洪",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "綠杯",
+            "new_value": "洪",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 9,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "綠杯",
+            "new_value": "洪",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 16,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "綠杯",
+            "new_value": "洪",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "綠杯",
+            "new_value": "洪",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:23:32"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "批次改名：把 7 筆『機器麵線』改成『機器麵條』",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 6,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 7,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 11,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 12,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 13,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 16,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "機器麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:27:58"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 4 列的貨品名稱：紅盤 -> 綠藍",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 4,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "紅盤",
+            "new_value": "綠藍",
+            "old_formula": "紅盤",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:35:23"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 4 列的貨品名稱：綠藍 -> 紅色",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 4,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "綠藍",
+            "new_value": "紅色",
+            "old_formula": "綠藍",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:36:17"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "批次改名（限 7/1~7/6）：把 2 筆『機器麵線』改成『飯』",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 7,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "飯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          },
+          {
+            "sheet": "工作表1",
+            "row": 11,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "機器麵線",
+            "new_value": "飯",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:37:58"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "批次改名（限 7/24~7/24）：把 1 筆『紅盤』改成『綠盤』",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 18,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": "紅盤",
+            "new_value": "綠盤",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:39:45"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 16 列的數量：20.0 -> 100",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 16,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 20.0,
+            "new_value": 100,
+            "old_formula": "20",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:40:27"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 20 列的數量：50.0 -> 777",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 50.0,
+            "new_value": 777,
+            "old_formula": "50",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:47:48"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 20 列的數量：777.0 -> 1",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 777.0,
+            "new_value": 1,
+            "old_formula": "777",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:48:15"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 7 列的數量：10 -> 30",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 7,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 10,
+            "new_value": 30,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 20:50:16"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 20 列的數量：1.0 -> 777",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 1.0,
+            "new_value": 777,
+            "old_formula": "1",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 21:10:01"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 20 列的數量：777.0 -> 777",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 777.0,
+            "new_value": 777,
+            "old_formula": "777",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 21:10:42"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 20 列的數量：777.0 -> 777",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 777.0,
+            "new_value": 777,
+            "old_formula": "777",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 21:11:17"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 7 列的數量：10.0 -> 100",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 7,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": 10.0,
+            "new_value": 100,
+            "old_formula": "10",
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 21:25:28"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "修改第 7 列的退貨：None -> 2",
+        "region_id": "工作表1!R1",
+        "insert_row_at": null,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 7,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 2,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": false
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 21:26:21"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "在 農家 115.5.6 新增 紅盤 2 件（估價單匯入 第 1 筆）",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 19,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "紅盤",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 2,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 640,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 1,
+            "field_label": "日期",
+            "old_value": null,
+            "new_value": "115.5.6",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C19*D19",
+            "is_new_row": true
+          }
+        ]
+      },
+      {
+        "description": "在 農家 115.5.6 新增 手工麵線 19 件（估價單匯入 第 2 筆）",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 20,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "手工麵線",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 19,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 240,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C20*D20",
+            "is_new_row": true
+          }
+        ]
+      },
+      {
+        "description": "在 農家 115.5.6 新增 手工麵線 25 件（估價單匯入 第 3 筆）",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 21,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "手工麵線",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 25,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 400,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C21*D21",
+            "is_new_row": true
+          }
+        ]
+      },
+      {
+        "description": "在 農家 115.5.6 新增 手工麵線 5 件（估價單匯入 第 4 筆）",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 22,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 22,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "手工麵線",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 22,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 5,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 22,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 400,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 22,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 22,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C22*D22",
+            "is_new_row": true
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 22:04:09"
+  },
+  {
+    "report_type": "customer_statement",
+    "region_id": "工作表1!R1",
+    "steps": [
+      {
+        "description": "在 農家 115.5.6 新增 公仔麵 3 件（估價單匯入 第 1 筆）",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 19,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "公仔麵",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 3,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 640,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 1,
+            "field_label": "日期",
+            "old_value": null,
+            "new_value": "115.5.6",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 19,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C19*D19",
+            "is_new_row": true
+          }
+        ]
+      },
+      {
+        "description": "在 農家 115.5.6 新增 手工麵線 19 件（估價單匯入 第 2 筆）",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 20,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "手工麵線",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 19,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 340,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 20,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C20*D20",
+            "is_new_row": true
+          }
+        ]
+      },
+      {
+        "description": "在 農家 115.5.6 新增 米粉 25 件（估價單匯入 第 3 筆）",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 21,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "米粉",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 25,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 400,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 21,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C21*D21",
+            "is_new_row": true
+          }
+        ]
+      },
+      {
+        "description": "在 農家 115.5.6 新增 手工麵條 50 件（估價單匯入 第 4 筆）",
+        "region_id": "工作表1!R1",
+        "insert_row_at": 22,
+        "changes": [
+          {
+            "sheet": "工作表1",
+            "row": 22,
+            "column": 2,
+            "field_label": "貨品名稱",
+            "old_value": null,
+            "new_value": "手工麵條",
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 22,
+            "column": 3,
+            "field_label": "數量",
+            "old_value": null,
+            "new_value": 50,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 22,
+            "column": 4,
+            "field_label": "單價",
+            "old_value": null,
+            "new_value": 200,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 22,
+            "column": 5,
+            "field_label": "退貨",
+            "old_value": null,
+            "new_value": 0,
+            "old_formula": null,
+            "new_formula": null,
+            "is_new_row": true
+          },
+          {
+            "sheet": "工作表1",
+            "row": 22,
+            "column": 6,
+            "field_label": "合計",
+            "old_value": null,
+            "new_value": null,
+            "old_formula": null,
+            "new_formula": "=C22*D22",
+            "is_new_row": true
+          }
+        ]
+      }
+    ],
+    "timestamp": "2026-08-19 22:07:54"
+  }
+]

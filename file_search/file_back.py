@@ -1,0 +1,4094 @@
+"""檔案快速搜尋 —— 通用文件索引搜尋工具。
+
+跟任何專案都無關的獨立小工具：讀取 indexes/ 資料夾底下手動維護的 .md 索引表格
+（路徑 + 分類 + 一句話說明），提供即時關鍵字搜尋（比對檔名／分類／說明／路徑）、
+分類篩選、圖片縮圖預覽，找到結果後可以直接開啟／在檔案總管顯示／複製路徑；也
+可以把檔案拖曳進視窗直接新增索引列。
+
+索引來源完全手動維護，這支程式本身**不會掃描任何資料夾**——格式規定跟編輯
+說明都寫在 indexes/ 底下每份 .md 檔案開頭。
+
+執行方式：
+    python file_search.py
+"""
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import queue
+import threading
+import tkinter as tk
+import xml.etree.ElementTree as ET
+import zipfile
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
+from tkinter import filedialog, font as tkfont, messagebox, ttk
+
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    _HAS_DND = True
+except ImportError:
+    _HAS_DND = False
+
+try:
+    from PIL import Image, ImageTk
+    _HAS_PIL = True
+except ImportError:
+    _HAS_PIL = False
+
+try:
+    import vlc
+    _HAS_VLC = True
+except (ImportError, OSError):
+    # OSError（不是只有 ImportError）是因為 python-vlc 這個套件本身就算裝了也不
+    # 保證能用——它只是 libvlc 的綁定，實際播放要靠系統裝好的 VLC 應用程式提供
+    # libvlc.dll，沒裝 VLC 的話 import 階段就會噴 OSError 找不到 DLL，這裡一併接住，
+    # 沒有可用的播放引擎就整個 mp3/mp4 播放功能安靜關閉，退回原本的圖示＋提示。
+    _HAS_VLC = False
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_INDEXES_DIR = _SCRIPT_DIR / "indexes"
+
+_FONT_FAMILY = "Microsoft JhengHei"
+
+COLOR_BG = "#eef2f6"
+COLOR_HEADER_BG = "#2c3e50"
+COLOR_HEADER_FG = "#ffffff"
+COLOR_HEADER_SUB_FG = "#b7c4cf"
+COLOR_STATUS_FG = "#5d7285"
+COLOR_MISSING_FG = "#c0392b"
+COLOR_PREVIEW_BG = "#ffffff"
+COLOR_PREVIEW_BORDER = "#c7d3dc"
+COLOR_PREVIEW_GRIP_BG = "#c7d3dc"
+COLOR_PREVIEW_GRIP_ACTIVE = "#5d7285"
+
+# 功能介紹隱藏列：收合時是一條跟頭部同色系但較淺的提示條，滑鼠移上去／點下去
+# 再各深一階，讓「這裡可以點」的意圖清楚，不會跟下面素色的 COLOR_BG 工具列混在一起。
+COLOR_HELP_BAR_BG = "#dce8f2"
+COLOR_HELP_BAR_HOVER_BG = "#c7dbea"
+COLOR_HELP_BAR_FG = "#1f3b52"
+
+# 預覽區塊可以用拉桿橫向調整寬度：320 是預設寬度，最小 220 避免文字/圖示擠成
+# 一團看不清楚，最大則是動態算出來的（視窗目前寬度扣掉清單至少要留的寬度），
+# 這樣才能真的「拉到視窗左邊邊界」而不會把清單擠到消失或負值報錯。
+PREVIEW_DEFAULT_WIDTH = 320
+PREVIEW_MIN_WIDTH = 220
+TREE_MIN_WIDTH = 80
+PREVIEW_GRIP_WIDTH = 16
+
+# 預覽內容字級：跟 VS Code 的 Ctrl+=/Ctrl+- 縮放同一種邏輯，Ctrl+0 回到預設值。
+PREVIEW_TEXT_DEFAULT_SIZE = 11
+PREVIEW_TEXT_MIN_SIZE = 8
+PREVIEW_TEXT_MAX_SIZE = 32
+
+# 按鈕配色：不同動作類型各配一種飽和色（現代 Tailwind 風），同一排工具列裡
+# 盡量不重複，一眼就能分辨「新增／編輯／刷新／偵測／刪除…」是哪一類動作，
+# 不要求每顆按鈕顏色都獨一無二——同一種語意（例如所有對話框的「取消」、
+# 所有「確認送出」）維持同色是好的一致性，只有「同一畫面裡功能明顯不同卻
+# 撞色」才是要避免的情況。
+BTN_PRIMARY_BG = "#16a34a"       # 綠：主要肯定行動（開啟、確認送出、掃描找到）
+BTN_PRIMARY_ACTIVE = "#128038"
+BTN_SECONDARY_BG = "#475569"     # 石板灰：中性行動（取消、關閉、顯示、全部取消勾選）
+BTN_SECONDARY_ACTIVE = "#334155"
+BTN_WARN_BG = "#d97706"          # 琥珀：警示／清理類
+BTN_WARN_ACTIVE = "#b45f04"
+BTN_DANGER_BG = "#dc2626"        # 紅：刪除等破壞性動作
+BTN_DANGER_ACTIVE = "#b91c1c"
+BTN_BLUE_BG = "#2563eb"          # 藍：新增／建立
+BTN_BLUE_ACTIVE = "#1d4ed8"
+BTN_TEAL_BG = "#0d9488"          # 青綠：匯入／批次匯入
+BTN_TEAL_ACTIVE = "#0b7a6f"
+BTN_CYAN_BG = "#0891b2"          # 青：重新整理／更新快取
+BTN_CYAN_ACTIVE = "#0e7a91"
+BTN_INDIGO_BG = "#4f46e5"        # 靛：編輯類
+BTN_INDIGO_ACTIVE = "#4038c7"
+BTN_PURPLE_BG = "#7c3aed"        # 紫：補充／生成類
+BTN_PURPLE_ACTIVE = "#6423c9"
+BTN_ORANGE_BG = "#ea580c"        # 橘：偵測／搜尋類警示
+BTN_ORANGE_ACTIVE = "#c2470a"
+BTN_PINK_BG = "#db2777"          # 桃紅：複製等次要強調行動
+BTN_PINK_ACTIVE = "#b91c5c"
+
+# 「匯入資料夾」「找出未收錄檔案」都是用 rglob 遞迴列出整個資料夾——使用者
+# 不小心選到磁碟機根目錄或有幾十萬檔案的資料夾時，掃描本身可能要跑很久。
+# 兩層數字搭配 _scan_with_progress() 一起用（放在檔案最前面的常數區，是因為
+# 下面的功能介紹隱藏列內容 _HELP_SECTIONS 也要引用這兩個數字，順序上要先定義）：
+#   _SCAN_SOFT_LIMIT：原本可以直接匯入／加入索引的安全筆數。掃描過程中一旦
+#     超過，就先暫停跳出對話框問使用者要不要繼續看下去——不管答案是哪個，
+#     這次掃描結果都不會拿去寫入索引檔案，只能瀏覽／確認筆數。
+#   _SCAN_HARD_LIMIT：不管使用者要不要繼續，掃到這裡一定強制停止，避免真的
+#     選到磁碟機根目錄時掃描無限跑下去。
+_SCAN_SOFT_LIMIT = 1_000
+_SCAN_HARD_LIMIT = 500_000
+
+# 副檔名 → 圖示，純粹方便掃視清單時快速分辨檔案類型，不影響搜尋/開啟邏輯。
+_EXT_ICON = {
+    ".doc": "📄", ".docx": "📄", ".rtf": "📄",
+    ".ppt": "📊", ".pptx": "📊",
+    ".xls": "📈", ".xlsx": "📈", ".csv": "📈",
+    ".pdf": "📕",
+    ".txt": "📃", ".md": "📃",
+    ".jpg": "🖼️", ".jpeg": "🖼️", ".png": "🖼️", ".gif": "🖼️", ".bmp": "🖼️", ".webp": "🖼️",
+    ".mp3": "🎵", ".wav": "🎵", ".flac": "🎵", ".m4a": "🎵",
+    ".mp4": "🎬", ".mov": "🎬", ".avi": "🎬", ".mkv": "🎬", ".wmv": "🎬",
+    ".zip": "🗜️", ".rar": "🗜️", ".7z": "🗜️",
+}
+_DEFAULT_ICON = "📁"
+_MISSING_ICON = "⚠️"
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
+_AUDIO_EXTS = {".mp3", ".wav", ".flac", ".m4a"}
+_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".wmv"}
+_MEDIA_EXTS = _AUDIO_EXTS | _VIDEO_EXTS
+
+# 右側預覽區塊：純文字類型直接讀檔案內容；docx/pptx/xlsx 用 zipfile 挖出裡面的
+# XML 自己解析文字（不需要額外套件，跟 settings_window.py 解析索引 md 是同一種
+# 「不依賴外部套件、能撐則撐、撐不住就安靜放棄」的作法）；pdf 則看有沒有裝
+# pypdf/PyPDF2，沒裝就退回一般圖示，不讓整支程式因為缺套件而掛掉。
+_TEXT_EXTS = {".txt", ".md", ".csv", ".log", ".json", ".ini", ".yaml", ".yml", ".py"}
+_PREVIEW_READ_BYTES = 200_000  # 純文字預覽只讀檔案開頭這麼多 bytes，大檔案也不會拖慢介面
+_OOXML_NS = {
+    "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+}
+
+# 匯入資料夾時的副檔名篩選改成按鈕點選（不用手打），每個類型一顆按鈕、各自
+# 配一個顏色——(標籤, 圖示, 副檔名集合, 顏色)，順序就是畫面上排列的順序。
+_EXT_CATEGORIES = [
+    ("文件", "📄", {".doc", ".docx", ".rtf"}, "#2874a6"),
+    ("簡報", "📊", {".ppt", ".pptx"}, "#ca6f1e"),
+    ("試算表", "📈", {".xls", ".xlsx", ".csv"}, "#1e8449"),
+    ("PDF", "📕", {".pdf"}, "#c0392b"),
+    ("文字", "📃", {".txt", ".md"}, "#616a6b"),
+    ("圖片", "🖼️", {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}, "#7d3c98"),
+    ("音樂", "🎵", {".mp3", ".wav", ".flac", ".m4a"}, "#148f77"),
+    ("影片", "🎬", {".mp4", ".mov", ".avi", ".mkv", ".wmv"}, "#34495e"),
+    ("壓縮檔", "🗜️", {".zip", ".rar", ".7z"}, "#8b5a2b"),
+]
+
+# 掃描完之後除了看總筆數，還可以依 _EXT_CATEGORIES 的九個類別分別看各有幾筆
+# （「匯入資料夾」「找出未收錄檔案」掃描完都會用）——顏色沿用同一個類別按鈕
+# 的顏色，跟畫面上的類型篩選按鈕對得起來；不屬於任何類別的檔案（例如 .exe、
+# .ini）另外歸到「其他」，用中性灰，數量加總起來才會等於總筆數。
+_CATEGORY_COLOR = {label: color for label, _icon, _exts, color in _EXT_CATEGORIES}
+_OTHER_CATEGORY_LABEL = "其他"
+_CATEGORY_COLOR[_OTHER_CATEGORY_LABEL] = COLOR_STATUS_FG
+
+
+def _categorize_counts(files):
+    """回傳 [(label, icon, count), ...]，依 _EXT_CATEGORIES 定義的順序列出九個
+    類別各自的數量，最後多一項「其他」給不屬於任何類別的檔案。"""
+    counts = {label: 0 for label, _icon, _exts, _color in _EXT_CATEGORIES}
+    other = 0
+    for p in files:
+        ext = Path(p).suffix.lower()
+        for label, _icon, exts, _color in _EXT_CATEGORIES:
+            if ext in exts:
+                counts[label] += 1
+                break
+        else:
+            other += 1
+    result = [(label, icon, counts[label]) for label, icon, _exts, _color in _EXT_CATEGORIES]
+    result.append((_OTHER_CATEGORY_LABEL, "📁", other))
+    return result
+
+# 功能介紹隱藏列的內容：一句話摘要 + 分區條列。每個項目 (顏色, 名稱, 說明)——
+# 顏色直接沿用該按鈕實際的底色常數，色塊跟畫面上真正的按鈕對得起來，使用者
+# 才能一眼把「說明列的這一條」跟「畫面上那顆按鈕」連起來；顏色是 None 的項目
+# （下拉選單、快捷鍵之類非按鈕的操作）一律用中性灰點，不強行套顏色。
+_HELP_SUMMARY = (
+    "這是一個以 indexes/ 內 Markdown 表格為核心的檔案索引工具；程式不會在背景自行掃描硬碟，"
+    "只有按下匯入、找出未收錄或更新快取時才讀取指定檔案。可跨索引搜尋、分類／資料夾篩選、"
+    "預覽影音與文件、管理索引紀錄、記錄加入時間，並使用 SHA-256 找出內容相同的項目。"
+)
+_HELP_SECTIONS = [
+    ("🔍 搜尋與篩選", [
+        (None, "索引集（右上角下拉選單）",
+         "切換要搜尋哪一份索引檔案；選「🗂 全部索引（跨檔案）」可以同時檢視／搜尋全部索引集。"),
+        (BTN_BLUE_BG, "➕ 新增索引集...",
+         f"在 {_INDEXES_DIR.name}/ 底下建立一份新的空白索引集（.md 檔案），取名後自動切換過去；"
+         "可使用旁邊的刪除按鈕移除目前索引集。"),
+        (BTN_DANGER_BG, "🗑️ 刪除索引集",
+         "刪除目前選取的索引集、內容快取及加入時間紀錄；會先顯示名稱與筆數要求確認，且不會刪除硬碟上的實體檔案。"),
+        (None, "🔍 搜尋框",
+         "輸入關鍵字即時篩選序號／檔名／分類／說明／完整路徑／加入時間；更新內容快取後也能搜尋支援格式的檔案內文。"),
+        (None, "序號欄",
+         "目前索引集依原始排列從 1 開始編號；搜尋或篩選後不會重新編號，批次刪除視窗使用相同流水號。"),
+        (None, "分類（下拉選單）",
+         "位於淺藍色篩選容器中，只顯示指定分類；選項依目前索引實際內容自動組成。"),
+        (None, "資料夾（下拉選單）",
+         "位於淺藍色篩選容器中，只顯示指定父資料夾下的索引項目。"),
+    ]),
+    ("🛠️ 索引管理", [
+        (BTN_BLUE_BG, "新增檔案...",
+         "可挑選一或多個檔案，逐筆填寫分類／說明後加入目前索引；會排除不存在、重複或已收錄路徑，並記錄加入時間。"),
+        (BTN_TEAL_BG, "匯入資料夾...",
+         f"選一整個資料夾，可勾選是否包含子資料夾、依副檔名類型篩選，整批加入索引；已收錄過的檔案會自動略過。"
+         f"掃描途中超過 {_SCAN_SOFT_LIMIT:,} 筆會先詢問要不要繼續（最多掃到 {_SCAN_HARD_LIMIT:,} 筆），"
+         f"這種情況下這次掃描結果不能直接匯入。"),
+        (BTN_INDIGO_BG, "編輯索引檔案",
+         "用系統預設程式開啟目前索引集的 .md 檔案，直接手動編輯格式或內容。"),
+        (BTN_CYAN_BG, "重新載入索引",
+         "索引 .md 檔案在外部被手動改過時，重新讀取內容，不用重開程式。"),
+        (BTN_WARN_BG, "⚠️ 清除失效項目",
+         "掃描目前索引，把指向的檔案已經不存在的資料列整批移除。"),
+        (BTN_DANGER_BG, "🗑️ 批次刪除...",
+         "開啟顯示原始流水號與項目名稱的清單，可用序號或名稱搜尋、勾選目前結果並批次移除；只刪索引紀錄，不刪硬碟檔案。"),
+    ]),
+    ("🧭 進階工具（以下都是跨全部索引集）", [
+        (BTN_CYAN_BG, "🔄 更新內容快取",
+         "重新擷取可讀取的文件內文，供全文搜尋使用；內容雜湊也會一併更新。"),
+        (BTN_PRIMARY_BG, "🔎 找出未收錄檔案...",
+         f"掃描「常用資料夾清單」（可管理／臨時新增），列出還沒被任何索引集收錄的檔案，勾選後整批加入指定索引集。"
+         f"掃描途中超過 {_SCAN_SOFT_LIMIT:,} 筆會先詢問要不要繼續（最多掃到 {_SCAN_HARD_LIMIT:,} 筆），"
+         f"這種情況下這次掃描結果不能直接加入索引；目標索引、分類與收錄按鈕固定在視窗底部。"),
+        (BTN_ORANGE_BG, "🧬 重複偵測...",
+         "按下後會自動重新驗證全部檔案的 SHA-256，再跨索引分組；每組選一筆保留後，只移除其餘索引列，不會刪除實體檔案。"),
+        (BTN_PURPLE_BG, "✍️ 批次補說明...",
+         "在背景擷取缺少說明的檔案內容並顯示進度；審核視窗每頁 8 筆，可編輯、調整 14–28pt 字級後批次套用。"),
+    ]),
+    ("📄 選取項目操作（先在下面清單點選一列）", [
+        (BTN_PRIMARY_BG, "📂 開啟檔案",
+         "用系統預設程式開啟目前選取的檔案（雙擊清單項目或按 Enter 效果一樣）。"),
+        (BTN_SECONDARY_BG, "🗂️ 顯示於檔案總管",
+         "打開檔案總管視窗並跳到、選取這個檔案。"),
+        (BTN_PINK_BG, "📋 複製路徑",
+         "把完整路徑複製到剪貼簿。"),
+        (BTN_INDIGO_BG, "✏️ 編輯所選列",
+         "修改這一筆資料的分類／說明文字。"),
+        (BTN_BLUE_BG, "⤒ 第一筆／⤓ 最後一筆",
+         "直接選取並捲動到目前結果的第一筆或最後一筆；Home／End、Ctrl+Home／Ctrl+End 也可操作。"),
+        (BTN_DANGER_BG, "Delete 刪除所選列",
+         "選取列會以藍色標記；按 Delete 後需再次確認，只移除索引紀錄，不刪除硬碟上的實體檔案。"),
+    ]),
+    ("💡 其他小技巧", [
+        (None, "拖曳檔案", "與「新增檔案...」共用相同驗證與逐筆輸入流程；拖入資料夾會提示改用「匯入資料夾...」。"),
+        (None, "加入時間", "新增、拖曳、資料夾匯入或未收錄收錄都會記錄時間（如 8/18 08:00）；既有舊項目顯示「—」。"),
+        (None, "影音快捷鍵", "選取 MP3／MP4 後按空白鍵播放／暫停；影片大視窗最高 1280×720，左右鍵倒退／快轉 5 秒，Esc 關閉。"),
+        (None, "預覽區塊", "依副檔名類型自動顯示圖片縮圖／文字內容／音樂影片播放；文字預覽可用 Ctrl+滾輪縮放字級，Ctrl+0 還原預設大小。"),
+        (None, "清單捲動與預覽拉桿", "清單具垂直／水平捲動條；清單與預覽間的 ↔ 拉桿可左右拖曳調整預覽寬度。"),
+        (None, "快捷鍵", "Ctrl+F 跳到搜尋框；Esc 清空目前搜尋文字。"),
+    ]),
+]
+
+
+def _lighten(hex_color: str, factor: float) -> str:
+    """把顏色往白色混合 factor 比例（0~1，越大越淡）——類型按鈕沒選取時用淡版
+    底色、選取時用原色，兩種狀態都看得出是哪個類型、又能分辨目前選了哪些。"""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    r = int(r + (255 - r) * factor)
+    g = int(g + (255 - g) * factor)
+    b = int(b + (255 - b) * factor)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+# 表格列格式：| `路徑` | 分類 | 說明 |——分類欄、說明欄都可以留空，兩欄都用
+# `[^|]*?`（0 個以上）而不是 `+?`（1 個以上），不然真正空白的儲存格會因為
+# `+?` 至少要吃 1 個字元、往前借了一個空格字元，解析出來變成 " " 而不是 ""
+# （這個不一致以前只有分類欄修正過，說明欄沒有一起改，是個真實存在但影響很
+# 小的舊 bug——寫回檔案時 _sanitize_cell() 都會 strip()，所以下次編輯就自動修正
+# 回來；這裡直接讓兩欄一致，讀出來的空白欄位就正確是空字串）。用的是簡單
+# 逐行 regex，不依賴任何 Markdown 套件（跟 settings_window.py 解析獨立運行
+# 腳本索引.md 同一手法）。
+_ROW_RE = re.compile(
+    r"^\|\s*(?P<fence>`+)(?P<path>.*?)(?P=fence)\s*\|"
+    r"\s*(?P<category>[^|]*?)\s*\|\s*(?P<description>[^|]*?)\s*\|"
+)
+
+
+def _icon_for(path_str: str) -> str:
+    return _EXT_ICON.get(Path(path_str).suffix.lower(), _DEFAULT_ICON)
+
+
+def _sanitize_cell(text: str) -> str:
+    """表格欄位不能含 `|` 或實際換行；儲存前轉成安全的單行文字。"""
+    return " ".join(text.replace("|", "／").split())
+
+
+def _format_path_code(path_str: str) -> str:
+    """用比路徑內最長反引號序列更長的 Markdown code span 包住路徑。"""
+    longest = max((len(run) for run in re.findall(r"`+", path_str)), default=0)
+    fence = "`" * max(1, longest + 1)
+    return f"{fence}{path_str}{fence}"
+
+
+def _list_index_files():
+    """回傳 indexes/ 底下所有 .md 索引檔案，依檔名排序；資料夾不存在就回傳空清單。"""
+    if not _INDEXES_DIR.exists():
+        return []
+    return sorted(_INDEXES_DIR.glob("*.md"))
+
+
+_DEFAULT_INDEX_NAME = "file_index.md"
+_DEFAULT_INDEX_TEMPLATE = """# 📑 檔案快速索引
+
+> 這份文件是 `file_search.py` 的其中一份索引來源，**完全手動維護**——程式不會
+> 掃描任何資料夾，只讀這份表格（或用「拖曳檔案」「新增檔案...」「匯入資料夾...」
+> 功能自動新增列）。
+>
+> `file_search.py` 支援**多份索引檔案**：`indexes/` 資料夾底下每一個 `.md` 檔
+> 都是獨立一份索引集，程式標題列的下拉選單可以切換要搜尋哪一份；要新增一份
+> 新的索引集，直接在 `indexes/` 底下新建一個 `.md` 檔、照同樣的表格格式寫即可，
+> 不用改程式碼。
+>
+> **格式規定（跟這一行格式不一樣的列，程式會直接跳過、不會出錯，但那筆資料就搜尋不到）**：
+>
+> ```
+> | `完整路徑\\檔名.副檔名` | 分類 | 一句話說明或關鍵字 |
+> ```
+>
+> - 開頭是 `|`，接著檔名用單一反引號 `` ` `` 包住，然後是**分類**欄（自訂文字，
+>   例如「論文」「截圖」「教學筆記」——程式會依目前這份索引裡出現過的分類自動
+>   組成篩選下拉選單，同一個分類名稱打法要一致，不然會被當成兩種不同分類），
+>   最後是**說明**欄
+> - 路徑裡有反引號的話沒辦法收錄，實務上檔名幾乎不會用到反引號，不用擔心
+> - 路徑建議用**完整絕對路徑**，因為這些檔案通常散落在硬碟各處，不像同一個
+>   專案資料夾底下的檔案能用相對路徑
+> - 分類欄、說明欄都不能包含 `|` 符號（會被誤判成表格分隔線，文字會被腰斬），
+>   要表達「或」的意思請用「／」
+> - 分類欄留空（`| \\`路徑\\` |  | 說明 |`）也可以，篩選下拉選單會把這種歸類成
+>   「未分類」
+> - 一行只能收錄一個檔案；同一個檔案要多個關鍵字都搜得到，就把關鍵字都寫進說明欄，
+>   搜尋是比對說明欄全文，不是只比對第一個詞
+> - 用「拖曳檔案」「新增檔案...」「匯入資料夾...」新增的列，會自動照這個格式
+>   附加到表格最後一行，不用手動維護對齊；表格裡列的先後順序不影響搜尋結果，
+>   純粹是你閱讀這份文件時的順序
+
+| 路徑 | 分類 | 說明 |
+|---|---|---|
+"""
+
+
+def _ensure_default_index():
+    """indexes/ 底下完全沒有 .md 檔案時（資料夾遺失、被搬走、或第一次使用這個
+    工具），自動建立一份格式正確的空白索引檔案，程式才不會一啟動就卡在「沒有
+    索引可用」的空畫面；只要底下還有任何一份 .md（就算不是這個預設檔名），這
+    個函式什麼都不做，不會動到既有內容，也不會覆蓋掉手動維護的資料。"""
+    _INDEXES_DIR.mkdir(parents=True, exist_ok=True)
+    if _list_index_files():
+        return
+    (_INDEXES_DIR / _DEFAULT_INDEX_NAME).write_text(_DEFAULT_INDEX_TEMPLATE, encoding="utf-8")
+
+
+# 多索引集功能原本只能靠「在 indexes/ 底下手動新建一個 .md 檔」來新增一份索引
+# 集（見上面 _DEFAULT_INDEX_TEMPLATE 說明文字裡寫的做法），程式本身沒有對應的
+# 按鈕——CreateIndexDialog／_on_create_index() 補上這個缺口，靠這兩個函式做
+# 檔名檢查跟實際建立檔案。
+_INVALID_FILENAME_CHARS = set('<>:"/\\|?*')
+
+
+def _validate_index_name(raw: str):
+    """把使用者輸入的索引集名稱正規化成檔名（沒打 .md 副檔名的話自動補上），
+    回傳 (檔名, None) 代表合法可用；回傳 (None, 錯誤原因) 代表不合法——包含
+    Windows 檔名不能用的符號、名稱是空的、或跟 indexes/ 底下既有檔案撞名。"""
+    name = raw.strip()
+    if not name:
+        return None, "請輸入索引集名稱"
+    if name in (".", ".."):
+        return None, "不是合法的檔名"
+    bad = _INVALID_FILENAME_CHARS & set(name)
+    if bad:
+        return None, f"檔名不能包含：{' '.join(sorted(bad))}"
+    filename = name if name.lower().endswith(".md") else f"{name}.md"
+    if len(filename) <= 3:  # 去掉 .md 後名稱是空的（例如只打了「.md」本身）
+        return None, "請輸入索引集名稱"
+    if (_INDEXES_DIR / filename).exists():
+        return None, f"「{filename}」已經存在，換個名稱"
+    return filename, None
+
+
+def _create_index_file(filename: str) -> Path:
+    """在 indexes/ 底下建立一份新的空白索引檔案（跟 _ensure_default_index() 用
+    同一份範本，開頭附格式規定說明），回傳新檔案的 Path。呼叫端要先用
+    _validate_index_name() 檢查過檔名合法、沒有撞名。"""
+    _INDEXES_DIR.mkdir(parents=True, exist_ok=True)
+    path = _INDEXES_DIR / filename
+    path.write_text(_DEFAULT_INDEX_TEMPLATE, encoding="utf-8")
+    return path
+
+
+# 加入時間另存 JSON，不改動既有 Markdown 三欄表格格式。key 先用索引檔名，
+# 再用完整路徑；舊項目沒有紀錄時主清單顯示「—」。
+_ADDED_TIMES_PATH = _INDEXES_DIR / ".added_times.json"
+
+
+def _load_added_times() -> dict:
+    if not _ADDED_TIMES_PATH.exists():
+        return {}
+    try:
+        data = json.loads(_ADDED_TIMES_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _record_added_time(md_path: Path, path_str: str):
+    data = _load_added_times()
+    data.setdefault(md_path.name, {})[path_str] = datetime.now().isoformat(timespec="minutes")
+    _INDEXES_DIR.mkdir(parents=True, exist_ok=True)
+    _ADDED_TIMES_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _display_added_time(added_times: dict, md_path: Path, path_str: str) -> str:
+    raw = added_times.get(md_path.name, {}).get(path_str)
+    if not raw:
+        return "—"
+    try:
+        value = datetime.fromisoformat(raw)
+        return f"{value.month}/{value.day} {value:%H:%M}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _load_index(md_path: Path):
+    """回傳 [(路徑字串, 分類, 說明), ...]，依表格列在檔案裡出現的順序；讀不到
+    檔案或格式不符的列都安靜跳過，不拋例外——索引檔案是手動編輯的東西，格式
+    一時打錯不該讓整支程式打不開。"""
+    entries = []
+    try:
+        text = md_path.read_text(encoding="utf-8")
+    except OSError:
+        return entries
+    for line in text.splitlines():
+        m = _ROW_RE.match(line.strip())
+        if m:
+            entries.append((m.group("path"), m.group("category"), m.group("description")))
+    return entries
+
+
+def _append_index_row(md_path: Path, path_str: str, category: str, desc: str):
+    """把一列新資料附加到指定索引檔案的表格最後一行。"""
+    existing = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
+    if existing and not existing.endswith("\n"):
+        existing += "\n"
+    line = f"| {_format_path_code(path_str)} | {_sanitize_cell(category)} | {_sanitize_cell(desc)} |\n"
+    md_path.write_text(existing + line, encoding="utf-8")
+    try:
+        _record_added_time(md_path, path_str)
+    except OSError:
+        pass  # 時間附加資料寫入失敗不應回滾已成功加入的索引列
+
+
+def _update_index_row(md_path: Path, path_str: str, category: str, desc: str) -> int:
+    """把索引檔案裡「路徑完全等於 path_str」的資料列，分類／說明換成新的值；
+    其餘所有內容（包含這一列在表格裡的相對位置）不變。回傳實際更新了幾列——
+    正常應該剛好 1，0 代表在檔案裡找不到這個路徑（可能索引檔案被外部改過），
+    大於 1 代表原本就有重複列（不是這個函式造成的，是既有資料本身重複），
+    這種情況全部一起更新，不會留下一部分沒改到的舊值。"""
+    text = md_path.read_text(encoding="utf-8")
+    new_line = f"| {_format_path_code(path_str)} | {_sanitize_cell(category)} | {_sanitize_cell(desc)} |\n"
+    out_lines = []
+    updated = 0
+    for line in text.splitlines(keepends=True):
+        m = _ROW_RE.match(line.strip())
+        if m and m.group("path") == path_str:
+            out_lines.append(new_line)
+            updated += 1
+        else:
+            out_lines.append(line)
+    if updated:
+        md_path.write_text("".join(out_lines), encoding="utf-8")
+    return updated
+
+
+def _remove_missing_rows(md_path: Path):
+    """回傳 (移除筆數, 完整新內容字串)——只移除「表格資料列且路徑檔案已不存在」的
+    整行，其餘所有內容（說明文字、格式規定、表頭分隔線）原封不動保留。"""
+    text = md_path.read_text(encoding="utf-8")
+    kept, removed = [], 0
+    for line in text.splitlines(keepends=True):
+        m = _ROW_RE.match(line.strip())
+        if m and not Path(m.group("path")).exists():
+            removed += 1
+            continue
+        kept.append(line)
+    return removed, "".join(kept)
+
+
+def _remove_rows_by_paths(md_path: Path, paths_to_remove) -> tuple:
+    """回傳 (刪除筆數, 完整新內容字串)——只移除路徑落在 paths_to_remove 集合裡的
+    資料列，其餘所有內容（說明文字、格式規定、表頭分隔線）原封不動保留。跟
+    _remove_missing_rows() 的差別：那個是自動判斷「檔案已不存在」，這個是由
+    使用者在批次刪除對話框裡手動勾選要刪哪幾筆，不管檔案還在不在。"""
+    text = md_path.read_text(encoding="utf-8")
+    kept, removed = [], 0
+    for line in text.splitlines(keepends=True):
+        m = _ROW_RE.match(line.strip())
+        if m and m.group("path") in paths_to_remove:
+            removed += 1
+            continue
+        kept.append(line)
+    return removed, "".join(kept)
+
+
+def _remove_rows_by_occurrences(md_path: Path, occurrence_indexes) -> tuple:
+    """精確移除指定的「索引資料列序號」（0-based，只計算可解析的資料列）。
+
+    與依路徑刪除不同，即使同一路徑在同一份索引重複出現多次，也只會刪除
+    使用者在去重視窗指定的那幾筆，保留選中的那一列。
+    """
+    wanted = set(occurrence_indexes)
+    text = md_path.read_text(encoding="utf-8")
+    kept = []
+    removed = 0
+    occurrence = 0
+    for line in text.splitlines(keepends=True):
+        if _ROW_RE.match(line.strip()):
+            if occurrence in wanted:
+                removed += 1
+                occurrence += 1
+                continue
+            occurrence += 1
+        kept.append(line)
+    return removed, "".join(kept)
+
+
+def _iter_scan_files(folder: Path, recursive: bool, extensions):
+    """逐一 yield folder 底下符合條件的檔案（產生器版，不先收集成清單）——給
+    需要邊掃邊更新進度、邊掃邊檢查數量門檻的呼叫端用，見 _scan_with_progress()。
+    extensions 是一組小寫副檔名（含開頭的點，例如 {'.docx', '.pdf'}），空集合
+    代表不篩選、收錄所有檔案。"""
+    it = folder.rglob("*") if recursive else folder.glob("*")
+    for p in it:
+        if not p.is_file():
+            continue
+        if extensions and p.suffix.lower() not in extensions:
+            continue
+        yield p
+
+
+def _scan_folder(folder: Path, recursive: bool, extensions, limit=None):
+    """一次掃完、直接回傳 (files, truncated) 清單版本，不顯示進度——給不需要
+    進度視窗的簡單場合（測試）用。limit 給定時，符合條件的檔案一旦超過這個
+    數量就提前停止，此時 truncated=True、files 內容不完整。"""
+    files = []
+    truncated = False
+    for p in _iter_scan_files(folder, recursive, extensions):
+        files.append(p)
+        if limit is not None and len(files) > limit:
+            truncated = True
+            break
+    return sorted(files), truncated
+
+
+def _parse_dnd_paths(data: str):
+    """tkinterdnd2 的 event.data：多個路徑用空白分隔，路徑本身含空白時會用
+    大括號 {} 包起來，例如 '{C:/a b/c.txt} C:/d.txt'。"""
+    paths = []
+    for m in re.finditer(r"\{([^}]*)\}|(\S+)", data):
+        p = m.group(1) if m.group(1) is not None else m.group(2)
+        if p:
+            paths.append(p)
+    return paths
+
+
+def _format_ms(ms) -> str:
+    """毫秒轉 MM:SS，給播放進度／時間長度顯示用；None 或負值當作 0 處理，
+    避免播放器還沒真正讀到長度時（剛載入的瞬間）出現負數或例外。"""
+    if not ms or ms < 0:
+        ms = 0
+    total_s = int(ms) // 1000
+    return f"{total_s // 60:02d}:{total_s % 60:02d}"
+
+
+def _truncate(text: str, max_chars: int) -> str:
+    text = text.strip()
+    if len(text) > max_chars:
+        return text[:max_chars].rstrip() + "\n\n…（內容過長，僅預覽開頭部分）"
+    return text
+
+
+def _read_plain_text(p: Path, max_chars: int) -> str:
+    """純文字檔案：只讀開頭一段 bytes，依序試幾種常見編碼（含中文 Windows 常用
+    的 cp950/big5），全部失敗才用 utf-8 + errors="replace"（可能在截斷處出現
+    一兩個亂碼字元，預覽用途可以接受，不值得為了這個把整份都讀完再判斷）。"""
+    with open(p, "rb") as f:
+        raw = f.read(_PREVIEW_READ_BYTES)
+    for enc in ("utf-8-sig", "utf-8", "cp950", "big5", "cp936"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        text = raw.decode("utf-8", errors="replace")
+    return _truncate(text, max_chars)
+
+
+def _read_docx_text(p: Path, max_chars: int) -> str:
+    ns = _OOXML_NS["w"]
+    with zipfile.ZipFile(p) as zf:
+        with zf.open("word/document.xml") as f:
+            tree = ET.parse(f)
+    paras = []
+    for para in tree.getroot().iter(f"{{{ns}}}p"):
+        line = "".join(t.text or "" for t in para.iter(f"{{{ns}}}t")).strip()
+        if line:
+            paras.append(line)
+    return _truncate("\n".join(paras), max_chars)
+
+
+def _read_pptx_text(p: Path, max_chars: int) -> str:
+    ns = _OOXML_NS["a"]
+    with zipfile.ZipFile(p) as zf:
+        slide_names = sorted(
+            (n for n in zf.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", n)),
+            key=lambda n: int(re.search(r"\d+", n).group()),
+        )
+        chunks = []
+        for name in slide_names:
+            with zf.open(name) as f:
+                tree = ET.parse(f)
+            texts = [t.text for t in tree.getroot().iter(f"{{{ns}}}t") if t.text and t.text.strip()]
+            if texts:
+                chunks.append(f"【第 {len(chunks) + 1} 頁】" + " ".join(texts))
+    return _truncate("\n".join(chunks), max_chars)
+
+
+def _read_xlsx_text(p: Path, max_chars: int) -> str:
+    ns = _OOXML_NS["s"]
+    with zipfile.ZipFile(p) as zf:
+        shared = []
+        if "xl/sharedStrings.xml" in zf.namelist():
+            with zf.open("xl/sharedStrings.xml") as f:
+                tree = ET.parse(f)
+            for si in tree.getroot().iter(f"{{{ns}}}si"):
+                shared.append("".join(t.text or "" for t in si.iter(f"{{{ns}}}t")))
+        sheet_names = sorted(
+            (n for n in zf.namelist() if re.match(r"xl/worksheets/sheet\d+\.xml$", n)),
+            key=lambda n: int(re.search(r"\d+", n).group()),
+        )
+        if not sheet_names:
+            return ""
+        with zf.open(sheet_names[0]) as f:
+            tree = ET.parse(f)
+        rows_out = []
+        for row in tree.getroot().iter(f"{{{ns}}}row"):
+            cells = []
+            for c in row.iter(f"{{{ns}}}c"):
+                v = c.find(f"{{{ns}}}v")
+                if v is None or v.text is None:
+                    continue
+                if c.get("t") == "s":
+                    idx = int(v.text)
+                    cells.append(shared[idx] if idx < len(shared) else "")
+                else:
+                    cells.append(v.text)
+            if cells:
+                rows_out.append(" | ".join(cells))
+            if len(rows_out) >= 60:  # 預覽用，不需要整份試算表都轉出來
+                break
+    return _truncate("\n".join(rows_out), max_chars)
+
+
+def _read_pdf_text(p: Path, max_chars: int):
+    """看環境裡有沒有裝 pypdf 或舊名 PyPDF2，兩者都沒裝就回傳 None（呼叫端會
+    退回一般圖示＋提示，不會讓整支工具因為少一個選用套件而打不開）。"""
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        try:
+            from PyPDF2 import PdfReader
+        except ImportError:
+            return None
+    try:
+        reader = PdfReader(str(p))
+        if getattr(reader, "is_encrypted", False):
+            try:
+                if reader.decrypt("") == 0:
+                    return None
+            except Exception:
+                return None
+    except Exception:
+        return None
+    chunks = []
+    for page in reader.pages[:5]:
+        try:
+            chunks.append(page.extract_text() or "")
+        except Exception:
+            continue
+    text = "\n".join(chunks).strip()
+    return _truncate(text, max_chars) if text else None
+
+
+def _extract_preview_text(p: Path, max_chars=3000):
+    """回傳這個檔案適合放進預覽區塊的純文字內容；不支援的類型或讀取失敗（檔案
+    損毀、格式跟副檔名對不上等）一律回傳 None，呼叫端退回顯示圖示＋提示，不會
+    讓預覽面板顯示一堆亂碼或讓整支程式掛掉。"""
+    ext = p.suffix.lower()
+    try:
+        if ext in _TEXT_EXTS:
+            return _read_plain_text(p, max_chars)
+        if ext == ".docx":
+            return _read_docx_text(p, max_chars) or None
+        if ext == ".pptx":
+            return _read_pptx_text(p, max_chars) or None
+        if ext == ".xlsx":
+            return _read_xlsx_text(p, max_chars) or None
+        if ext == ".pdf":
+            return _read_pdf_text(p, max_chars)
+    except Exception:
+        return None
+    return None
+
+
+# ── 內容快取（全文檢索＋重複偵測共用）─────────────────────────────────
+#
+# 每份索引檔案對應一份快取 JSON：indexes/.cache/<索引檔名>.json，key 是絕對
+# 路徑，value 是 {mtime, size, hash, hash_algo, text}。「hash」給重複偵測用
+# （全部類型都以串流方式計算 SHA-256，包含大型影音檔）。「text」給全文
+# 檢索用（只有本來就支援內容擷取的類型才有值，媒體/壓縮檔本來就沒有文字
+# 內容可比對）。不自動觸發計算——一律靠使用者按「更新內容快取」按鈕，檔案
+# 每次手動更新都重新驗證內容雜湊，避免內容被替換但 mtime／size 碰巧相同時
+# 沿用舊值；文字擷取只有內容雜湊或檔案屬性改變時才重算。
+_CACHE_DIR = _INDEXES_DIR / ".cache"
+_HASH_ALGO = "sha256"
+_HASH_CHUNK = 4 * 1024 * 1024
+_CACHE_TEXT_EXTS = _TEXT_EXTS | {".docx", ".pptx", ".xlsx", ".pdf"}
+_CACHE_TEXT_CHARS = 5000  # 快取存的擷取文字上限，比預覽面板的 3000 多一點，全文搜尋比較不容易漏比對到內容
+
+
+def _cache_path_for(md_path: Path) -> Path:
+    return _CACHE_DIR / f"{md_path.stem}.json"
+
+
+def _load_cache(md_path: Path) -> dict:
+    cache_path = _cache_path_for(md_path)
+    if not cache_path.exists():
+        return {}
+    try:
+        return json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}  # 快取檔案損毀/格式不對就當作沒有快取，下次更新會重建，不影響其餘功能
+
+
+def _save_cache(md_path: Path, cache: dict):
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    _cache_path_for(md_path).write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _compute_file_hash(p: Path):
+    """以固定記憶體串流計算 SHA-256；不因檔案較大而排除，讀取失敗回傳 None。"""
+    h = hashlib.sha256()
+    try:
+        with open(p, "rb") as f:
+            for chunk in iter(lambda: f.read(_HASH_CHUNK), b""):
+                h.update(chunk)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+def _refresh_cache_entry(path_str: str, cache: dict) -> bool:
+    """每次手動更新都重新驗證 SHA-256；必要時同步更新文字快取。"""
+    p = Path(path_str)
+    if not p.exists():
+        if path_str in cache:
+            del cache[path_str]
+            return True
+        return False
+    try:
+        stat = p.stat()
+    except OSError:
+        return False
+    old = cache.get(path_str)
+    new_hash = _compute_file_hash(p)
+    unchanged = (
+        old
+        and old.get("hash_algo") == _HASH_ALGO
+        and old.get("hash") == new_hash
+        and old.get("mtime") == stat.st_mtime
+        and old.get("size") == stat.st_size
+    )
+    if unchanged:
+        return False
+    entry = {
+        "mtime": stat.st_mtime, "size": stat.st_size,
+        "hash": new_hash, "hash_algo": _HASH_ALGO, "text": "",
+    }
+    if p.suffix.lower() in _CACHE_TEXT_EXTS:
+        try:
+            entry["text"] = _extract_preview_text(p, max_chars=_CACHE_TEXT_CHARS) or ""
+        except Exception:
+            entry["text"] = ""
+    cache[path_str] = entry
+    return True
+
+
+def _update_cache_for_index(md_path: Path, progress_cb=None) -> dict:
+    """更新一份索引檔案對應的內容快取，回傳更新後的完整 cache 字典（也會寫回
+    磁碟）。progress_cb(done, total) 可選，用來回報進度。"""
+    entries = _load_index(md_path)
+    cache = _load_cache(md_path)
+    total = len(entries)
+    processed_paths = set()
+    for i, (path_str, _c, _d) in enumerate(entries):
+        # 同一路徑可能在索引中重複出現；一次更新只需實際讀檔／計算 SHA-256 一次。
+        if path_str not in processed_paths:
+            _refresh_cache_entry(path_str, cache)
+            processed_paths.add(path_str)
+        if progress_cb:
+            progress_cb(i + 1, total)
+    # 順便清掉已經不在索引裡的舊快取項目，避免快取檔案無限長大
+    valid_paths = {p for p, _c, _d in entries}
+    for stale in [p for p in cache if p not in valid_paths]:
+        del cache[stale]
+    _save_cache(md_path, cache)
+    return cache
+
+
+# ── 常用資料夾清單（「找出未收錄檔案」用，GUI 按鈕管理，不用手動編輯）──────
+_KNOWN_FOLDERS_PATH = _INDEXES_DIR / "known_folders.txt"
+
+
+def _load_known_folders():
+    if not _KNOWN_FOLDERS_PATH.exists():
+        return []
+    lines = [ln.strip() for ln in _KNOWN_FOLDERS_PATH.read_text(encoding="utf-8").splitlines()]
+    return [ln for ln in lines if ln]
+
+
+def _save_known_folders(folders):
+    _INDEXES_DIR.mkdir(parents=True, exist_ok=True)
+    text = "".join(f"{f}\n" for f in folders)
+    _KNOWN_FOLDERS_PATH.write_text(text, encoding="utf-8")
+
+
+# 主視窗索引選單裡的「全部索引（跨檔案）」虛擬選項──選到這個代表同時檢視/
+# 搜尋全部索引集，不對應任何單一 .md 檔案，所以新增/匯入之類「一定要寫進某
+# 一份檔案」的操作在這個模式下會被擋下來，要求先切到指定的索引集。
+_ALL_INDEXES_LABEL = "🗂 全部索引（跨檔案）"
+
+
+def _styled_button(parent, text, command, bg, active_bg, font, fg="#ffffff"):
+    return tk.Button(
+        parent, text=text, command=command, bg=bg, fg=fg,
+        activebackground=active_bg, activeforeground=fg, relief="flat",
+        font=font, padx=12, pady=6, cursor="hand2",
+    )
+
+
+def _render_category_counts(parent, files, font):
+    """把 files 依九個類別（含「其他」，見 _categorize_counts()）的數量畫成一個
+    3 欄的小格線，排進 parent 底下——呼叫端要自己在重新掃描前先清空 parent 底下
+    的舊內容（destroy 掉 winfo_children()），不然新舊兩批標籤會疊在一起。有找到
+    （數量 > 0）的用該類別自己的顏色標出來，跟畫面上類型篩選按鈕的顏色對得
+    起來；數量是 0 的用中性灰淡化，避免一堆「0 筆」搶了真正有內容的類別的
+    注意力。"""
+    cols = 3
+    for idx, (label, icon, count) in enumerate(_categorize_counts(files)):
+        row, col = divmod(idx, cols)
+        color = _CATEGORY_COLOR.get(label, COLOR_STATUS_FG) if count else COLOR_STATUS_FG
+        tk.Label(
+            parent, text=f"{icon} {label}：{count:,} 筆", bg=COLOR_BG, fg=color,
+            font=font, anchor="w",
+        ).grid(row=row, column=col, padx=(0, 18), pady=2, sticky="w")
+
+
+def _scan_with_progress(parent, jobs, on_done):
+    """依序掃描 jobs（每項是 (folder, recursive, extensions) 一組條件），跳出一個
+    小進度視窗即時顯示已找到的筆數／進度百分比（相對 _SCAN_HARD_LIMIT），「取消」
+    鈕可隨時中止。用 after() 把掃描切成一小批一小批處理，每批處理完才把控制權
+    交還事件迴圈再排下一批，不是整個掃描迴圈一次跑完卡住介面。
+
+    掃描筆數一旦超過 _SCAN_SOFT_LIMIT（原本可以直接匯入的安全筆數），會先暫停
+    掃描、跳出對話框問使用者要不要繼續看下去——不管答案是哪個，這次掃描結果
+    都不會拿去寫入索引檔案，呼叫端要依 write_blocked 鎖住確認鈕。
+
+    on_done(files, write_blocked, stopped_early, hit_hard_cap) 會在掃描結束時
+    （正常掃完／撞到硬上限／使用者取消／使用者選擇不繼續，四種都算）呼叫一次：
+        files         目前掃到的檔案清單（依路徑排序、跨 jobs 去重過）
+        write_blocked True 代表這次結果不能拿去寫入索引（超過安全筆數，或掃描不完整）
+        stopped_early True 代表使用者主動中止（取消，或詢問時選「否」），
+                      files 不是完整結果
+        hit_hard_cap  True 代表是撞到 _SCAN_HARD_LIMIT 硬上限才停下來的
+    """
+    dlg = tk.Toplevel(parent)
+    dlg.title("掃描中")
+    dlg.configure(bg=COLOR_BG)
+    dlg.transient(parent)
+    dlg.resizable(False, False)
+    dlg.grab_set()
+
+    font_label = tkfont.Font(family=_FONT_FAMILY, size=12)
+    pad = tk.Frame(dlg, bg=COLOR_BG)
+    pad.pack(fill="both", expand=True, padx=20, pady=16)
+
+    status_var = tk.StringVar(value="掃描中…")
+    tk.Label(
+        pad, textvariable=status_var, bg=COLOR_BG, font=font_label,
+        anchor="w", wraplength=360, justify="left",
+    ).pack(fill="x")
+
+    progress = ttk.Progressbar(pad, orient="horizontal", length=360, mode="determinate", maximum=_SCAN_HARD_LIMIT)
+    progress.pack(fill="x", pady=(10, 4))
+    percent_var = tk.StringVar(value="0%")
+    tk.Label(pad, textvariable=percent_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_label).pack(anchor="e")
+
+    state = {"cancelled": False, "declined": False, "asked": False, "write_blocked": False, "hit_hard_cap": False}
+    found = []
+    seen = set()
+
+    def _gen():
+        for folder, recursive, extensions in jobs:
+            yield from _iter_scan_files(folder, recursive, extensions)
+
+    iterator = _gen()
+
+    def _cancel():
+        state["cancelled"] = True
+
+    btn_row = tk.Frame(pad, bg=COLOR_BG)
+    btn_row.pack(fill="x", pady=(12, 0))
+    _styled_button(btn_row, "取消", _cancel, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
+    dlg.protocol("WM_DELETE_WINDOW", _cancel)  # 掃描中關視窗也當「取消」，狀態才會乾淨收尾
+
+    def _update_progress():
+        n = len(found)
+        capped = min(n, _SCAN_HARD_LIMIT)
+        progress["value"] = capped
+        percent_var.set(f"{int(capped / _SCAN_HARD_LIMIT * 100)}%")
+        status_var.set(f"掃描中… 已找到 {n} 個檔案")
+
+    def _finish():
+        dlg.grab_release()
+        dlg.destroy()
+        on_done(
+            sorted(found),
+            state["write_blocked"] or state["cancelled"],
+            state["cancelled"] or state["declined"],
+            state["hit_hard_cap"],
+        )
+
+    def _step():
+        if state["cancelled"]:
+            _finish()
+            return
+        CHUNK = 300  # 一次只吃一小批就把控制權交還事件迴圈，取消鈕才按得下去
+        for _ in range(CHUNK):
+            try:
+                p = next(iterator)
+            except StopIteration:
+                _finish()
+                return
+            key = str(p)
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append(p)
+            if len(found) > _SCAN_HARD_LIMIT:
+                state["hit_hard_cap"] = True
+                state["write_blocked"] = True
+                _finish()
+                return
+            if len(found) == _SCAN_SOFT_LIMIT + 1 and not state["asked"]:
+                state["asked"] = True
+                state["write_blocked"] = True
+                _update_progress()
+                proceed = messagebox.askyesno(
+                    "掃描筆數過多",
+                    f"已經找到超過 {_SCAN_SOFT_LIMIT} 個檔案。這次掃描結果不會用來寫入索引檔案"
+                    f"（不管接下來選繼續還是停止都一樣，只能看筆數／瀏覽）。\n\n"
+                    f"要繼續掃描到上限 {_SCAN_HARD_LIMIT:,} 筆，看看資料夾裡總共有多少個檔案嗎？\n"
+                    f"選「否」會停在目前找到的 {len(found)} 筆，不再繼續掃描。",
+                    parent=dlg,
+                )
+                if not proceed:
+                    state["declined"] = True
+                    _finish()
+                    return
+        _update_progress()
+        dlg.after(1, _step)
+
+    dlg.after(1, _step)
+
+
+class AddEntryDialog(tk.Toplevel):
+    """新增／編輯一列索引資料的小視窗——拖曳檔案進主視窗、按「新增檔案...」瀏覽
+    挑選、或選一筆既有結果按「編輯所選列」時都會跳出這個視窗，讓使用者填/改
+    分類／說明文字，確認後才真的寫進 .md 檔案。新增跟編輯共用同一個視窗，差別
+    只在標題／按鈕文字，以及編輯時會把現有值預先填好（initial_category／
+    initial_desc）。"""
+
+    def __init__(
+        self, parent, path_str, existing_categories, on_confirm,
+        title="新增到索引", confirm_text="新增", initial_category="", initial_desc="", on_cancel=None,
+    ):
+        super().__init__(parent)
+        self.title(title)
+        self.configure(bg=COLOR_BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        font_label = tkfont.Font(family=_FONT_FAMILY, size=12)
+        font_hint = tkfont.Font(family=_FONT_FAMILY, size=10)
+        font_warning = tkfont.Font(family=_FONT_FAMILY, size=10, weight="bold")
+
+        pad = tk.Frame(self, bg=COLOR_BG)
+        pad.pack(fill="both", expand=True, padx=16, pady=14)
+
+        tk.Label(
+            pad, text=f"{_icon_for(path_str)}  {Path(path_str).name}", bg=COLOR_BG,
+            font=tkfont.Font(family=_FONT_FAMILY, size=14, weight="bold"), anchor="w",
+        ).pack(fill="x")
+        tk.Label(
+            pad, text=path_str, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint,
+            anchor="w", wraplength=420, justify="left",
+        ).pack(fill="x", pady=(0, 10))
+
+        tk.Label(pad, text="分類（可留空，或從既有分類挑一個）：", bg=COLOR_BG, font=font_label, anchor="w").pack(fill="x")
+        self.category_var = tk.StringVar(value=initial_category)
+        ttk.Combobox(
+            pad, textvariable=self.category_var, values=sorted(existing_categories), font=font_label,
+        ).pack(fill="x", pady=(2, 10))
+
+        tk.Label(pad, text="說明（可打多個關鍵字，搜尋會比對全文）：", bg=COLOR_BG, font=font_label, anchor="w").pack(fill="x")
+        self.desc_var = tk.StringVar(value=initial_desc)
+        desc_entry = tk.Entry(pad, textvariable=self.desc_var, font=font_label)
+        desc_entry.pack(fill="x", pady=(2, 14), ipady=4)
+        desc_entry.focus_set()
+        desc_entry.select_range(0, "end")
+
+        btn_row = tk.Frame(pad, bg=COLOR_BG)
+        btn_row.pack(fill="x")
+
+        def _confirm():
+            on_confirm(self.category_var.get(), self.desc_var.get())
+            self.destroy()
+
+        def _cancel():
+            self.destroy()
+            if on_cancel:
+                parent.after_idle(on_cancel)
+
+        _styled_button(btn_row, "取消", _cancel, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
+        _styled_button(btn_row, confirm_text, _confirm, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, font_label).pack(side="right", padx=(0, 8))
+        desc_entry.bind("<Return>", lambda _e: _confirm())
+        self.protocol("WM_DELETE_WINDOW", _cancel)
+
+
+class CreateIndexDialog(tk.Toplevel):
+    """新增一份索引集——之前這件事只能靠使用者自己跑去 indexes/ 資料夾底下手動
+    新建一個 .md 檔案（照範本格式寫），這個視窗補上對應的按鈕：輸入名稱（不用
+    打 .md 副檔名也可以，會自動補上），即時檢查合不合法／有沒有撞名，確認後
+    建立一份格式正確的空白索引檔案，呼叫端負責切換過去。"""
+
+    def __init__(self, parent, on_confirm):
+        super().__init__(parent)
+        self.title("新增索引集")
+        self.configure(bg=COLOR_BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        font_label = tkfont.Font(family=_FONT_FAMILY, size=12)
+        font_hint = tkfont.Font(family=_FONT_FAMILY, size=10)
+        font_warning = tkfont.Font(family=_FONT_FAMILY, size=10, weight="bold")
+
+        pad = tk.Frame(self, bg=COLOR_BG)
+        pad.pack(fill="both", expand=True, padx=16, pady=14)
+
+        tk.Label(
+            pad, text="🗂 新增索引集", bg=COLOR_BG,
+            font=tkfont.Font(family=_FONT_FAMILY, size=14, weight="bold"), anchor="w",
+        ).pack(fill="x")
+        tk.Label(
+            pad, text=f"會在 {_INDEXES_DIR.name}/ 底下建立一份新的空白 .md 索引檔案，建立後自動切換過去。",
+            bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint, anchor="w", wraplength=380, justify="left",
+        ).pack(fill="x", pady=(0, 10))
+
+        tk.Label(pad, text="名稱（不用打 .md，會自動補上）：", bg=COLOR_BG, font=font_label, anchor="w").pack(fill="x")
+        self.name_var = tk.StringVar()
+        name_entry = tk.Entry(pad, textvariable=self.name_var, font=font_label)
+        name_entry.pack(fill="x", pady=(2, 4), ipady=4)
+        name_entry.focus_set()
+
+        self._hint_var = tk.StringVar(value="")
+        self._hint_label = tk.Label(
+            pad, textvariable=self._hint_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint,
+            anchor="w", wraplength=380, justify="left",
+        )
+        self._hint_label.pack(fill="x", pady=(0, 10))
+
+        btn_row = tk.Frame(pad, bg=COLOR_BG)
+        btn_row.pack(fill="x")
+
+        def _confirm():
+            filename, _err = _validate_index_name(self.name_var.get())
+            if not filename:
+                return  # 按鈕正常情況下已經是 disabled，這裡多擋一層防呆
+            on_confirm(filename)
+            self.destroy()
+
+        _styled_button(btn_row, "取消", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
+        self._confirm_btn = _styled_button(btn_row, "建立", _confirm, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, font_label)
+        self._confirm_btn.pack(side="right", padx=(0, 8))
+        self._confirm_btn.config(state="disabled")
+
+        def _on_name_change(*_a):
+            filename, err = _validate_index_name(self.name_var.get())
+            if err:
+                self._hint_var.set(err)
+                # 一個字都還沒打的時候（初始狀態）不用紅字嚇人，等使用者真的打了
+                # 什麼但不合法（撞名、有不合法符號）才標紅。
+                has_input = bool(self.name_var.get().strip())
+                self._hint_label.config(
+                    fg=COLOR_MISSING_FG if has_input else COLOR_STATUS_FG,
+                    font=font_warning if has_input else font_hint,
+                )
+                self._confirm_btn.config(state="disabled")
+            else:
+                self._hint_var.set(f"將建立：{filename}")
+                self._hint_label.config(fg=COLOR_STATUS_FG, font=font_hint)
+                self._confirm_btn.config(state="normal")
+
+        self.name_var.trace_add("write", _on_name_change)
+        name_entry.bind("<Return>", lambda _e: _confirm() if str(self._confirm_btn["state"]) == "normal" else None)
+
+
+class ImportFolderDialog(tk.Toplevel):
+    """批次匯入一整個資料夾——跟 AddEntryDialog（一次一個檔案、逐一填分類/說明）
+    不同，這裡是先選範圍（要不要含子資料夾、篩選副檔名），按「掃描」看會匯入
+    幾筆，整批共用同一個分類，說明欄留空（批次匯入的檔案通常沒空一個個寫關鍵字，
+    之後要補可以用「編輯索引檔案」直接在 .md 裡寫，或事後用搜尋找到、重新
+    拖曳一次覆蓋）。已經在索引裡的路徑會自動略過，不會造成重複列。"""
+
+    def __init__(self, parent, folder: Path, existing_paths, existing_categories, on_confirm):
+        super().__init__(parent)
+        self.title("匯入資料夾")
+        self.configure(bg=COLOR_BG)
+        self.transient(parent)
+        self.grab_set()
+        self.geometry("620x680")
+        self.minsize(560, 600)
+        self.resizable(True, True)
+
+        self._folder = folder
+        self._existing_paths = existing_paths  # set，已用 str(Path(...)) 正規化過
+        self._on_confirm = on_confirm
+        self._scanned_new = []  # 上次掃描結果裡，尚未在索引中的檔案清單
+        self._selected_types = set()  # 目前點選的類型標籤（對應 _EXT_CATEGORIES 的第一個欄位）
+        self._type_buttons = {}  # 標籤 -> (Button, 顏色)，切換選取狀態時要改按鈕的顏色
+
+        font_label = tkfont.Font(family=_FONT_FAMILY, size=12)
+        font_hint = tkfont.Font(family=_FONT_FAMILY, size=10)
+        font_warning = tkfont.Font(family=_FONT_FAMILY, size=10, weight="bold")
+        font_type_btn = tkfont.Font(family=_FONT_FAMILY, size=12, weight="bold")
+
+        pad = tk.Frame(self, bg=COLOR_BG)
+        pad.pack(fill="both", expand=True, padx=16, pady=14)
+
+        tk.Label(
+            pad, text=f"📂 {folder}", bg=COLOR_BG, font=tkfont.Font(family=_FONT_FAMILY, size=13, weight="bold"),
+            anchor="w", wraplength=560, justify="left",
+        ).pack(fill="x", pady=(0, 12))
+
+        self._recursive_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            pad, text="包含子資料夾", variable=self._recursive_var, bg=COLOR_BG,
+            activebackground=COLOR_BG, font=font_label, command=self._invalidate_scan,
+        ).pack(anchor="w")
+
+        ext_row = tk.Frame(pad, bg=COLOR_BG)
+        ext_row.pack(fill="x", pady=(10, 0))
+        tk.Label(
+            ext_row, text="檔案類型篩選（點選要收錄的類型；一個都不選＝不篩選，收錄全部檔案）：",
+            bg=COLOR_BG, font=font_label, anchor="w", wraplength=560, justify="left",
+        ).pack(anchor="w")
+
+        type_grid = tk.Frame(ext_row, bg=COLOR_BG)
+        type_grid.pack(fill="x", pady=(8, 0))
+        _COLS = 3
+        for idx, (label, icon, exts, color) in enumerate(_EXT_CATEGORIES):
+            row, col = divmod(idx, _COLS)
+            btn = tk.Button(
+                type_grid, text=f"{icon} {label}", font=font_type_btn, relief="flat", bd=0,
+                cursor="hand2", padx=10, pady=8,
+                command=lambda lbl=label: self._toggle_type(lbl),
+            )
+            btn.grid(row=row, column=col, padx=4, pady=4, sticky="ew")
+            self._type_buttons[label] = (btn, color)
+        for col in range(_COLS):
+            type_grid.grid_columnconfigure(col, weight=1)
+        self._refresh_type_buttons()
+
+        tk.Label(pad, text="分類（整批套用同一個，可留空）：", bg=COLOR_BG, font=font_label, anchor="w").pack(fill="x", pady=(14, 0))
+        self.category_var = tk.StringVar()
+        ttk.Combobox(
+            pad, textvariable=self.category_var, values=sorted(existing_categories), font=font_label,
+        ).pack(fill="x", pady=(2, 10))
+
+        scan_row = tk.Frame(pad, bg=COLOR_BG)
+        scan_row.pack(fill="x", pady=(4, 0))
+        _styled_button(scan_row, "掃描", self._do_scan, BTN_CYAN_BG, BTN_CYAN_ACTIVE, font_label).pack(side="left")
+        self._result_var = tk.StringVar(value="按「掃描」看看會匯入哪些檔案")
+        self._result_label = tk.Label(
+            scan_row, textvariable=self._result_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint,
+            anchor="w", wraplength=440, justify="left",
+        )
+        self._result_label.pack(side="left", padx=(10, 0))
+        self._font_result_normal = font_hint
+        self._font_result_warning = font_warning
+
+        # 掃描完之後除了上面那行總筆數，還會在這裡列出九個類別（含「其他」）各
+        # 自掃到幾筆；沒掃描過／結果是空的時候這個 Frame 沒有子元件、天生 0 高度，
+        # 不會佔版面或留下一條空白。
+        self._font_hint = font_hint
+        self._category_counts_frame = tk.Frame(pad, bg=COLOR_BG)
+        self._category_counts_frame.pack(fill="x", pady=(6, 0))
+
+        btn_row = tk.Frame(pad, bg=COLOR_BG)
+        btn_row.pack(fill="x", pady=(14, 0))
+        _styled_button(btn_row, "取消", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
+        self._confirm_btn = _styled_button(
+            btn_row, "匯入", self._confirm, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, font_label,
+        )
+        self._confirm_btn.pack(side="right", padx=(0, 8))
+        self._confirm_btn.config(state="disabled")  # 掃描過、確認過筆數之前不能直接匯入
+
+    def _invalidate_scan(self):
+        """篩選條件一改，先前掃描結果就作廢，逼使用者重新按「掃描」確認新的
+        範圍與筆數，避免看到舊的預覽數字卻匯入了新條件下的結果，兩者對不上。"""
+        self._scanned_new = []
+        self._confirm_btn.config(state="disabled")
+        self._result_var.set("篩選條件已改變，請重新按「掃描」")
+        self._result_label.config(fg=COLOR_MISSING_FG, font=self._font_result_warning)
+        self._update_category_counts([])
+
+    def _toggle_type(self, label):
+        if label in self._selected_types:
+            self._selected_types.discard(label)
+        else:
+            self._selected_types.add(label)
+        self._refresh_type_buttons()
+        self._invalidate_scan()
+
+    def _refresh_type_buttons(self):
+        """選取中＝原色底＋白字，未選取＝同色系的淡色底＋原色字（用 _lighten() 混白
+        計算），兩種狀態都看得出屬於哪個類型、又能一眼分辨目前點選了哪些。"""
+        for label, (btn, color) in self._type_buttons.items():
+            if label in self._selected_types:
+                btn.config(bg=color, fg="#ffffff", activebackground=color, activeforeground="#ffffff")
+            else:
+                light = _lighten(color, 0.75)
+                btn.config(bg=light, fg=color, activebackground=light, activeforeground=color)
+
+    def _parse_extensions(self):
+        """回傳目前點選的所有類型按鈕，其副檔名集合的聯集；一個都沒選就回傳空
+        集合（_scan_folder 收到空集合＝不篩選，收錄全部檔案）。"""
+        exts = set()
+        for label in self._selected_types:
+            for l2, _icon, cat_exts, _color in _EXT_CATEGORIES:
+                if l2 == label:
+                    exts |= cat_exts
+                    break
+        return exts
+
+    def _update_category_counts(self, files):
+        for w in self._category_counts_frame.winfo_children():
+            w.destroy()
+        if files:
+            _render_category_counts(self._category_counts_frame, files, self._font_hint)
+
+    def _do_scan(self):
+        self._scanned_new = []
+        self._confirm_btn.config(state="disabled")
+        self._result_var.set("掃描中…")
+        self._result_label.config(fg=COLOR_STATUS_FG, font=self._font_result_normal)
+        self._update_category_counts([])
+        jobs = [(self._folder, self._recursive_var.get(), self._parse_extensions())]
+        _scan_with_progress(self, jobs, self._on_scan_done)
+
+    def _on_scan_done(self, found, write_blocked, stopped_early, hit_hard_cap):
+        self._update_category_counts(found)
+        if write_blocked:
+            self._result_label.config(fg=COLOR_MISSING_FG, font=self._font_result_warning)
+            self._scanned_new = []
+            if hit_hard_cap:
+                self._result_var.set(
+                    f"⚠️ 掃描到 {len(found)}+ 個檔案時已達安全上限（{_SCAN_HARD_LIMIT:,}），提前停止掃描，"
+                    f"可能不小心選到範圍過大的資料夾（例如磁碟機根目錄）；這次掃描結果不會用來匯入。\n"
+                    f"建議：取消「包含子資料夾」、加上副檔名篩選，或改選更小範圍的子資料夾再重新掃描。"
+                )
+            elif stopped_early:
+                self._result_var.set(
+                    f"已在 {len(found)} 筆時停止掃描，尚未掃描完整（超過安全筆數 {_SCAN_SOFT_LIMIT}，"
+                    f"這次掃描結果不會用來匯入）。建議加上副檔名篩選或縮小範圍後重新掃描。"
+                )
+            else:
+                self._result_var.set(
+                    f"掃描完成，共找到 {len(found)} 個檔案，超過可直接匯入的安全上限（{_SCAN_SOFT_LIMIT}），"
+                    f"這次掃描結果不會用來匯入。建議加上副檔名篩選或取消「包含子資料夾」再重新掃描。"
+                )
+            self._confirm_btn.config(state="disabled")
+            return
+        new_files = [p for p in found if str(p) not in self._existing_paths]
+        skipped = len(found) - len(new_files)
+        self._scanned_new = new_files
+        self._result_var.set(f"找到 {len(found)} 個檔案，{skipped} 個已在索引中略過，將新增 {len(new_files)} 筆")
+        self._result_label.config(
+            fg=COLOR_MISSING_FG if skipped else COLOR_STATUS_FG,
+            font=self._font_result_warning if skipped else self._font_result_normal,
+        )
+        self._confirm_btn.config(state="normal" if new_files else "disabled")
+        if found and not new_files:
+            self._result_var.set(f"找到 {len(found)} 個檔案，全部都已經在索引中，沒有新的可匯入")
+            self._result_label.config(fg=COLOR_MISSING_FG, font=self._font_result_warning)
+
+    def _confirm(self):
+        if not self._scanned_new:
+            return
+        self._on_confirm(self._scanned_new, self.category_var.get())
+        self.destroy()
+
+
+def _bind_wheel_recursive(widget, handler):
+    """把滑鼠滾輪事件遞迴綁到 widget 跟它所有子孫元件上——Tk 的 MouseWheel 事件
+    只會送給滑鼠指標正下方那一個元件，不會自動往上冒泡，所以清單裡每一列（含
+    裡面的 Checkbutton／Label）都要各自綁一次，滾輪才會在整個清單範圍內都有效，
+    不是只有滑到 Canvas 的空白處才有用。"""
+    widget.bind("<MouseWheel>", handler)
+    for child in widget.winfo_children():
+        _bind_wheel_recursive(child, handler)
+
+
+class BulkDeleteDialog(tk.Toplevel):
+    """搜尋＋勾選要從索引刪除哪些項目——列出目前索引檔案的全部資料列，預設全部
+    不勾選（避免手滑整批刪光），勾選的是「要刪除」的項目，確認後只會刪除索引
+    裡的這幾列紀錄，不會動到實際檔案本身。"""
+
+    def __init__(self, parent, entries, on_confirm):
+        super().__init__(parent)
+        self.title("批次刪除索引項目")
+        self.configure(bg=COLOR_BG)
+        self.transient(parent)
+        self.grab_set()
+        self.geometry("640x600")
+        self.minsize(480, 400)
+        self.resizable(True, True)
+
+        self._entries = entries  # [(path_str, category, desc, origin_md_path), ...]
+        # 不能用 path_str 當 dict key：同一路徑可能在一份或多份索引中重複出現，
+        # 後面的列會覆蓋前面的參照，造成搜尋顯示 0 筆但舊列仍留在畫面。
+        self._row_records = []   # [(path, origin, var, row_frame, 搜尋用小寫全文), ...]
+        self._on_confirm = on_confirm
+
+        font_label = tkfont.Font(family=_FONT_FAMILY, size=12)
+        font_hint = tkfont.Font(family=_FONT_FAMILY, size=10)
+        font_warning = tkfont.Font(family=_FONT_FAMILY, size=10, weight="bold")
+        font_name = tkfont.Font(family=_FONT_FAMILY, size=12, weight="bold")
+
+        pad = tk.Frame(self, bg=COLOR_BG)
+        pad.pack(fill="both", expand=True, padx=16, pady=14)
+
+        tk.Label(
+            pad,
+            text="勾選要從索引刪除的項目（預設全部不勾選，只有勾選的會被刪除；"
+                 "只會刪索引裡的這一列紀錄，不會刪除實際檔案）。",
+            bg=COLOR_BG, font=font_hint, fg=COLOR_STATUS_FG, justify="left", anchor="w", wraplength=600,
+        ).pack(fill="x", pady=(0, 10))
+
+        search_row = tk.Frame(pad, bg=COLOR_BG)
+        search_row.pack(fill="x")
+        tk.Label(search_row, text="🔍", bg=COLOR_BG, font=font_label).pack(side="left", padx=(0, 6))
+        self._search_var = tk.StringVar()
+        search_entry = tk.Entry(search_row, textvariable=self._search_var, font=font_label, relief="flat")
+        search_entry.pack(side="left", fill="x", expand=True, ipady=4)
+        search_entry.focus_set()
+        self._search_var.trace_add("write", lambda *_a: self._apply_filter())
+
+        select_row = tk.Frame(pad, bg=COLOR_BG)
+        select_row.pack(fill="x", pady=(8, 4))
+        self._match_count_var = tk.StringVar()
+        tk.Label(
+            select_row, textvariable=self._match_count_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint,
+        ).pack(side="left")
+        _styled_button(
+            select_row, "全部取消勾選", self._uncheck_all, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_hint,
+        ).pack(side="right")
+        _styled_button(
+            select_row, "勾選目前顯示", self._check_visible, BTN_CYAN_BG, BTN_CYAN_ACTIVE, font_hint,
+        ).pack(side="right", padx=(0, 8))
+
+        list_outer = tk.Frame(
+            pad, bg=COLOR_PREVIEW_BG, highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
+        )
+        list_outer.pack(fill="both", expand=True, pady=(4, 10))
+        canvas = tk.Canvas(list_outer, bg=COLOR_PREVIEW_BG, highlightthickness=0)
+        scroll = ttk.Scrollbar(list_outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        inner = tk.Frame(canvas, bg=COLOR_PREVIEW_BG)
+        inner_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(inner_id, width=e.width))
+
+        for serial, (path_str, category, desc, origin) in enumerate(entries, start=1):
+            var = tk.BooleanVar(value=False)
+            row = tk.Frame(inner, bg=COLOR_PREVIEW_BG)
+            row.pack(fill="x", pady=1, padx=2)
+            tk.Checkbutton(
+                row, variable=var, bg=COLOR_PREVIEW_BG, activebackground=COLOR_PREVIEW_BG,
+                command=self._update_count,
+            ).pack(side="left", anchor="n")
+            name = Path(path_str).name
+            tk.Label(
+                row, text=f"{serial}.  {_icon_for(path_str)} {name}", bg=COLOR_PREVIEW_BG,
+                font=font_name, anchor="w", justify="left",
+            ).pack(side="left", fill="x", expand=True, padx=(4, 0), pady=(4, 6))
+            haystack = f"{serial}\n{name}\n{category}\n{desc}\n{path_str}\n{origin.name}".lower()
+            self._row_records.append((path_str, origin, var, row, haystack))
+
+        _bind_wheel_recursive(inner, lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+        self._apply_filter()
+
+        btn_row = tk.Frame(pad, bg=COLOR_BG)
+        btn_row.pack(fill="x")
+        _styled_button(btn_row, "取消", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
+        self._delete_btn = _styled_button(
+            btn_row, "🗑️ 刪除勾選項目", self._confirm, BTN_DANGER_BG, BTN_DANGER_ACTIVE, font_label,
+        )
+        self._delete_btn.pack(side="right", padx=(0, 8))
+
+    def _apply_filter(self):
+        typed = self._search_var.get().strip().lower()
+        shown = 0
+        # 先全部收起再依原始順序重建可見列，既不留下重複路徑的殘影，也不會在
+        # 清除搜尋字時把曾隱藏的列全部插到清單尾端。
+        for _path, _origin, _var, row, _haystack in self._row_records:
+            row.pack_forget()
+        for _path, _origin, _var, row, haystack in self._row_records:
+            if not typed or typed in haystack:
+                row.pack(fill="x", pady=1, padx=2)
+                shown += 1
+        note = f"符合搜尋：{shown} / {len(self._entries)} 筆" if typed else f"共 {len(self._entries)} 筆"
+        self._match_count_var.set(note)
+
+    def _check_visible(self):
+        """把「目前搜尋結果」全部勾起來——不是全部項目，這樣才能先搜尋縮小範圍
+        再一次勾選一整批，不用逐筆點。"""
+        typed = self._search_var.get().strip().lower()
+        for _path, _origin, var, _row, haystack in self._row_records:
+            if not typed or typed in haystack:
+                var.set(True)
+        self._update_count()
+
+    def _uncheck_all(self):
+        for _path, _origin, var, _row, _haystack in self._row_records:
+            var.set(False)
+        self._update_count()
+
+    def _update_count(self):
+        n = sum(1 for _p, _o, v, _r, _h in self._row_records if v.get())
+        self._delete_btn.config(text=f"🗑️ 刪除勾選項目（{n}）" if n else "🗑️ 刪除勾選項目")
+
+    def _confirm(self):
+        checked = [(p, origin) for p, origin, v, _row, _haystack in self._row_records if v.get()]
+        if not checked:
+            messagebox.showinfo("批次刪除索引項目", "尚未勾選任何項目。")
+            return
+        if not messagebox.askyesno(
+            "批次刪除索引項目",
+            f"確定要從索引刪除這 {len(checked)} 筆嗎？（只會刪除索引紀錄，不會刪除實際檔案，此動作無法復原）",
+        ):
+            return
+        self._on_confirm(checked)
+        self.destroy()
+
+
+class KnownFoldersDialog(tk.Toplevel):
+    """管理「常用資料夾清單」——「找出未收錄檔案」可以直接勾這裡面的資料夾一次
+    掃描，不用每次都重新瀏覽選一次。清單存在 indexes/known_folders.txt，純文字
+    每行一個路徑，這個對話框只是提供 GUI 按鈕新增/移除，不用手動編輯檔案。"""
+
+    def __init__(self, parent, on_change=None):
+        super().__init__(parent)
+        self.title("常用資料夾清單")
+        self.configure(bg=COLOR_BG)
+        self.transient(parent)
+        self.grab_set()
+        self.geometry("560x420")
+        self.minsize(420, 320)
+        self.resizable(True, True)
+        self._on_change = on_change
+
+        font_label = tkfont.Font(family=_FONT_FAMILY, size=12)
+        font_hint = tkfont.Font(family=_FONT_FAMILY, size=10)
+
+        pad = tk.Frame(self, bg=COLOR_BG)
+        pad.pack(fill="both", expand=True, padx=16, pady=14)
+
+        tk.Label(
+            pad, text="「找出未收錄檔案」可以一次掃描這份清單裡勾選的資料夾。",
+            bg=COLOR_BG, font=font_hint, fg=COLOR_STATUS_FG, anchor="w",
+        ).pack(fill="x", pady=(0, 8))
+
+        list_frame = tk.Frame(pad, bg=COLOR_BG)
+        list_frame.pack(fill="both", expand=True)
+        self._listbox = tk.Listbox(list_frame, font=font_label, selectmode="extended", activestyle="none")
+        scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self._listbox.yview)
+        self._listbox.configure(yscrollcommand=scroll.set)
+        self._listbox.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+
+        btn_row = tk.Frame(pad, bg=COLOR_BG)
+        btn_row.pack(fill="x", pady=(10, 0))
+        _styled_button(
+            btn_row, "新增資料夾...", self._add_folder, BTN_BLUE_BG, BTN_BLUE_ACTIVE, font_label,
+        ).pack(side="left")
+        _styled_button(
+            btn_row, "移除選取", self._remove_selected, BTN_DANGER_BG, BTN_DANGER_ACTIVE, font_label,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(btn_row, "關閉", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
+
+        self._refresh_list()
+
+    def _refresh_list(self):
+        self._listbox.delete(0, "end")
+        for f in _load_known_folders():
+            self._listbox.insert("end", f)
+
+    def _add_folder(self):
+        folder = filedialog.askdirectory(title="選擇要加入常用清單的資料夾")
+        if not folder:
+            return
+        folders = _load_known_folders()
+        norm = str(Path(folder))
+        if norm not in folders:
+            folders.append(norm)
+            _save_known_folders(folders)
+            self._refresh_list()
+            if self._on_change:
+                self._on_change()
+
+    def _remove_selected(self):
+        sel = self._listbox.curselection()
+        if not sel:
+            return
+        to_remove = {self._listbox.get(i) for i in sel}
+        folders = [f for f in _load_known_folders() if f not in to_remove]
+        _save_known_folders(folders)
+        self._refresh_list()
+        if self._on_change:
+            self._on_change()
+
+
+class UnindexedScanDialog(tk.Toplevel):
+    """掃描「常用資料夾清單」（可以再加一個臨時瀏覽的資料夾），列出還沒被
+    任何索引集收錄的檔案（比對全部索引集聯集），勾選要新增的，統一指定要
+    寫進哪一份索引集、套用同一個分類。"""
+
+    def __init__(self, parent, existing_paths_all, existing_categories, index_files, default_index, on_confirm, on_manage_folders):
+        super().__init__(parent)
+        self.title("找出未收錄檔案")
+        self.configure(bg=COLOR_BG)
+        self.transient(parent)
+        self.grab_set()
+        self.geometry("920x760")
+        self.minsize(700, 560)
+        self.resizable(True, True)
+
+        self._existing_paths_all = existing_paths_all  # set，全部索引集已收錄路徑聯集
+        self._on_confirm = on_confirm
+        self._on_manage_folders = on_manage_folders
+        self._found = []  # 上次掃描結果裡，尚未被任何索引集收錄的檔案
+        self._scan_folder_count = 0  # 上次掃描涵蓋幾個資料夾，結果訊息文字要用
+        self._vars = {}
+        self._extra_folder = None
+
+        font_label = tkfont.Font(family=_FONT_FAMILY, size=12)
+        font_hint = tkfont.Font(family=_FONT_FAMILY, size=10)
+        font_warning = tkfont.Font(family=_FONT_FAMILY, size=10, weight="bold")
+        font_name = tkfont.Font(family=_FONT_FAMILY, size=12, weight="bold")
+
+        # 主內容與固定操作列分成兩個 grid row；掃描清單再長也只能擴張 row 0，
+        # 永遠不會蓋住 row 1 的收錄按鈕。
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        pad = tk.Frame(self, bg=COLOR_BG)
+        pad.grid(row=0, column=0, sticky="nsew", padx=16, pady=(14, 6))
+
+        top_row = tk.Frame(pad, bg=COLOR_BG)
+        top_row.pack(fill="x")
+        tk.Label(top_row, text="常用資料夾清單（勾選要掃描的）：", bg=COLOR_BG, font=font_label, anchor="w").pack(side="left")
+        _styled_button(
+            top_row, "管理清單...", self._open_manage_folders, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_hint,
+        ).pack(side="right")
+
+        self._folder_vars = {}
+        self._folder_list_frame = tk.Frame(
+            pad, bg=COLOR_PREVIEW_BG, highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
+        )
+        self._folder_list_frame.pack(fill="x", pady=(4, 8))
+        self._reload_known_folders()
+
+        browse_row = tk.Frame(pad, bg=COLOR_BG)
+        browse_row.pack(fill="x")
+        _styled_button(
+            browse_row, "臨時瀏覽其他資料夾...", self._browse_extra, BTN_BLUE_BG, BTN_BLUE_ACTIVE, font_hint,
+        ).pack(side="left")
+        self._extra_var = tk.StringVar(value="")
+        tk.Label(
+            browse_row, textvariable=self._extra_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint,
+        ).pack(side="left", padx=(8, 0))
+
+        self._recursive_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            pad, text="包含子資料夾", variable=self._recursive_var, bg=COLOR_BG,
+            activebackground=COLOR_BG, font=font_label,
+        ).pack(anchor="w", pady=(6, 0))
+
+        scan_row = tk.Frame(pad, bg=COLOR_BG)
+        scan_row.pack(fill="x", pady=(8, 4))
+        _styled_button(scan_row, "掃描", self._do_scan, BTN_CYAN_BG, BTN_CYAN_ACTIVE, font_label).pack(side="left")
+        self._result_var = tk.StringVar(value="按「掃描」看看有哪些檔案還沒收錄")
+        self._result_label = tk.Label(
+            scan_row, textvariable=self._result_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint,
+            anchor="w", wraplength=500, justify="left",
+        )
+        self._result_label.pack(side="left", padx=(10, 0))
+        self._font_result_normal = font_hint
+        self._font_result_warning = font_warning
+
+        # 掃描完之後除了上面那行總筆數，還會在這裡列出九個類別（含「其他」）各
+        # 自掃到幾筆；沒掃描過／結果是空的時候這個 Frame 沒有子元件、天生 0 高度，
+        # 不會佔版面或留下一條空白。
+        self._font_hint = font_hint
+        self._category_counts_frame = tk.Frame(pad, bg=COLOR_BG)
+        self._category_counts_frame.pack(fill="x", pady=(0, 6))
+
+        list_outer = tk.Frame(
+            pad, bg=COLOR_PREVIEW_BG, highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
+        )
+        list_outer.pack(fill="both", expand=True, pady=(4, 10))
+        canvas = tk.Canvas(list_outer, bg=COLOR_PREVIEW_BG, highlightthickness=0)
+        scroll = ttk.Scrollbar(list_outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        self._inner = tk.Frame(canvas, bg=COLOR_PREVIEW_BG)
+        inner_id = canvas.create_window((0, 0), window=self._inner, anchor="nw")
+        self._inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(inner_id, width=e.width))
+        self._canvas = canvas
+        self._font_name = font_name
+
+        select_row = tk.Frame(pad, bg=COLOR_BG)
+        select_row.pack(fill="x")
+        self._selected_count_var = tk.StringVar(value="已勾選 0 筆")
+        tk.Label(
+            select_row, textvariable=self._selected_count_var, bg=COLOR_BG,
+            fg=COLOR_STATUS_FG, font=font_hint,
+        ).pack(side="left")
+        self._quick_confirm_btn = _styled_button(
+            select_row, "✅ 收錄勾選項目到索引", self._confirm,
+            BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, font_label,
+        )
+        self._quick_confirm_btn.pack(side="left", padx=(12, 0))
+        self._quick_confirm_btn.config(state="disabled")
+        _styled_button(
+            select_row, "全部取消勾選", self._uncheck_all, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_hint,
+        ).pack(side="right")
+        _styled_button(
+            select_row, "全部勾選", self._check_all, BTN_TEAL_BG, BTN_TEAL_ACTIVE, font_hint,
+        ).pack(side="right", padx=(0, 8))
+
+        # 固定底部操作列不放在 pad／Canvas 裡面，避免掃描結果或全部勾選後被遮擋。
+        fixed_footer = tk.Frame(
+            self, bg="#dbeafe", highlightbackground="#2563eb", highlightthickness=2,
+        )
+        fixed_footer.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 14))
+        footer_inputs = tk.Frame(fixed_footer, bg="#dbeafe")
+        footer_inputs.pack(fill="x", padx=12, pady=(9, 5))
+        tk.Label(
+            footer_inputs, text="固定收錄操作列", bg="#dbeafe", fg="#1e3a8a",
+            font=tkfont.Font(family=_FONT_FAMILY, size=11, weight="bold"),
+        ).pack(side="left", padx=(0, 16))
+        tk.Label(footer_inputs, text="加入到：", bg="#dbeafe", font=font_label).pack(side="left")
+        self._index_files = index_files
+        self._target_var = tk.StringVar(value=default_index.name if default_index else "")
+        ttk.Combobox(
+            footer_inputs, textvariable=self._target_var, state="readonly",
+            values=[f.name for f in index_files], font=font_label, width=18,
+        ).pack(side="left", padx=(4, 14))
+        tk.Label(footer_inputs, text="分類：", bg="#dbeafe", font=font_label).pack(side="left")
+        self.category_var = tk.StringVar()
+        ttk.Combobox(
+            footer_inputs, textvariable=self.category_var, values=sorted(existing_categories), font=font_label, width=14,
+        ).pack(side="left", padx=(4, 0))
+
+        footer_actions = tk.Frame(fixed_footer, bg="#dbeafe")
+        footer_actions.pack(fill="x", padx=12, pady=(0, 9))
+        tk.Label(
+            footer_actions, textvariable=self._selected_count_var, bg="#dbeafe",
+            fg="#1e3a8a", font=font_label,
+        ).pack(side="left")
+        _styled_button(footer_actions, "取消", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
+        self._confirm_btn = _styled_button(
+            footer_actions, "✅ 收錄勾選項目到索引", self._confirm, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, font_label,
+        )
+        self._confirm_btn.pack(side="right", padx=(0, 8))
+        self._confirm_btn.config(state="disabled")
+
+    def _set_confirm_state(self, enabled):
+        state = "normal" if enabled else "disabled"
+        self._confirm_btn.config(state=state)
+        self._quick_confirm_btn.config(state=state)
+
+    def _update_selected_count(self):
+        count = sum(1 for v in self._vars.values() if v.get())
+        self._selected_count_var.set(f"已勾選 {count} 筆")
+
+    def _open_manage_folders(self):
+        self._on_manage_folders()
+        self._reload_known_folders()
+
+    def _reload_known_folders(self):
+        for w in self._folder_list_frame.winfo_children():
+            w.destroy()
+        self._folder_vars = {}
+        known = _load_known_folders()
+        if not known:
+            tk.Label(
+                self._folder_list_frame, text="（清單是空的，按「管理清單...」新增）",
+                bg=COLOR_PREVIEW_BG, fg=COLOR_STATUS_FG,
+            ).pack(anchor="w", padx=8, pady=6)
+            return
+        for f in known:
+            var = tk.BooleanVar(value=True)
+            self._folder_vars[f] = var
+            tk.Checkbutton(
+                self._folder_list_frame, text=f, variable=var, bg=COLOR_PREVIEW_BG,
+                activebackground=COLOR_PREVIEW_BG, anchor="w",
+            ).pack(fill="x", padx=6)
+
+    def _browse_extra(self):
+        folder = filedialog.askdirectory(title="選擇要臨時掃描的資料夾（不會加入常用清單）")
+        if folder:
+            self._extra_folder = Path(folder)
+            self._extra_var.set(f"＋ {folder}")
+        else:
+            self._extra_folder = None
+            self._extra_var.set("")
+
+    def _update_category_counts(self, files):
+        for w in self._category_counts_frame.winfo_children():
+            w.destroy()
+        if files:
+            _render_category_counts(self._category_counts_frame, files, self._font_hint)
+
+    def _do_scan(self):
+        folders = [Path(f) for f, v in self._folder_vars.items() if v.get() and Path(f).is_dir()]
+        if self._extra_folder:
+            folders.append(self._extra_folder)
+        if not folders:
+            self._result_var.set("沒有選取任何資料夾，請先勾選常用清單裡的資料夾，或臨時瀏覽一個。")
+            self._result_label.config(fg=COLOR_MISSING_FG, font=self._font_result_warning)
+            return
+        self._found = []
+        self._rebuild_checklist()
+        self._update_category_counts([])
+        self._set_confirm_state(False)
+        self._result_var.set("掃描中…")
+        self._result_label.config(fg=COLOR_STATUS_FG, font=self._font_result_normal)
+        self._scan_folder_count = len(folders)
+        jobs = [(f, self._recursive_var.get(), set()) for f in folders]
+        _scan_with_progress(self, jobs, self._on_scan_done)
+
+    def _on_scan_done(self, found, write_blocked, stopped_early, hit_hard_cap):
+        if write_blocked:
+            self._result_label.config(fg=COLOR_MISSING_FG, font=self._font_result_warning)
+            self._found = []
+            # 這種情況下沒有「未收錄」子集可看，改列出這次掃到的全部檔案依類別
+            # 分布，幫使用者判斷是哪種類型的檔案把筆數撐爆的，好挑要不要縮小範圍。
+            self._update_category_counts(found)
+            if hit_hard_cap:
+                self._result_var.set(
+                    f"⚠️ 掃描到 {len(found)}+ 個檔案時已達安全上限（{_SCAN_HARD_LIMIT:,}），提前停止掃描，"
+                    f"可能不小心選到範圍過大的資料夾（例如磁碟機根目錄）；這次掃描結果不會用來加入索引。\n"
+                    f"建議：取消「包含子資料夾」，或到「管理清單...」拿掉範圍過大的資料夾、改用更小範圍的子資料夾。"
+                )
+            elif stopped_early:
+                self._result_var.set(
+                    f"已在 {len(found)} 筆時停止掃描，尚未掃描完整（超過安全筆數 {_SCAN_SOFT_LIMIT}，"
+                    f"這次掃描結果不會用來加入索引）。建議縮小範圍後重新掃描。"
+                )
+            else:
+                self._result_var.set(
+                    f"掃描完成，共找到 {len(found)} 個檔案，超過可直接加入索引的安全上限（{_SCAN_SOFT_LIMIT}），"
+                    f"這次掃描結果不會用來加入索引。建議縮小範圍後重新掃描。"
+                )
+            self._rebuild_checklist()
+            self._set_confirm_state(False)
+            return
+        self._found = [p for p in found if str(p) not in self._existing_paths_all]
+        self._update_category_counts(self._found)
+        self._result_var.set(
+            f"掃描 {self._scan_folder_count} 個資料夾，找到 {len(found)} 個檔案，其中 {len(self._found)} 個還沒被收錄"
+        )
+        skipped = len(found) - len(self._found)
+        self._result_label.config(
+            fg=COLOR_MISSING_FG if skipped else COLOR_STATUS_FG,
+            font=self._font_result_warning if skipped else self._font_result_normal,
+        )
+        self._rebuild_checklist()
+        self._set_confirm_state(bool(self._found))
+
+    def _rebuild_checklist(self):
+        for w in self._inner.winfo_children():
+            w.destroy()
+        self._vars = {}
+        for p in self._found:
+            var = tk.BooleanVar(value=False)
+            self._vars[str(p)] = var
+            row = tk.Frame(self._inner, bg=COLOR_PREVIEW_BG)
+            row.pack(fill="x", pady=1, padx=2)
+            tk.Checkbutton(
+                row, variable=var, bg=COLOR_PREVIEW_BG, activebackground=COLOR_PREVIEW_BG,
+                command=self._update_selected_count,
+            ).pack(side="left")
+            tk.Label(
+                row, text=f"{_icon_for(str(p))} {p}", bg=COLOR_PREVIEW_BG,
+                font=self._font_name, anchor="w",
+            ).pack(side="left", fill="x", expand=True)
+        _bind_wheel_recursive(self._inner, lambda e: self._canvas.yview_scroll(int(-e.delta / 120), "units"))
+        self._update_selected_count()
+
+    def _check_all(self):
+        for v in self._vars.values():
+            v.set(True)
+        self._update_selected_count()
+
+    def _uncheck_all(self):
+        for v in self._vars.values():
+            v.set(False)
+        self._update_selected_count()
+
+    def _confirm(self):
+        checked = [p for p in self._found if self._vars.get(str(p)) and self._vars[str(p)].get()]
+        if not checked:
+            messagebox.showinfo("找出未收錄檔案", "尚未勾選任何項目。")
+            return
+        target_name = self._target_var.get()
+        target = next((f for f in self._index_files if f.name == target_name), None)
+        if target is None:
+            messagebox.showwarning("找出未收錄檔案", "請選擇要加入的索引集。")
+            return
+        category = self.category_var.get().strip() or "未分類"
+        if not messagebox.askyesno(
+            "確認收錄到索引",
+            f"確定要把勾選的 {len(checked)} 個檔案收錄到「{target.name}」嗎？\n\n"
+            f"分類：{category}\n說明：暫時留空，可稍後使用「批次補說明」補上。",
+        ):
+            return
+        self._on_confirm(checked, target, category)
+        self.destroy()
+
+
+class DuplicateDialog(tk.Toplevel):
+    """依內容雜湊分組顯示重複的檔案，每組要求使用者主動選一筆保留（不預設，
+    避免自動選錯）；只處理有選擇的組別，未選組別保持不變（只刪索引紀錄，
+    不動實際檔案）。開啟此視窗前，主程式已自動重新驗證全部索引項目的 SHA-256。"""
+
+    def __init__(self, parent, groups, on_confirm):
+        # groups: [[(path, category, desc, origin_md_path, row_index), ...], ...]
+        super().__init__(parent)
+        self.title("重複檔案偵測")
+        self.configure(bg=COLOR_BG)
+        self.transient(parent)
+        self.grab_set()
+        self.geometry("700x640")
+        self.minsize(520, 420)
+        self.resizable(True, True)
+
+        self._groups = groups
+        self._keep_vars = []
+        self._on_confirm = on_confirm
+
+        font_label = tkfont.Font(family=_FONT_FAMILY, size=12)
+        font_hint = tkfont.Font(family=_FONT_FAMILY, size=10)
+        font_warning = tkfont.Font(family=_FONT_FAMILY, size=11, weight="bold")
+        font_name = tkfont.Font(family=_FONT_FAMILY, size=12, weight="bold")
+
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        pad = tk.Frame(self, bg=COLOR_BG)
+        pad.grid(row=0, column=0, sticky="nsew", padx=16, pady=(14, 6))
+
+        tk.Label(
+            pad,
+            text=f"找到 {len(groups)} 組內容完全相同的重複檔案。只需處理想刪除的組別："
+                 "每組選一筆保留，其餘索引紀錄會被刪除；未選擇的組別保持不變。",
+            bg=COLOR_BG, font=font_warning, fg=COLOR_MISSING_FG, anchor="w", justify="left", wraplength=650,
+        ).pack(fill="x", pady=(0, 6))
+
+        self._progress_var = tk.StringVar()
+        tk.Label(
+            pad, textvariable=self._progress_var, bg=COLOR_BG, fg=COLOR_MISSING_FG, font=font_warning, anchor="w",
+        ).pack(fill="x", pady=(0, 6))
+
+        list_outer = tk.Frame(
+            pad, bg=COLOR_PREVIEW_BG, highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
+        )
+        list_outer.pack(fill="both", expand=True, pady=(4, 10))
+        canvas = tk.Canvas(list_outer, bg=COLOR_PREVIEW_BG, highlightthickness=0)
+        scroll = ttk.Scrollbar(list_outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        inner = tk.Frame(canvas, bg=COLOR_PREVIEW_BG)
+        inner_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(inner_id, width=e.width))
+
+        for gi, group in enumerate(groups):
+            keep_var = tk.IntVar(value=-1)  # -1＝這組還沒選；其餘值是群組內唯一位置
+            self._keep_vars.append(keep_var)
+            keep_var.trace_add("write", lambda *_a: self._update_progress())
+            group_frame = tk.Frame(
+                inner, bg=COLOR_PREVIEW_BG, highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
+            )
+            group_frame.pack(fill="x", padx=4, pady=6)
+            tk.Label(
+                group_frame, text=f"第 {gi + 1} 組（{len(group)} 筆）：", bg=COLOR_PREVIEW_BG,
+                font=font_name, anchor="w",
+            ).pack(fill="x", padx=6, pady=(6, 2))
+            for item_index, (path, cat, desc, origin, row_index) in enumerate(group):
+                row = tk.Frame(group_frame, bg=COLOR_PREVIEW_BG)
+                row.pack(fill="x", padx=6, pady=1)
+                tk.Radiobutton(
+                    row, text="保留", variable=keep_var, value=item_index, bg=COLOR_PREVIEW_BG,
+                    activebackground=COLOR_PREVIEW_BG, font=font_hint,
+                ).pack(side="left")
+                sub = " ｜ ".join(x.strip() for x in (cat, desc) if x.strip())
+                label_text = (
+                    f"{_icon_for(path)} {Path(path).name}　［{origin.name}／第 {row_index + 1} 列］"
+                    + (f"　{sub}" if sub else "")
+                )
+                tk.Label(
+                    row, text=label_text, bg=COLOR_PREVIEW_BG, font=font_hint, anchor="w", justify="left",
+                ).pack(side="left", fill="x", expand=True)
+
+        _bind_wheel_recursive(inner, lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+
+        # 固定底列先建立按鈕，再更新狀態；舊版順序相反會存取尚不存在的按鈕。
+        footer = tk.Frame(
+            self, bg="#fee2e2", highlightbackground=BTN_DANGER_BG, highlightthickness=2,
+        )
+        footer.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 14))
+        tk.Label(
+            footer, textvariable=self._progress_var, bg="#fee2e2", fg="#991b1b",
+            font=font_label,
+        ).pack(side="left", padx=12, pady=11)
+        _styled_button(footer, "取消", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right", padx=(8, 12), pady=8)
+        self._delete_btn = _styled_button(
+            footer, "✅ 確定並刪除其餘索引項目", self._confirm,
+            BTN_DANGER_BG, BTN_DANGER_ACTIVE, font_label,
+        )
+        self._delete_btn.pack(side="right", pady=8)
+        self._update_progress()
+
+    def _update_progress(self):
+        resolved = sum(1 for v in self._keep_vars if v.get() >= 0)
+        total = len(self._keep_vars)
+        self._progress_var.set(f"準備處理：{resolved} / {total} 組（未選組別不變）")
+        self._delete_btn.config(state="normal")
+
+    def _confirm(self):
+        to_delete = []
+        for group, keep_var in zip(self._groups, self._keep_vars):
+            keep_index = keep_var.get()
+            if keep_index < 0:
+                continue  # 沒選的組別整組保留，不參與這次刪除
+            for item_index, (path, _cat, _desc, origin, row_index) in enumerate(group):
+                if item_index != keep_index:
+                    to_delete.append((path, origin, row_index))
+        if not to_delete:
+            messagebox.showinfo("重複檔案偵測", "尚未選擇任何要處理的重複組別，沒有刪除任何索引紀錄。")
+            return
+        if not messagebox.askyesno(
+            "重複檔案偵測",
+            f"確定要刪除這 {len(to_delete)} 筆重複的索引紀錄嗎？（只刪索引紀錄，不會刪除實際檔案，此動作無法復原）",
+        ):
+            return
+        # 先關閉本視窗，再由主視窗執行刪除並顯示「已刪除」結果，避免兩層視窗
+        # 疊在一起讓使用者誤以為確定按鈕沒有生效。
+        self.destroy()
+        self._on_confirm(to_delete)
+
+
+class BatchDescribeDialog(tk.Toplevel):
+    """批次補齊說明是空的項目——每筆先用內容擷取產生建議文字，列成清單讓
+    使用者逐筆審核／修改／決定要不要套用，確認後才寫入（不是自動直接寫入，
+    因為擷取出來的「檔案開頭幾句話」不一定真的適合當說明）。"""
+
+    def __init__(self, parent, suggestions, on_confirm):
+        # suggestions: [(path, category, origin_md_path, suggested_desc), ...]
+        super().__init__(parent)
+        self.title("批次補齊說明")
+        self.configure(bg=COLOR_BG)
+        self.transient(parent)
+        self.grab_set()
+        self.geometry("1080x800")
+        self.minsize(760, 560)
+        self.resizable(True, True)
+
+        self._on_confirm = on_confirm
+        self._items = [
+            {"path": p, "cat": c, "origin": o, "apply": tk.BooleanVar(value=True), "desc": d}
+            for p, c, o, d in suggestions
+        ]
+        self._page_size = 8
+        self._page = 0
+        self._visible_editors = {}  # item index -> Text，只保留目前頁面的少量元件
+
+        font_label = tkfont.Font(family=_FONT_FAMILY, size=12)
+        font_hint = tkfont.Font(family=_FONT_FAMILY, size=10)
+        font_name = tkfont.Font(family=_FONT_FAMILY, size=11, weight="bold")
+        font_path = tkfont.Font(family=_FONT_FAMILY, size=9)
+        font_section = tkfont.Font(family=_FONT_FAMILY, size=12, weight="bold")
+        # 說明本文預設 16pt，明顯大於一般輔助文字，適合長者閱讀。
+        self._desc_font_size = 16
+        self._desc_font = tkfont.Font(family=_FONT_FAMILY, size=self._desc_font_size)
+        self._desc_font_var = tk.StringVar(value=f"說明字體：{self._desc_font_size} pt")
+
+        pad = tk.Frame(self, bg=COLOR_BG)
+        pad.pack(fill="both", expand=True, padx=16, pady=14)
+
+        tk.Label(
+            pad,
+            text=f"找到 {len(suggestions)} 筆說明是空的項目，已經用檔案內容產生建議說明——"
+                 "請逐筆看過／修改，取消勾選的不會套用。",
+            bg=COLOR_BG, font=font_hint, fg=COLOR_STATUS_FG, anchor="w", justify="left", wraplength=1020,
+        ).pack(fill="x", pady=(0, 10))
+
+        select_row = tk.Frame(pad, bg=COLOR_BG)
+        select_row.pack(fill="x", pady=(0, 4))
+        tk.Label(
+            select_row, textvariable=self._desc_font_var, bg=COLOR_BG,
+            fg=COLOR_HEADER_BG, font=font_label,
+        ).pack(side="left")
+        _styled_button(
+            select_row, "A−", lambda: self._change_desc_font(-2),
+            BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label,
+        ).pack(side="left", padx=(8, 4))
+        _styled_button(
+            select_row, "A＋", lambda: self._change_desc_font(2),
+            BTN_BLUE_BG, BTN_BLUE_ACTIVE, font_label,
+        ).pack(side="left")
+        _styled_button(
+            select_row, "全部取消", self._uncheck_all, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_hint,
+        ).pack(side="right")
+        _styled_button(
+            select_row, "全部套用", self._check_all, BTN_TEAL_BG, BTN_TEAL_ACTIVE, font_hint,
+        ).pack(side="right", padx=(0, 8))
+
+        list_outer = tk.Frame(
+            pad, bg=COLOR_PREVIEW_BG, highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
+        )
+        list_outer.pack(fill="both", expand=True, pady=(4, 10))
+        canvas = tk.Canvas(list_outer, bg=COLOR_PREVIEW_BG, highlightthickness=0)
+        scroll = ttk.Scrollbar(list_outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        self._inner = tk.Frame(canvas, bg=COLOR_PREVIEW_BG)
+        inner_id = canvas.create_window((0, 0), window=self._inner, anchor="nw")
+        self._inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(inner_id, width=e.width))
+        self._canvas = canvas
+        self._card_fonts = (font_hint, font_name, font_path, font_section)
+
+        page_row = tk.Frame(pad, bg=COLOR_BG)
+        page_row.pack(fill="x", pady=(0, 8))
+        self._page_var = tk.StringVar()
+        tk.Label(page_row, textvariable=self._page_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint).pack(side="left")
+        self._next_btn = _styled_button(
+            page_row, "下一頁 ▶", lambda: self._change_page(1), BTN_BLUE_BG, BTN_BLUE_ACTIVE, font_hint,
+        )
+        self._next_btn.pack(side="right")
+        self._prev_btn = _styled_button(
+            page_row, "◀ 上一頁", lambda: self._change_page(-1), BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_hint,
+        )
+        self._prev_btn.pack(side="right", padx=(0, 8))
+        self._render_page()
+
+        btn_row = tk.Frame(pad, bg=COLOR_BG)
+        btn_row.pack(fill="x")
+        _styled_button(btn_row, "取消", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
+        _styled_button(
+            btn_row, "套用勾選項目", self._confirm, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, font_label,
+        ).pack(side="right", padx=(0, 8))
+
+    def _save_visible_edits(self):
+        for item_index, editor in self._visible_editors.items():
+            self._items[item_index]["desc"] = editor.get("1.0", "end-1c")
+
+    def _change_desc_font(self, delta):
+        self._desc_font_size = max(14, min(28, self._desc_font_size + delta))
+        self._desc_font.configure(size=self._desc_font_size)
+        self._desc_font_var.set(f"說明字體：{self._desc_font_size} pt")
+
+    def _change_page(self, delta):
+        self._save_visible_edits()
+        page_count = max(1, (len(self._items) + self._page_size - 1) // self._page_size)
+        self._page = max(0, min(page_count - 1, self._page + delta))
+        self._render_page()
+
+    def _render_page(self):
+        """只建立目前頁面的 8 張卡片，避免一次產生數百個 Text/Scrollbar。"""
+        for widget in self._inner.winfo_children():
+            widget.destroy()
+        self._visible_editors = {}
+        font_hint, font_name, font_path, font_section = self._card_fonts
+        start = self._page * self._page_size
+        end = min(len(self._items), start + self._page_size)
+
+        for item_index in range(start, end):
+            item = self._items[item_index]
+            path, cat, origin = item["path"], item["cat"], item["origin"]
+            card = tk.Frame(
+                self._inner, bg="#ffffff", highlightbackground="#94a3b8", highlightthickness=1,
+            )
+            card.pack(fill="x", padx=10, pady=8)
+            file_block = tk.Frame(card, bg="#1e3a5f")
+            file_block.pack(fill="x")
+            tk.Checkbutton(
+                file_block, variable=item["apply"], text=f"  第 {item_index + 1} 筆　套用此說明",
+                bg="#1e3a5f", fg="#ffffff", activebackground="#1e3a5f", activeforeground="#ffffff",
+                selectcolor="#2563eb", font=font_section, anchor="w",
+            ).pack(fill="x", padx=10, pady=(8, 2))
+            tk.Label(
+                file_block, text=f"{_icon_for(path)}  {Path(path).name}", bg="#1e3a5f", fg="#ffffff",
+                font=font_name, anchor="w",
+            ).pack(fill="x", padx=14)
+            tk.Label(
+                file_block, text=f"分類：{cat or '未分類'}　｜　來源索引：{origin.name}\n{path}",
+                bg="#1e3a5f", fg="#bfdbfe", font=font_path, anchor="w", justify="left", wraplength=980,
+            ).pack(fill="x", padx=14, pady=(3, 10))
+
+            desc_block = tk.Frame(card, bg="#fff7d6")
+            desc_block.pack(fill="x")
+            tk.Label(
+                desc_block, text="📝  對應的文字說明（可直接編輯）", bg="#fff7d6", fg="#854d0e",
+                font=font_section, anchor="w",
+            ).pack(fill="x", padx=12, pady=(9, 4))
+            text_wrap = tk.Frame(desc_block, bg="#fff7d6")
+            text_wrap.pack(fill="x", padx=12, pady=(0, 12))
+            editor = tk.Text(
+                text_wrap, height=7, wrap="word", font=self._desc_font, bg="#ffffff", fg="#17202a",
+                relief="solid", bd=1, padx=12, pady=10, undo=True,
+                selectbackground="#2563eb", selectforeground="#ffffff",
+            )
+            editor_scroll = ttk.Scrollbar(text_wrap, orient="vertical", command=editor.yview)
+            editor.configure(yscrollcommand=editor_scroll.set)
+            editor.pack(side="left", fill="both", expand=True)
+            editor_scroll.pack(side="right", fill="y")
+            editor.insert("1.0", item["desc"])
+            editor.bind(
+                "<MouseWheel>",
+                lambda e, w=editor: (w.yview_scroll(int(-e.delta / 120), "units"), "break")[1],
+            )
+            self._visible_editors[item_index] = editor
+
+        _bind_wheel_recursive(
+            self._inner, lambda e: self._canvas.yview_scroll(int(-e.delta / 120), "units")
+        )
+        # recursive 綁定後再覆蓋 Text，讓文字框保有自己的滾動。
+        for editor in self._visible_editors.values():
+            editor.bind(
+                "<MouseWheel>",
+                lambda e, w=editor: (w.yview_scroll(int(-e.delta / 120), "units"), "break")[1],
+            )
+        page_count = max(1, (len(self._items) + self._page_size - 1) // self._page_size)
+        self._page_var.set(f"第 {self._page + 1} / {page_count} 頁　（每頁最多 {self._page_size} 筆，共 {len(self._items)} 筆）")
+        self._prev_btn.config(state="normal" if self._page > 0 else "disabled")
+        self._next_btn.config(state="normal" if self._page + 1 < page_count else "disabled")
+        self._canvas.yview_moveto(0)
+
+    def _check_all(self):
+        for item in self._items:
+            item["apply"].set(True)
+
+    def _uncheck_all(self):
+        for item in self._items:
+            item["apply"].set(False)
+
+    def _confirm(self):
+        self._save_visible_edits()
+        items = [
+            (item["path"], item["origin"], item["desc"].strip())
+            for item in self._items if item["apply"].get()
+        ]
+        if not items:
+            messagebox.showinfo("批次補齊說明", "沒有勾選任何項目。")
+            return
+        if not messagebox.askyesno("批次補齊說明", f"確定要套用這 {len(items)} 筆說明嗎？"):
+            return
+        self._on_confirm(items)
+        self.destroy()
+
+
+_BaseTk = TkinterDnD.Tk if _HAS_DND else tk.Tk
+
+
+class FileSearchApp(_BaseTk):
+    def __init__(self):
+        super().__init__()
+        self.title("檔案快速搜尋")
+        self.configure(bg=COLOR_BG)
+        self.geometry("1300x760")
+        self.minsize(900, 520)
+
+        self._font_title = tkfont.Font(family=_FONT_FAMILY, size=18, weight="bold")
+        self._font_label = tkfont.Font(family=_FONT_FAMILY, size=13)
+        self._font_hint = tkfont.Font(family=_FONT_FAMILY, size=11)
+        self._font_search = tkfont.Font(family=_FONT_FAMILY, size=16)
+        self._font_total_count = tkfont.Font(family=_FONT_FAMILY, size=20, weight="bold")
+        self._font_warning = tkfont.Font(family=_FONT_FAMILY, size=11, weight="bold")
+
+        # 功能介紹隱藏列專用字級：摘要／分類標題／項目名稱都要比說明文字醒目，
+        # 才能在展開時一眼分出「這是標題」還是「這是內文」，不會整片字看起來一樣重。
+        self._font_help_toggle = tkfont.Font(family=_FONT_FAMILY, size=12, weight="bold")
+        self._font_help_summary = tkfont.Font(family=_FONT_FAMILY, size=12, weight="bold")
+        self._font_help_section = tkfont.Font(family=_FONT_FAMILY, size=13, weight="bold")
+        self._font_help_item = tkfont.Font(family=_FONT_FAMILY, size=11, weight="bold")
+        self._font_help_desc = tkfont.Font(family=_FONT_FAMILY, size=11)
+
+        self._all_entries = []  # [(path_str, category, desc, origin_md_path), ...]，_reload_index() 填入
+        self._entry_cache = {}  # path_str -> {mtime,size,hash,text}，牽涉到的索引集內容快取合併
+        self._added_times = {}  # .added_times.json；新加入索引項目的時間
+        self._tree_row_origin = {}  # tree item id -> 該列來源的索引檔案 Path
+        self._current_index_path = None  # None 且選單顯示「全部索引」＝聚合模式；None 且選單是空的＝沒有任何索引可用
+        self._preview_photo = None  # 保留參照，避免縮圖被垃圾回收
+        self._preview_width = PREVIEW_DEFAULT_WIDTH
+        self._preview_mode = None  # 目前預覽區塊顯示的模式，拉寬時用來判斷要不要重算圖片縮圖
+        self._preview_drag_start_x = None
+        self._preview_drag_start_width = None
+        self._preview_font_size = PREVIEW_TEXT_DEFAULT_SIZE
+        self._preview_text_font = tkfont.Font(family=_FONT_FAMILY, size=self._preview_font_size)
+
+        # mp3/mp4 播放：靠 python-vlc 綁定系統已安裝的 VLC（不是純 Python 套件就能
+        # 搞定的東西，沒裝 VLC 就整個功能安靜關閉）。每次換檔或播完重播時都會
+        # 建立新的 player/media，避免部分 Windows MP4 解碼器只能正常解碼一次。
+        self._vlc_instance = vlc.Instance() if _HAS_VLC else None
+        self._vlc_player = self._vlc_instance.media_player_new() if self._vlc_instance else None
+        self._vlc_media = None  # 必須保留 Python 參照，直到該次播放真正結束
+        self._media_after_id = None  # 播放進度輪詢的 after() id，切走/關閉視窗要記得取消
+        self._media_path = None  # 目前載入播放器的檔案路徑，換選取項目時用來判斷要不要重新載入
+        self._media_volume_after_id = None
+        self._large_video_window = None
+        self._large_video_surface = None
+
+        _ensure_default_index()  # indexes/ 底下沒有任何 .md 就自動補一份格式正確的空白索引
+        self._build_ui()
+        self._refresh_index_list(select_first=True)
+        self.bind_all("<Control-f>", self._focus_search)
+        self.bind_all("<Escape>", self._clear_search)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        # 預覽內容縮放：跟 VS Code 同一套鍵位，+/- 兩種鍵盤都各綁一份（有無 Shift
+        # 皆可、小鍵盤也算），全域生效，不用先把滑鼠移到預覽區塊上。
+        for seq in ("<Control-plus>", "<Control-equal>", "<Control-KP_Add>"):
+            self.bind_all(seq, self._preview_zoom_in)
+        for seq in ("<Control-minus>", "<Control-KP_Subtract>"):
+            self.bind_all(seq, self._preview_zoom_out)
+        for seq in ("<Control-0>", "<Control-KP_0>"):
+            self.bind_all(seq, self._preview_zoom_reset)
+
+    # ── 版面 ─────────────────────────────────────────────────────────
+
+    def _build_ui(self):
+        header = tk.Frame(self, bg=COLOR_HEADER_BG)
+        header.pack(fill="x")
+        tk.Label(
+            header, text="📁 檔案快速搜尋", bg=COLOR_HEADER_BG, fg=COLOR_HEADER_FG,
+            font=self._font_title, anchor="w",
+        ).pack(side="left", padx=18, pady=14)
+
+        index_picker = tk.Frame(header, bg=COLOR_HEADER_BG)
+        index_picker.pack(side="right", padx=18)
+        self._index_status_var = tk.StringVar(value="")
+        tk.Label(
+            index_picker, textvariable=self._index_status_var, bg=COLOR_HEADER_BG, fg=COLOR_HEADER_SUB_FG,
+            font=self._font_hint, anchor="e",
+        ).pack(side="bottom", anchor="e")
+        tk.Label(
+            index_picker, text="索引集：", bg=COLOR_HEADER_BG, fg=COLOR_HEADER_SUB_FG, font=self._font_hint,
+        ).pack(side="left")
+        self._index_var = tk.StringVar()
+        self._index_combo = ttk.Combobox(
+            index_picker, textvariable=self._index_var, state="readonly", font=self._font_hint, width=24,
+        )
+        self._index_combo.pack(side="left")
+        self._index_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_index_selected())
+        _styled_button(
+            index_picker, "➕ 新增索引集...", self._on_create_index, BTN_BLUE_BG, BTN_BLUE_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(10, 0))
+        _styled_button(
+            index_picker, "🗑️ 刪除索引集", self._on_delete_index,
+            BTN_DANGER_BG, BTN_DANGER_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+
+        self._build_help_bar()
+
+        toolbar = tk.Frame(self, bg=COLOR_BG)
+        toolbar.pack(fill="x", padx=16, pady=(12, 6))
+        tk.Label(toolbar, text="🔍", bg=COLOR_BG, font=self._font_search).pack(side="left", padx=(0, 6))
+        self._search_var = tk.StringVar()
+        self._search_entry = tk.Entry(toolbar, textvariable=self._search_var, font=self._font_search, relief="flat")
+        self._search_entry.pack(side="left", fill="x", expand=True, ipady=6)
+        self._search_var.trace_add("write", lambda *_a: self._apply_filter())
+
+        combo_style = ttk.Style(self)
+        combo_style.configure("Medium.TCombobox", font=self._font_label)
+        # Combobox 本體與展開後的清單項目都使用中等字體。
+        self.option_add("*TCombobox*Listbox.font", self._font_label)
+        filter_box = tk.Frame(
+            toolbar, bg="#dbeafe", highlightbackground="#93c5fd", highlightthickness=1,
+        )
+        filter_box.pack(side="left", padx=(12, 0), ipady=5)
+        category_box = tk.Frame(filter_box, bg="#dbeafe")
+        category_box.pack(side="left", padx=(10, 6))
+        tk.Label(category_box, text="分類：", bg="#dbeafe", fg="#1e3a8a", font=self._font_label).pack(side="left", padx=(0, 4))
+        self._category_var = tk.StringVar(value="全部")
+        self._category_combo = ttk.Combobox(
+            category_box, textvariable=self._category_var, state="readonly",
+            font=self._font_label, style="Medium.TCombobox", width=12,
+        )
+        self._category_combo.pack(side="left")
+        self._category_combo.bind("<<ComboboxSelected>>", lambda _e: self._apply_filter())
+
+        folder_box = tk.Frame(filter_box, bg="#dbeafe")
+        folder_box.pack(side="left", padx=(6, 10))
+        tk.Label(folder_box, text="資料夾：", bg="#dbeafe", fg="#1e3a8a", font=self._font_label).pack(side="left", padx=(0, 4))
+        self._folder_var = tk.StringVar(value="全部")
+        self._folder_combo = ttk.Combobox(
+            folder_box, textvariable=self._folder_var, state="readonly",
+            font=self._font_label, style="Medium.TCombobox", width=18,
+        )
+        self._folder_combo.pack(side="left")
+        self._folder_combo.bind("<<ComboboxSelected>>", lambda _e: self._apply_filter())
+
+        toolbar2 = tk.Frame(self, bg=COLOR_BG)
+        toolbar2.pack(fill="x", padx=16, pady=(0, 6))
+        _styled_button(
+            toolbar2, "新增檔案...", self._on_add_file_dialog, BTN_BLUE_BG, BTN_BLUE_ACTIVE, self._font_hint,
+        ).pack(side="left")
+        _styled_button(
+            toolbar2, "匯入資料夾...", self._on_import_folder, BTN_TEAL_BG, BTN_TEAL_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(
+            toolbar2, "編輯索引檔案", self._open_index_file, BTN_INDIGO_BG, BTN_INDIGO_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(
+            toolbar2, "重新載入索引", self._reload_index, BTN_CYAN_BG, BTN_CYAN_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(
+            toolbar2, "⚠️ 清除失效項目", self._cleanup_missing, BTN_WARN_BG, BTN_WARN_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(
+            toolbar2, "🗑️ 批次刪除...", self._on_bulk_delete, BTN_DANGER_BG, BTN_DANGER_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        hint = "（可把檔案拖曳進下面清單直接新增）" if _HAS_DND else "（拖曳新增功能未啟用：缺少 tkinterdnd2 套件，仍可用「新增檔案...」按鈕）"
+        tk.Label(toolbar2, text=hint, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=self._font_hint).pack(side="left", padx=(10, 0))
+
+        toolbar3 = tk.Frame(self, bg=COLOR_BG)
+        toolbar3.pack(fill="x", padx=16, pady=(0, 6))
+        _styled_button(
+            toolbar3, "🔄 更新內容快取", self._on_update_cache, BTN_CYAN_BG, BTN_CYAN_ACTIVE, self._font_hint,
+        ).pack(side="left")
+        _styled_button(
+            toolbar3, "🔎 找出未收錄檔案...", self._on_find_unindexed, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(
+            toolbar3, "🧬 重複偵測...", self._on_find_duplicates, BTN_ORANGE_BG, BTN_ORANGE_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(
+            toolbar3, "✍️ 批次補說明...", self._on_batch_describe, BTN_PURPLE_BG, BTN_PURPLE_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+
+        # 警告提示不再跟四顆工具按鈕硬塞在同一橫列；獨立成下一列並依可用寬度
+        # 自動換行，避免視窗較窄、Windows 顯示縮放較大時右半段被裁掉。
+        toolbar3_notice = tk.Frame(self, bg=COLOR_BG)
+        toolbar3_notice.pack(fill="x", padx=16, pady=(0, 6))
+        toolbar3_notice_label = tk.Label(
+            toolbar3_notice,
+            text="⚠️ 跨全部索引集：全文搜尋前要更新內容快取；重複偵測會自動重新驗證 SHA-256。",
+            bg=COLOR_BG, fg=COLOR_MISSING_FG, font=self._font_warning,
+            anchor="w", justify="left",
+        )
+        toolbar3_notice_label.pack(fill="x")
+        toolbar3_notice.bind(
+            "<Configure>",
+            lambda e: toolbar3_notice_label.configure(wraplength=max(120, e.width - 8)),
+        )
+
+        body = tk.Frame(self, bg=COLOR_BG)
+        body.pack(fill="both", expand=True, padx=16, pady=(0, 6))
+        self._body_frame = body
+
+        tree_frame = tk.Frame(body, bg=COLOR_BG)
+        tree_frame.pack(side="left", fill="both", expand=True)
+        # 欄位加總起來的「自然寬度」（966px 左右）本來會變成清單的隱性寬度下限，
+        # 空間不夠時反而是預覽區塊被擠縮——關掉 propagate，寬度改由
+        # _sync_body_layout() 統一算，不再被欄位加總這個隱性下限牽著走（跟
+        # settings_window.py 那個 Canvas/Text 預設尺寸把手足擠壓的問題是同一種）。
+        tree_frame.pack_propagate(False)
+        tree_frame.grid_propagate(False)
+        self._tree_frame = tree_frame
+        style = ttk.Style(self)
+        style.configure("FileSearch.Treeview", font=self._font_label, rowheight=32)
+        style.configure("FileSearch.Treeview.Heading", font=self._font_label)
+        # 明確指定選取列的藍底白字；不同 Windows 佈景仍維持一致的 selected mark。
+        style.map(
+            "FileSearch.Treeview",
+            background=[("selected", "#2563eb")],
+            foreground=[("selected", "#ffffff")],
+        )
+        # 「來源」欄放在最後；序號欄依目前索引的原始排列固定從 1 起算，搜尋或
+        # 篩選只隱藏不符合的項目，不會把可見結果重新編號，方便跟批次刪除視窗對照。
+        # 新增序號後 _selected_path() 用固定索引 [5] 取路徑欄。
+        # 「來源索引集」只有全部索引聚合檢視時才填值；單一索引模式留空。
+        columns = ("serial", "icon", "name", "category", "desc", "path", "source", "added_at")
+        self._tree = ttk.Treeview(
+            tree_frame, columns=columns, show="headings", selectmode="browse", style="FileSearch.Treeview",
+        )
+        headings = {
+            "serial": "序號", "icon": "", "name": "檔名", "category": "分類", "desc": "說明",
+            "path": "路徑", "source": "來源索引集", "added_at": "加入時間",
+        }
+        widths = {
+            "serial": 58, "icon": 36, "name": 200, "category": 90, "desc": 400,
+            "path": 240, "source": 110, "added_at": 110,
+        }
+        for col in columns:
+            self._tree.heading(col, text=headings[col])
+            self._tree.column(col, width=widths[col], anchor="w", stretch=(col in ("desc", "path")))
+        self._tree.column("icon", anchor="center", stretch=False)
+        self._tree.column("serial", anchor="center", stretch=False)
+        self._tree.column("source", anchor="w", stretch=False)
+        self._tree.column("added_at", anchor="center", stretch=False)
+        # 使用明顯可見的傳統 Scrollbar（較寬的拉桿），避免 Windows ttk 佈景把
+        # slider 畫得太細、看起來像沒有捲動條；同時補上橫向拉桿查看長路徑。
+        vsb = tk.Scrollbar(
+            tree_frame, orient="vertical", command=self._tree.yview, width=18,
+            bg="#94a3b8", activebackground="#64748b", troughcolor="#e2e8f0",
+        )
+        hsb = tk.Scrollbar(
+            tree_frame, orient="horizontal", command=self._tree.xview, width=18,
+            bg="#94a3b8", activebackground="#64748b", troughcolor="#e2e8f0",
+        )
+        self._tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+        self._tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        self._tree.tag_configure("missing", foreground=COLOR_MISSING_FG)
+        self._tree.bind("<Double-1>", lambda _e: self._open_selected())
+        self._tree.bind("<Return>", lambda _e: self._open_selected())
+        self._tree.bind("<<TreeviewSelect>>", lambda _e: self._update_preview())
+        self._tree.bind("<Delete>", self._on_delete_selected)
+        self._tree.bind("<space>", self._on_selected_media_space)
+        self._tree.bind("<Left>", lambda e: self._on_media_arrow(e, -5000))
+        self._tree.bind("<Right>", lambda e: self._on_media_arrow(e, 5000))
+        self._tree.bind("<Home>", lambda _e: self._jump_to_tree_edge(False))
+        self._tree.bind("<End>", lambda _e: self._jump_to_tree_edge(True))
+        self._tree.bind("<Control-Home>", lambda _e: self._jump_to_tree_edge(False))
+        self._tree.bind("<Control-End>", lambda _e: self._jump_to_tree_edge(True))
+
+        # 橫向拉桿：夾在清單跟預覽區塊中間，拖曳可以調整預覽區塊寬度（清單用
+        # expand=True，寬度會自動讓出來，不用另外算清單該縮多少）。↔ 圖示 + 滑鼠
+        # 移上去變左右箭頭游標，提示這裡可以橫向拖曳。
+        grip = tk.Frame(body, bg=COLOR_PREVIEW_GRIP_BG, width=PREVIEW_GRIP_WIDTH, cursor="sb_h_double_arrow")
+        grip.pack(side="left", fill="y", padx=(10, 0))
+        grip.pack_propagate(False)
+        grip_label = tk.Label(
+            grip, text="↔", bg=COLOR_PREVIEW_GRIP_BG, fg=COLOR_STATUS_FG,
+            font=tkfont.Font(family=_FONT_FAMILY, size=10), cursor="sb_h_double_arrow",
+        )
+        grip_label.place(relx=0.5, rely=0.5, anchor="center")
+        for w in (grip, grip_label):
+            w.bind("<ButtonPress-1>", self._on_preview_grip_press)
+            w.bind("<B1-Motion>", self._on_preview_grip_drag)
+            w.bind("<Enter>", lambda _e: grip.configure(bg=COLOR_PREVIEW_GRIP_ACTIVE))
+            w.bind("<Leave>", lambda _e: grip.configure(bg=COLOR_PREVIEW_GRIP_BG))
+
+        # 預覽區塊只顯示檔名（不需要完整路徑，清單裡的「路徑」欄已經有），下方
+        # 依檔案類型三選一顯示：圖片縮圖／文字內容（可捲動）／圖示＋提示文字，
+        # 三種用 _set_preview_mode() 統一切換，同一時間只會顯示其中一種。
+        preview = tk.Frame(
+            body, bg=COLOR_PREVIEW_BG, width=self._preview_width,
+            highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
+        )
+        preview.pack(side="left", fill="y")
+        preview.pack_propagate(False)
+        self._preview_frame = preview
+
+        self._preview_name_var = tk.StringVar(value="")
+        self._preview_name_label = tk.Label(
+            preview, textvariable=self._preview_name_var, bg=COLOR_PREVIEW_BG, font=self._font_label,
+            wraplength=290, justify="center",
+        )
+        self._preview_name_label.pack(padx=10, pady=(14, 8))
+
+        self._preview_image_label = tk.Label(preview, bg=COLOR_PREVIEW_BG)
+
+        self._preview_text_frame = tk.Frame(preview, bg=COLOR_PREVIEW_BG)
+        self._preview_text = tk.Text(
+            self._preview_text_frame, bg=COLOR_PREVIEW_BG, fg="#2c3e50", font=self._preview_text_font,
+            wrap="word", relief="flat", state="disabled", padx=4, pady=2, highlightthickness=0, bd=0,
+        )
+        preview_text_scroll = ttk.Scrollbar(self._preview_text_frame, orient="vertical", command=self._preview_text.yview)
+        self._preview_text.configure(yscrollcommand=preview_text_scroll.set)
+        self._preview_text.pack(side="left", fill="both", expand=True)
+        preview_text_scroll.pack(side="right", fill="y")
+        # 滑鼠移到預覽文字上時，Ctrl+滾輪也能縮放字級——跟 VS Code 一樣的手感。
+        self._preview_text.bind("<Control-MouseWheel>", self._on_preview_ctrl_wheel)
+
+        # mp3/mp4 播放：黑底 surface 給 VLC 內嵌影像用（HWND 綁定），音樂類沒有
+        # 影像軌，疊一個音符圖示上去代替；下面是播放/停止/時間/拖曳進度/音量。
+        self._preview_media_frame = tk.Frame(preview, bg=COLOR_PREVIEW_BG)
+        self._preview_media_surface = tk.Frame(self._preview_media_frame, bg="#000000", height=180)
+        self._preview_media_surface.pack(fill="x")
+        self._preview_media_surface.pack_propagate(False)
+        self._preview_media_icon_label = tk.Label(
+            self._preview_media_surface, text="🎵", font=("Segoe UI Emoji", 40), bg="#000000", fg="#ffffff",
+        )
+
+        media_ctrl_row = tk.Frame(self._preview_media_frame, bg=COLOR_PREVIEW_BG)
+        media_ctrl_row.pack(fill="x", padx=6, pady=(6, 2))
+        self._media_play_btn = tk.Button(
+            media_ctrl_row, text="▶", command=self._on_media_play_pause, width=3, relief="flat",
+            bg=COLOR_PREVIEW_BG, activebackground=COLOR_PREVIEW_BG, cursor="hand2", font=self._font_label,
+        )
+        self._media_play_btn.pack(side="left")
+        tk.Button(
+            media_ctrl_row, text="⏹", command=self._on_media_stop, width=3, relief="flat",
+            bg=COLOR_PREVIEW_BG, activebackground=COLOR_PREVIEW_BG, cursor="hand2", font=self._font_label,
+        ).pack(side="left", padx=(2, 0))
+        self._media_large_btn = tk.Button(
+            media_ctrl_row, text="⛶ 大視窗", command=self._open_large_video, relief="flat",
+            bg=COLOR_PREVIEW_BG, activebackground=COLOR_PREVIEW_BG, cursor="hand2", font=self._font_hint,
+        )
+        self._media_large_btn.pack(side="left", padx=(5, 0))
+        self._media_time_var = tk.StringVar(value="00:00 / 00:00")
+        tk.Label(
+            media_ctrl_row, textvariable=self._media_time_var, bg=COLOR_PREVIEW_BG, fg=COLOR_STATUS_FG,
+            font=self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+
+        self._media_seeking = False  # 拖曳進度滑桿中先標記，輪詢那邊才不會跟拖曳互搶覆蓋位置
+        self._media_seek_var = tk.DoubleVar(value=0.0)
+        seek_row = tk.Frame(self._preview_media_frame, bg=COLOR_PREVIEW_BG)
+        seek_row.pack(fill="x", padx=6, pady=(0, 4))
+        self._media_seek_scale = ttk.Scale(
+            seek_row, from_=0, to=1000, orient="horizontal", variable=self._media_seek_var,
+            command=self._on_media_seek_drag,
+        )
+        self._media_seek_scale.pack(fill="x")
+        self._media_seek_scale.bind("<ButtonRelease-1>", self._on_media_seek_release)
+
+        vol_row = tk.Frame(self._preview_media_frame, bg=COLOR_PREVIEW_BG)
+        vol_row.pack(fill="x", padx=6, pady=(0, 8))
+        tk.Label(vol_row, text="🔊", bg=COLOR_PREVIEW_BG, font=self._font_hint).pack(side="left")
+        self._media_volume_var = tk.DoubleVar(value=80.0)
+        self._media_volume_scale = ttk.Scale(
+            vol_row, from_=0, to=100, orient="horizontal", variable=self._media_volume_var,
+            command=self._on_media_volume_change,
+        )
+        self._media_volume_scale.pack(side="left", fill="x", expand=True, padx=(4, 0))
+
+        self._preview_hint_var = tk.StringVar(value="選取清單中的項目\n會在這裡顯示預覽")
+        self._preview_hint_label = tk.Label(
+            preview, textvariable=self._preview_hint_var, bg=COLOR_PREVIEW_BG, fg=COLOR_STATUS_FG,
+            font=self._font_hint, wraplength=290, justify="center",
+        )
+        self._set_preview_mode(None)
+
+        # 視窗本身被拉大/縮小時，清單／預覽兩塊的寬度也要跟著重新分配（不然
+        # 窗口變寬時多出來的空間會沒人要，變窄時兩塊又可能疊在一起）。
+        body.bind("<Configure>", lambda _e: self._sync_body_layout())
+        self.after_idle(self._sync_body_layout)
+
+        if _HAS_DND:
+            self._tree.drop_target_register(DND_FILES)
+            self._tree.dnd_bind("<<Drop>>", self._on_drop_files)
+
+        action_bar = tk.Frame(self, bg=COLOR_BG)
+        action_bar.pack(fill="x", padx=16, pady=(0, 6))
+        _styled_button(
+            action_bar, "📂 開啟檔案", self._open_selected, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, self._font_label,
+        ).pack(side="left")
+        _styled_button(
+            action_bar, "🗂️ 顯示於檔案總管", self._reveal_selected, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_label,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(
+            action_bar, "📋 複製路徑", self._copy_selected_path, BTN_PINK_BG, BTN_PINK_ACTIVE, self._font_label,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(
+            action_bar, "✏️ 編輯所選列", self._on_edit_selected, BTN_INDIGO_BG, BTN_INDIGO_ACTIVE, self._font_label,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(
+            action_bar, "⤒ 第一筆", lambda: self._jump_to_tree_edge(False),
+            BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        _styled_button(
+            action_bar, "⤓ 最後一筆", lambda: self._jump_to_tree_edge(True),
+            BTN_BLUE_BG, BTN_BLUE_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+
+        status_bar = tk.Frame(self, bg=COLOR_BG)
+        status_bar.pack(fill="x", padx=16, pady=(0, 12))
+        tk.Label(
+            status_bar, text="索引項目總數：", bg=COLOR_BG, fg=COLOR_HEADER_BG,
+            font=self._font_label, anchor="w",
+        ).pack(side="left")
+        self._total_count_var = tk.StringVar(value="0")
+        tk.Label(
+            status_bar, textvariable=self._total_count_var, bg="#fff7ed", fg="#c2410c",
+            font=self._font_total_count, padx=10, pady=2, relief="solid", bd=1,
+        ).pack(side="left", padx=(2, 14))
+        self._status_var = tk.StringVar(value="")
+        tk.Label(
+            status_bar, textvariable=self._status_var, bg=COLOR_BG, fg=COLOR_STATUS_FG,
+            font=self._font_hint, anchor="w",
+        ).pack(side="left", fill="x", expand=True)
+
+    # ── 功能介紹隱藏列 ───────────────────────────────────────────────
+    #
+    # 平常只佔一條窄窄的提示條，點一下往下展開一塊說明面板，再點一次收合；
+    # 用 pack(after=...) 把展開的面板插在提示條跟下面工具列之間，收合時完全
+    # 不佔空間，不用另外騰版面給新手教學用的內容。
+
+    def _build_help_bar(self):
+        self._help_expanded = False
+        self._help_color_tags = set()  # 已經建立過的顏色 tag 名稱，避免重複 tag_configure
+
+        self._help_bar = tk.Frame(self, bg=COLOR_HELP_BAR_BG, cursor="hand2")
+        self._help_bar.pack(fill="x")
+        self._help_toggle_var = tk.StringVar()
+        help_bar_label = tk.Label(
+            self._help_bar, textvariable=self._help_toggle_var, bg=COLOR_HELP_BAR_BG, fg=COLOR_HELP_BAR_FG,
+            font=self._font_help_toggle, anchor="w", cursor="hand2",
+        )
+        help_bar_label.pack(side="left", padx=18, pady=7)
+        self._set_help_bar_collapsed_text()
+
+        def _set_bar_bg(color):
+            self._help_bar.configure(bg=color)
+            help_bar_label.configure(bg=color)
+
+        for w in (self._help_bar, help_bar_label):
+            w.bind("<Button-1>", lambda _e: self._toggle_help())
+            w.bind("<Enter>", lambda _e: _set_bar_bg(COLOR_HELP_BAR_HOVER_BG))
+            w.bind("<Leave>", lambda _e: _set_bar_bg(COLOR_HELP_BAR_BG))
+
+        self._help_panel = tk.Frame(
+            self, bg=COLOR_PREVIEW_BG, highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
+        )
+        inner = tk.Frame(self._help_panel, bg=COLOR_PREVIEW_BG)
+        inner.pack(fill="both", expand=True, padx=6, pady=6)
+        text = tk.Text(
+            inner, wrap="word", relief="flat", bd=0, highlightthickness=0, bg=COLOR_PREVIEW_BG,
+            font=self._font_help_desc, cursor="arrow", height=17, padx=6, pady=4,
+        )
+        vsb = ttk.Scrollbar(inner, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=vsb.set)
+        text.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+        self._help_text = text
+        self._populate_help_text()
+        text.configure(state="disabled")
+
+    def _set_help_bar_collapsed_text(self):
+        arrow = "▾" if self._help_expanded else "▸"
+        hint = "再按一次收合" if self._help_expanded else "點這裡展開"
+        self._help_toggle_var.set(f"{arrow}  ❓ 功能介紹／使用說明（{hint}）")
+
+    def _toggle_help(self):
+        self._help_expanded = not self._help_expanded
+        self._set_help_bar_collapsed_text()
+        if self._help_expanded:
+            self._help_panel.pack(fill="x", padx=16, pady=(0, 8), after=self._help_bar)
+        else:
+            self._help_panel.pack_forget()
+
+    def _help_item_tag(self, color):
+        """依顏色取得（必要時建立）對應的 Text tag 名稱——直接沿用按鈕的底色常數，
+        說明列的色塊才能跟畫面上真正的按鈕對得起來，一眼看出這行在講哪顆按鈕。"""
+        color = color or BTN_SECONDARY_BG
+        name = f"c_{color.lstrip('#')}"
+        if name not in self._help_color_tags:
+            self._help_text.tag_configure(
+                name, font=self._font_help_item, foreground=color, spacing1=6, lmargin1=10, lmargin2=32,
+            )
+            self._help_color_tags.add(name)
+        return name
+
+    def _populate_help_text(self):
+        t = self._help_text
+        t.tag_configure(
+            "summary", font=self._font_help_summary, foreground=COLOR_HEADER_BG,
+            lmargin1=4, lmargin2=4, spacing3=14,
+        )
+        t.tag_configure(
+            "section", font=self._font_help_section, foreground=COLOR_HEADER_BG,
+            spacing1=14, spacing3=6,
+        )
+        t.tag_configure(
+            "desc", font=self._font_help_desc, foreground=COLOR_STATUS_FG,
+            lmargin1=32, lmargin2=32, spacing3=10,
+        )
+
+        t.insert("end", _HELP_SUMMARY + "\n", "summary")
+        for title, items in _HELP_SECTIONS:
+            t.insert("end", f"{title}\n", "section")
+            for color, label, desc in items:
+                bullet = "●" if color else "○"
+                t.insert("end", f"{bullet}  {label}\n", self._help_item_tag(color))
+                t.insert("end", f"{desc}\n", "desc")
+
+    # ── 多份索引檔案 ─────────────────────────────────────────────────
+
+    def _on_create_index(self):
+        CreateIndexDialog(self, self._create_index_confirmed)
+
+    def _create_index_confirmed(self, filename):
+        _create_index_file(filename)
+        # 先把下拉選單的值設成新檔名，_refresh_index_list() 看到目前選取的值已經
+        # 在候選清單裡（因為檔案剛建好），就不會被 select_first 邏輯改選別的，
+        # 直接切換過去新建立的這份空白索引集。
+        self._index_var.set(filename)
+        self._refresh_index_list()
+
+    def _on_delete_index(self):
+        """刪除目前單一索引集及其附屬資料，但絕不碰索引指向的實體檔案。"""
+        if self._current_index_path is None:
+            messagebox.showwarning("刪除索引集", "請先在右上角選擇一份指定的索引集；「全部索引」模式不能刪除。")
+            return
+
+        index_path = self._current_index_path
+        entry_count = len(_load_index(index_path))
+        confirmed = messagebox.askyesno(
+            "確認刪除索引集",
+            f"確定要刪除索引集「{index_path.name}」嗎？\n\n"
+            f"索引項目：{entry_count} 筆\n"
+            "只會刪除索引紀錄，不會刪除硬碟上的實體檔案。\n\n"
+            "此動作無法復原。",
+            icon="warning",
+        )
+        if not confirmed:
+            return
+
+        try:
+            index_path.unlink()
+            cache_path = _cache_path_for(index_path)
+            if cache_path.exists():
+                cache_path.unlink()
+
+            added_times = _load_added_times()
+            if index_path.name in added_times:
+                del added_times[index_path.name]
+                _ADDED_TIMES_PATH.write_text(
+                    json.dumps(added_times, ensure_ascii=False, indent=1), encoding="utf-8"
+                )
+        except OSError as exc:
+            messagebox.showerror("刪除索引集", f"無法刪除「{index_path.name}」：\n{exc}")
+            return
+
+        self._index_var.set("")
+        self._current_index_path = None
+        _ensure_default_index()
+        self._refresh_index_list(select_first=True)
+        messagebox.showinfo("刪除索引集", f"已刪除「{index_path.name}」。\n實體檔案沒有被刪除。")
+
+    def _refresh_index_list(self, select_first=False):
+        files = _list_index_files()
+        names = [p.name for p in files]
+        values = ([_ALL_INDEXES_LABEL] + names) if files else []
+        self._index_combo["values"] = values
+        if not files:
+            self._index_var.set("")
+            self._current_index_path = None
+            self._all_entries = []
+            self._entry_cache = {}
+            self._index_status_var.set(f"📑 {_INDEXES_DIR.name}/ 底下沒有任何 .md 索引檔案")
+            self._apply_filter()
+            return
+        if select_first or self._index_var.get() not in values:
+            self._index_var.set(names[0])
+        self._on_index_selected()
+
+    def _on_index_selected(self):
+        choice = self._index_var.get()
+        self._current_index_path = None if choice == _ALL_INDEXES_LABEL else (_INDEXES_DIR / choice)
+        self._reload_index()
+
+    # ── 索引載入／搜尋 ───────────────────────────────────────────────
+
+    def _reload_index(self):
+        """依目前選擇（單一索引集，或「全部索引」聚合模式）重建 self._all_entries
+        （統一存成 4-tuple：路徑／分類／說明／來源索引檔案，聚合模式下每筆都
+        記得自己實際來自哪一份，編輯／刪除才知道要寫回哪個檔案），同時載入
+        牽涉到的索引檔案各自的內容快取，供全文檢索使用。"""
+        if self._current_index_path is None and self._index_var.get() != _ALL_INDEXES_LABEL:
+            return  # 目前沒有任何索引檔案可用（_refresh_index_list 已經處理過狀態列文字）
+        self._added_times = _load_added_times()
+        if self._current_index_path is None:
+            files = _list_index_files()
+            self._all_entries = [
+                (p, c, d, f) for f in files for p, c, d in _load_index(f)
+            ]
+            self._index_status_var.set(f"📑 全部索引（跨 {len(files)} 份檔案，共 {len(self._all_entries)} 筆）")
+        else:
+            files = [self._current_index_path]
+            self._all_entries = [(p, c, d, self._current_index_path) for p, c, d in _load_index(self._current_index_path)]
+            self._index_status_var.set(f"📑 {self._current_index_path.name}（{len(self._all_entries)} 筆）")
+
+        self._entry_cache = {}
+        for f in files:
+            self._entry_cache.update(_load_cache(f))
+
+        categories = sorted({c.strip() for _p, c, _d, _o in self._all_entries if c.strip()})
+        self._category_combo["values"] = ["全部"] + categories
+        if self._category_var.get() not in (["全部"] + categories):
+            self._category_var.set("全部")
+
+        folders = sorted({str(Path(p).parent) for p, _c, _d, _o in self._all_entries})
+        self._folder_combo["values"] = ["全部"] + folders
+        if self._folder_var.get() not in (["全部"] + folders):
+            self._folder_var.set("全部")
+
+        self._apply_filter()
+
+    def _apply_filter(self):
+        typed = self._search_var.get().strip().lower()
+        wanted_category = self._category_var.get()
+        wanted_folder = self._folder_var.get()
+        self._tree.delete(*self._tree.get_children())
+        self._tree_row_origin = {}
+        shown = 0
+        for serial, (path_str, category, desc, origin) in enumerate(self._all_entries, start=1):
+            if wanted_category != "全部" and category.strip() != wanted_category:
+                continue
+            if wanted_folder != "全部" and str(Path(path_str).parent) != wanted_folder:
+                continue
+            name = Path(path_str).name
+            added_at = _display_added_time(self._added_times, origin, path_str)
+            haystack = f"{serial}\n{name}\n{category}\n{desc}\n{path_str}\n{added_at}".lower()
+            cached_text = self._entry_cache.get(path_str, {}).get("text")
+            if cached_text:
+                haystack += "\n" + cached_text.lower()
+            if typed and typed not in haystack:
+                continue
+            exists = Path(path_str).exists()
+            icon = _icon_for(path_str) if exists else _MISSING_ICON
+            source_display = origin.name if self._current_index_path is None else ""
+            iid = self._tree.insert(
+                "", "end", values=(serial, icon, name, category, desc, path_str, source_display, added_at),
+                tags=() if exists else ("missing",),
+            )
+            self._tree_row_origin[iid] = origin
+            shown += 1
+        total = len(self._all_entries)
+        self._total_count_var.set(str(total))
+        notes = []
+        if wanted_category != "全部":
+            notes.append(f"分類「{wanted_category}」")
+        if wanted_folder != "全部":
+            notes.append("指定資料夾")
+        note = "，" + "、".join(notes) if notes else ""
+        if typed:
+            self._status_var.set(f"🔍 符合「{typed}」{note}：{shown} / {total} 筆")
+        else:
+            self._status_var.set(f"共 {total} 筆索引{note}（⚠️ 紅字表示該路徑目前找不到檔案，可能已搬移或刪除）")
+        self._update_preview()
+
+    # ── 預覽 ─────────────────────────────────────────────────────────
+
+    def _on_preview_grip_press(self, event):
+        self._preview_drag_start_x = event.x_root
+        self._preview_drag_start_width = self._preview_frame.winfo_width()
+
+    def _on_preview_grip_drag(self, event):
+        if self._preview_drag_start_width is None:
+            return
+        # 拖桿往左移（滑鼠 x 變小）＝把清單的寬度讓給預覽區塊，所以是減號。
+        delta = event.x_root - self._preview_drag_start_x
+        self._apply_preview_width(self._preview_drag_start_width - delta)
+
+    def _sync_body_layout(self):
+        """統一依「目前視窗實際寬度」重新分配清單／拉桿／預覽區塊的寬度：預覽
+        區塊夾在 [PREVIEW_MIN_WIDTH, 視窗寬度扣掉拉桿跟清單至少要留的寬度] 之間，
+        清單則拿走剩下的全部空間——上限用即時量到的寬度算，所以真的可以一路
+        拉到接近清單只剩最小寬度、預覽區塊貼到視窗左邊界，也能在整個視窗被
+        拉大/縮小時自動重新分配，不會有一塊被擠到看不見或超出視窗。"""
+        self._body_frame.update_idletasks()
+        body_w = self._body_frame.winfo_width()
+        if body_w <= 1:
+            return  # 視窗還沒真正繪製出來，量到的寬度沒有意義，先跳過
+        max_preview = max(PREVIEW_MIN_WIDTH, body_w - PREVIEW_GRIP_WIDTH - 10 - TREE_MIN_WIDTH)
+        preview_w = int(max(PREVIEW_MIN_WIDTH, min(self._preview_width, max_preview)))
+        self._preview_width = preview_w
+        self._preview_frame.configure(width=preview_w)
+        self._tree_frame.configure(width=max(TREE_MIN_WIDTH, body_w - PREVIEW_GRIP_WIDTH - 10 - preview_w))
+        wrap = max(120, preview_w - 30)
+        self._preview_name_label.configure(wraplength=wrap)
+        self._preview_hint_label.configure(wraplength=wrap)
+        if hasattr(self, "_preview_media_surface"):
+            self._preview_media_surface.configure(height=self._media_surface_height())
+
+    def _apply_preview_width(self, width):
+        self._preview_width = width
+        self._sync_body_layout()
+        if self._preview_mode == "image":
+            self._update_preview()  # 重新用新的寬度算縮圖上限，圖片才會跟著變大/變小
+        # media 模式不用重新呼叫 _update_preview()——VLC 內嵌畫面是直接跟著
+        # HWND(_preview_media_surface) 目前的實際大小自動縮放，上面已經改好
+        # 高度了，重新整個 _update_preview() 反而會打斷正在播放的內容。
+
+    def _set_preview_font_size(self, size):
+        """只改字型物件本身的 size，不用重新載入/插入內容——Text 元件參照的是
+        同一個 tkfont.Font 物件，改了會立刻重新排版，跟 VS Code 縮放的手感一樣。"""
+        size = max(PREVIEW_TEXT_MIN_SIZE, min(PREVIEW_TEXT_MAX_SIZE, size))
+        if size == self._preview_font_size:
+            return
+        self._preview_font_size = size
+        self._preview_text_font.configure(size=size)
+
+    def _preview_zoom_in(self, _event=None):
+        self._set_preview_font_size(self._preview_font_size + 1)
+        return "break"
+
+    def _preview_zoom_out(self, _event=None):
+        self._set_preview_font_size(self._preview_font_size - 1)
+        return "break"
+
+    def _preview_zoom_reset(self, _event=None):
+        self._set_preview_font_size(PREVIEW_TEXT_DEFAULT_SIZE)
+        return "break"
+
+    def _on_preview_ctrl_wheel(self, event):
+        if event.delta > 0:
+            self._preview_zoom_in()
+        else:
+            self._preview_zoom_out()
+        return "break"
+
+    # ── mp3/mp4 播放 ─────────────────────────────────────────────────
+
+    def _media_surface_height(self):
+        # 16:9 比例跟著預覽區塊目前寬度走，夾在 [120, 400] 之間，避免拉桿拉到
+        # 很窄/很寬時，播放區域整個消失或大到蓋掉底下的播放控制列。
+        return int(max(120, min(self._preview_width * 9 // 16, 400)))
+
+    def _load_media(self, p: Path):
+        """把檔案載入全新的播放器；影片才需要
+        set_hwnd 內嵌畫面，音樂類沒有影像軌，疊一個音符圖示代替黑畫面。播放
+        本身不自動開始——避免瀏覽清單時意外連續跳出聲音，要按 ▶ 才會播。"""
+        self._create_fresh_vlc_player(p, self._preview_media_surface)
+        self._apply_media_volume()
+        is_video = p.suffix.lower() in _VIDEO_EXTS
+        self._media_large_btn.configure(state="normal" if is_video else "disabled")
+        if is_video:
+            self._vlc_player.set_hwnd(self._preview_media_surface.winfo_id())
+            self._preview_media_icon_label.place_forget()
+        else:
+            self._preview_media_icon_label.place(relx=0.5, rely=0.5, anchor="center")
+        self._preview_media_surface.configure(height=self._media_surface_height())
+        self._media_path = str(p)
+        self._media_play_btn.config(text="▶")
+        self._media_time_var.set("00:00 / 00:00")
+        self._media_seek_var.set(0)
+
+    def _create_fresh_vlc_player(self, p: Path, surface=None):
+        """釋放舊 player/media，為指定檔案建立全新解碼生命週期。"""
+        self._cancel_media_poll()
+        old_player = self._vlc_player
+        old_media = self._vlc_media
+        self._vlc_player = None
+        self._vlc_media = None
+        if old_player is not None:
+            try:
+                old_player.stop()
+                old_player.release()
+            except Exception:
+                pass
+        if old_media is not None:
+            try:
+                old_media.release()
+            except Exception:
+                pass
+
+        self._vlc_player = self._vlc_instance.media_player_new()
+        self._vlc_media = self._vlc_instance.media_new(str(p))
+        if p.suffix.lower() in _VIDEO_EXTS:
+            # D3D11VA 在 Tkinter 內嵌 HWND 切換／重建時，部分 NVIDIA 驅動會無法
+            # 配置硬體解碼畫面。720p 上限使用軟體 H.264 解碼較穩定，也避免
+            # hardware acceleration picture allocation failed → no frame 連鎖錯誤。
+            self._vlc_media.add_option(":avcodec-hw=none")
+        self._vlc_player.set_media(self._vlc_media)
+        if p.suffix.lower() in _VIDEO_EXTS:
+            target_surface = surface or self._preview_media_surface
+            target_surface.update_idletasks()
+            self._vlc_player.set_hwnd(target_surface.winfo_id())
+
+    def _stop_media_playback(self):
+        self._cancel_media_poll()
+        if self._vlc_player is not None:
+            try:
+                self._vlc_player.stop()
+            except Exception:
+                pass
+        if hasattr(self, "_media_play_btn"):
+            self._media_play_btn.config(text="▶")
+            self._media_time_var.set("00:00 / 00:00")
+            self._media_seek_var.set(0)
+        self._media_path = None
+
+    def _on_media_play_pause(self):
+        if self._vlc_player is None:
+            return
+        state = self._vlc_player.get_state()
+        if state in (vlc.State.Ended, vlc.State.Stopped, vlc.State.Error) and self._media_path:
+            # 播放結束後 libVLC 的 player 仍留著，但 play() 不保證會重新建立
+            # MP4 解碼流程。重新掛載同一份 media，讓按鈕／空白鍵可以無限重播。
+            self._restart_media_at(0)
+            return
+        if self._vlc_player.is_playing():
+            self._vlc_player.pause()
+            self._media_play_btn.config(text="▶")
+        else:
+            self._vlc_player.play()
+            # libvlc 在音訊輸出裝置真正初始化前（也就是 play() 呼叫的當下）設定的
+            # 音量，偶爾不會確實生效——實測過會在還沒開始播放時 audio_get_volume()
+            # 回傳 -1（代表還沒有音訊輸出可言）；play() 之後保險起見再設一次，
+            # 確保使用者調過的音量真的有套用上，不會突然變成 VLC 自己殘留的音量。
+            # MP4 的音訊輸出通常比 play() 晚一點才建立；立即套用一次，再延遲
+            # 補套兩次，避免滑桿已改變但影片仍沿用 VLC 舊音量。
+            self._apply_media_volume()
+            self.after(150, self._apply_media_volume)
+            self.after(500, self._apply_media_volume)
+            self._media_play_btn.config(text="⏸")
+            self._schedule_media_poll()
+
+    def _restart_media_at(self, target_ms=0, known_length_ms=None):
+        """重新掛載目前媒體並從指定時間播放，專門恢復 Ended/Stopped/Error。
+
+        不能只 stop() 後 play()：部分 Windows VLC/MP4 組合在播完一次後不會重新
+        建立解碼器，必須重新 set_media() 才能讓播放鍵和方向鍵恢復。
+        """
+        if self._vlc_instance is None or not self._media_path:
+            return
+        current_path = self._media_path
+        if not Path(current_path).exists():
+            return
+        large_open = (
+            self._large_video_window is not None
+            and self._large_video_window.winfo_exists()
+            and self._large_video_surface is not None
+        )
+        surface = self._large_video_surface if large_open else self._preview_media_surface
+        self._create_fresh_vlc_player(Path(current_path), surface)
+        self._vlc_player.play()
+        self._media_play_btn.config(text="⏸")
+        self._media_seek_var.set(0)
+
+        attempts = 0
+
+        def _finish_restart():
+            nonlocal attempts
+            if self._vlc_player is None or self._media_path != current_path:
+                return
+            state = self._vlc_player.get_state()
+            if state in (vlc.State.Opening, vlc.State.Buffering, vlc.State.NothingSpecial) and attempts < 12:
+                attempts += 1
+                self.after(100, _finish_restart)
+                return
+            if target_ms > 0:
+                self._vlc_player.set_time(int(target_ms))
+            self._apply_media_volume()
+            self._schedule_media_poll()
+
+        # 等播放管線真正就緒後只定位一次；舊版在 120ms、350ms 各 set_time() 一次，
+        # 容易讓某些 H.264 檔案出現 timestamp conversion / PCR too late。
+        self.after(120, _finish_restart)
+        if known_length_ms and known_length_ms > 0:
+            self._media_seek_var.set(target_ms / known_length_ms * 1000)
+            self._media_time_var.set(
+                f"{_format_ms(target_ms)} / {_format_ms(known_length_ms)}"
+            )
+        else:
+            self._media_time_var.set("00:00 / 00:00")
+
+    def _on_media_stop(self):
+        # 使用者按停止時保留目前媒體路徑，下一次按播放可透過
+        # _restart_media_at() 重新建立解碼器；離開預覽才由
+        # _stop_media_playback() 真正清空媒體。
+        self._cancel_media_poll()
+        if self._vlc_player is not None:
+            self._vlc_player.stop()
+        self._media_play_btn.config(text="▶")
+        self._media_time_var.set("00:00 / 00:00")
+        self._media_seek_var.set(0)
+
+    def _on_media_seek_drag(self, _value):
+        self._media_seeking = True  # 拖曳中先標記，輪詢那邊才不會跟拖曳互搶覆蓋滑桿位置
+
+    def _on_media_seek_release(self, _event):
+        if self._vlc_player is not None:
+            position = self._media_seek_var.get() / 1000.0
+            state = self._vlc_player.get_state()
+            if state in (vlc.State.Ended, vlc.State.Stopped, vlc.State.Error):
+                length_ms = self._vlc_player.get_length()
+                if length_ms and length_ms > 0:
+                    target = min(max(0, int(position * length_ms)), max(0, length_ms - 250))
+                    self._restart_media_at(target, known_length_ms=length_ms)
+            else:
+                self._vlc_player.set_position(position)
+        self._media_seeking = False
+
+    def _on_media_volume_change(self, value):
+        # ttk.Scale 連續拖曳時會大量觸發 callback，稍微 debounce 可避免 MP4
+        # 解碼／音訊初始化期間漏掉最後一次設定；DoubleVar 也避免小數寫入 IntVar
+        # 在部分 Tcl/Tk 版本造成音量滑桿失靈。
+        if self._media_volume_after_id is not None:
+            try:
+                self.after_cancel(self._media_volume_after_id)
+            except Exception:
+                pass
+        self._media_volume_after_id = self.after(35, self._apply_media_volume)
+
+    def _apply_media_volume(self):
+        self._media_volume_after_id = None
+        if self._vlc_player is not None:
+            volume = max(0, min(100, int(round(float(self._media_volume_var.get())))))
+            try:
+                self._vlc_player.audio_set_mute(False)
+                self._vlc_player.audio_set_volume(volume)
+            except Exception:
+                pass
+
+    def _on_selected_media_space(self, _event=None):
+        """清單有選取 mp3/mp4 等媒體時，空白鍵直接播放／暫停。"""
+        path = self._selected_path()
+        if not path or Path(path).suffix.lower() not in _MEDIA_EXTS:
+            return None
+        if not Path(path).exists() or not _HAS_VLC:
+            return "break"
+        if self._media_path != str(Path(path)):
+            self._load_media(Path(path))
+            self._set_preview_mode("media")
+        self._on_media_play_pause()
+        return "break"
+
+    def _on_media_arrow(self, _event, delta_ms):
+        """影片播放時左右鍵各倒退／快轉 5 秒；沒有載入影片就保留 Treeview 導覽。"""
+        if not self._media_path or Path(self._media_path).suffix.lower() not in _VIDEO_EXTS:
+            return None
+        self._seek_media_by(delta_ms)
+        return "break"
+
+    def _seek_media_by(self, delta_ms):
+        if self._vlc_player is None:
+            return
+        length_ms = self._vlc_player.get_length()
+        now_ms = self._vlc_player.get_time()
+        state = self._vlc_player.get_state()
+        if not length_ms or length_ms <= 0:
+            return
+
+        # VLC 播放完會進入 Ended；此狀態下直接 set_time() 通常會被忽略，造成
+        # 到結尾後左右鍵看似永久失效。先保留目標時間、重新啟動解碼器，再於
+        # 播放管線就緒後跳轉。Stopped 也用相同方式恢復。
+        if now_ms < 0:
+            now_ms = length_ms if state == vlc.State.Ended else 0
+        # 不落在最後一毫秒，否則 VLC 會立即再次進入 Ended，下一次跳轉仍失效。
+        end_cap = max(0, length_ms - 250)
+        target = max(0, min(end_cap, now_ms + delta_ms))
+
+        if state in (vlc.State.Ended, vlc.State.Stopped, vlc.State.Error):
+            self._restart_media_at(target, known_length_ms=length_ms)
+        else:
+            self._vlc_player.set_time(target)
+
+        self._media_seek_var.set(target / length_ms * 1000)
+        self._media_time_var.set(f"{_format_ms(target)} / {_format_ms(length_ms)}")
+
+    def _open_large_video(self):
+        """在獨立視窗播放目前 MP4/影片；播放畫面上限 1280×720。"""
+        path = self._selected_path()
+        if not path or Path(path).suffix.lower() not in _VIDEO_EXTS or not Path(path).exists():
+            return
+        if self._large_video_window is not None and self._large_video_window.winfo_exists():
+            self._large_video_window.lift()
+            self._large_video_window.focus_force()
+            return
+
+        win = tk.Toplevel(self)
+        win.title(f"影片播放 — {Path(path).name}")
+        win.configure(bg="#000000")
+        win.geometry("1100x680")
+        win.minsize(640, 400)
+        win.maxsize(1280, 760)  # 720p 畫面 + 下方控制提示列
+        surface = tk.Frame(win, bg="#000000")
+        surface.pack(fill="both", expand=True)
+        hint = tk.Label(
+            win, text="空白鍵：播放／暫停　←：倒退 5 秒　→：快轉 5 秒　Esc：關閉",
+            bg=COLOR_HEADER_BG, fg=COLOR_HEADER_FG, font=self._font_hint, pady=7,
+        )
+        hint.pack(fill="x")
+        self._large_video_window = win
+        self._large_video_surface = surface
+        win.update_idletasks()
+        # 播放中直接跨父視窗切換 Win32 HWND，部分顯示卡驅動可能讓 libVLC
+        # 畫面凍結甚至 Access Violation；先暫停、綁定後再恢復播放。
+        was_playing = bool(self._vlc_player.is_playing())
+        if was_playing:
+            self._vlc_player.set_pause(1)
+        self._vlc_player.set_hwnd(surface.winfo_id())
+        if was_playing:
+            self.after(80, lambda: self._vlc_player and self._vlc_player.play())
+        win.bind("<space>", self._on_selected_media_space)
+        win.bind("<Left>", lambda e: self._on_media_arrow(e, -5000))
+        win.bind("<Right>", lambda e: self._on_media_arrow(e, 5000))
+        win.bind("<Escape>", lambda _e: self._close_large_video())
+        win.protocol("WM_DELETE_WINDOW", self._close_large_video)
+        win.focus_force()
+
+    def _close_large_video(self):
+        win = self._large_video_window
+        media_path = self._media_path
+        current_time = 0
+        known_length = 0
+        if self._vlc_player is not None:
+            try:
+                current_time = max(0, self._vlc_player.get_time())
+                known_length = max(0, self._vlc_player.get_length())
+            except Exception:
+                pass
+        was_playing = bool(self._vlc_player and self._vlc_player.is_playing())
+        if was_playing:
+            try:
+                self._vlc_player.set_pause(1)
+            except Exception:
+                was_playing = False
+
+        if win is not None:
+            try:
+                win.destroy()
+            except Exception:
+                pass
+        self._large_video_window = None
+        self._large_video_surface = None
+
+        # 不再把仍綁著已銷毀 HWND 的同一個 player 搬回小視窗；重新建立解碼生命
+        # 週期，確保關閉大視窗後播放鍵、空白鍵與方向鍵仍可正常使用。
+        if not media_path or not Path(media_path).exists() or self._vlc_instance is None:
+            return
+        self._preview_media_surface.update_idletasks()
+        self._create_fresh_vlc_player(Path(media_path), self._preview_media_surface)
+        self._media_path = media_path
+        restored_player = self._vlc_player
+        restored_player.play()
+        attempts = 0
+
+        def _finish_restore():
+            nonlocal attempts
+            if self._vlc_player is not restored_player or self._media_path != media_path:
+                return
+            state = restored_player.get_state()
+            if state in (vlc.State.Opening, vlc.State.Buffering, vlc.State.NothingSpecial) and attempts < 12:
+                attempts += 1
+                self.after(100, _finish_restore)
+                return
+            resume_time = min(current_time, max(0, known_length - 250)) if known_length else current_time
+            if resume_time > 0:
+                restored_player.set_time(resume_time)
+            self._apply_media_volume()
+            if was_playing:
+                self._media_play_btn.config(text="⏸")
+                self._schedule_media_poll()
+            else:
+                restored_player.set_pause(1)
+                self._media_play_btn.config(text="▶")
+                self._cancel_media_poll()
+            if known_length > 0:
+                self._media_seek_var.set(resume_time / known_length * 1000)
+                self._media_time_var.set(f"{_format_ms(resume_time)} / {_format_ms(known_length)}")
+
+        self.after(120, _finish_restore)
+
+    def _schedule_media_poll(self):
+        self._cancel_media_poll()
+        self._media_after_id = self.after(400, self._poll_media_progress)
+
+    def _cancel_media_poll(self):
+        if self._media_after_id is not None:
+            try:
+                self.after_cancel(self._media_after_id)
+            except Exception:
+                pass
+            self._media_after_id = None
+
+    def _poll_media_progress(self):
+        """每 400ms 更新一次播放進度顯示——VLC 不會主動推事件進 Tkinter，只能
+        用輪詢；拖曳進度滑桿的當下（self._media_seeking）先不要覆蓋滑桿位置，
+        不然會跟使用者手上的拖曳動作互搶，滑桿會一直被拉回播放中的位置。"""
+        if self._vlc_player is None:
+            return
+        length_ms = self._vlc_player.get_length()
+        time_ms = self._vlc_player.get_time()
+        if length_ms and length_ms > 0:
+            if not self._media_seeking:
+                self._media_seek_var.set(max(0, min(1000, time_ms / length_ms * 1000)))
+            self._media_time_var.set(f"{_format_ms(time_ms)} / {_format_ms(length_ms)}")
+        state = self._vlc_player.get_state()
+        if state == vlc.State.Ended:
+            self._media_play_btn.config(text="▶")
+            # 保留在進度尾端；下一次方向鍵會由 _seek_media_by() 重啟播放器並
+            # 正確跳轉，不再把畫面顯示成 0 秒卻實際處於 Ended。
+            self._media_seek_var.set(1000)
+            if length_ms and length_ms > 0:
+                self._media_time_var.set(f"{_format_ms(length_ms)} / {_format_ms(length_ms)}")
+            self._media_after_id = None
+            return  # 播放結束了，不用再排下一次輪詢
+        if self._vlc_player.is_playing() or state == vlc.State.Paused:
+            self._media_after_id = self.after(400, self._poll_media_progress)
+        else:
+            self._media_after_id = None
+
+    def _on_close(self):
+        """關閉視窗前先把播放器停掉、釋放 libvlc 資源，避免留下背景播放中的
+        音訊或殘留的 libvlc 執行緒。"""
+        self._cancel_media_poll()
+        if self._vlc_player is not None:
+            try:
+                self._vlc_player.stop()
+                self._vlc_player.release()
+            except Exception:
+                pass
+        if self._vlc_media is not None:
+            try:
+                self._vlc_media.release()
+            except Exception:
+                pass
+        if self._vlc_instance is not None:
+            try:
+                self._vlc_instance.release()
+            except Exception:
+                pass
+        self.destroy()
+
+    def _set_preview_mode(self, mode):
+        """image / text / media / icon / None（尚未選取任何項目）五選一，每次都
+        先把全部區塊收起來，再依照目前類型 pack 出對應的那個，避免疊在一起。
+        離開 media 模式（換選取項目、切換其他類型）一律停止播放，不會有音樂
+        還在背景播、畫面卻已經換成別的東西的情況。"""
+        if self._preview_mode == "media" and mode != "media":
+            self._stop_media_playback()
+        self._preview_mode = mode
+        self._preview_image_label.pack_forget()
+        self._preview_text_frame.pack_forget()
+        self._preview_media_frame.pack_forget()
+        self._preview_hint_label.pack_forget()
+        if mode == "image":
+            self._preview_image_label.pack(pady=(0, 8))
+            self._preview_hint_label.pack(padx=10, pady=(0, 6))
+        elif mode == "text":
+            self._preview_text_frame.pack(fill="both", expand=True, padx=8, pady=(0, 10))
+        elif mode == "media":
+            self._preview_media_frame.pack(fill="x")
+        elif mode == "icon":
+            self._preview_image_label.pack(pady=(0, 8))
+            self._preview_hint_label.pack(padx=10, pady=(0, 6))
+        else:
+            self._preview_hint_label.pack(padx=10, pady=(20, 0))
+
+    def _update_preview(self):
+        path = self._selected_path()
+        self._preview_image_label.configure(image="", text="")
+        self._preview_photo = None
+        self._preview_text.configure(state="normal")
+        self._preview_text.delete("1.0", "end")
+        self._preview_text.configure(state="disabled")
+
+        if not path:
+            self._preview_name_var.set("")
+            self._preview_hint_var.set("選取清單中的項目\n會在這裡顯示預覽")
+            self._set_preview_mode(None)
+            return
+        p = Path(path)
+        self._preview_name_var.set(p.name)
+        if not p.exists():
+            self._preview_hint_var.set("⚠️ 檔案目前找不到")
+            self._preview_image_label.configure(text=_MISSING_ICON, font=("Segoe UI Emoji", 48))
+            self._set_preview_mode("icon")
+            return
+
+        if _HAS_PIL and p.suffix.lower() in _IMAGE_EXTS:
+            try:
+                img = Image.open(p)
+                # 縮圖上限跟著預覽區塊目前寬度走，拉桿拉多寬圖就能顯示多大；
+                # thumbnail() 本身就會保持長寬比，橫向圖不會被拉伸變形。
+                bound = max(160, min(self._preview_width - 40, 640))
+                img.thumbnail((bound, bound))
+                self._preview_photo = ImageTk.PhotoImage(img)
+                self._preview_image_label.configure(image=self._preview_photo)
+                self._preview_hint_var.set("")
+                self._set_preview_mode("image")
+                return
+            except Exception:
+                pass  # 讀圖失敗（損毀檔案等）就往下走文字/圖示預覽，不讓整個面板掛掉
+
+        if p.suffix.lower() in _MEDIA_EXTS:
+            if _HAS_VLC:
+                self._load_media(p)
+                self._set_preview_mode("media")
+                return
+            self._preview_image_label.configure(text=_icon_for(path), font=("Segoe UI Emoji", 48))
+            self._preview_hint_var.set("（未安裝／找不到 VLC 播放引擎，無法在此播放，\n按「開啟檔案」用預設播放器開啟）")
+            self._set_preview_mode("icon")
+            return
+
+        text = _extract_preview_text(p)
+        if text:
+            self._preview_text.configure(state="normal")
+            self._preview_text.insert("1.0", text)
+            self._preview_text.configure(state="disabled")
+            self._set_preview_mode("text")
+            return
+
+        self._preview_image_label.configure(text=_icon_for(path), font=("Segoe UI Emoji", 48))
+        ext = p.suffix.lower()
+        if ext in _IMAGE_EXTS and not _HAS_PIL:
+            self._preview_hint_var.set("（未安裝 Pillow，無法顯示縮圖）")
+        elif ext == ".pdf":
+            self._preview_hint_var.set("（未安裝 PDF 讀取套件，無法預覽內文，\n按「開啟檔案」查看）")
+        else:
+            self._preview_hint_var.set("此類型沒有內容預覽，\n按「開啟檔案」查看內容")
+        self._set_preview_mode("icon")
+
+    # ── 拖曳／手動新增 ───────────────────────────────────────────────
+
+    def _require_write_target(self, action_title):
+        """回傳目前可以寫入的單一索引檔案路徑；沒有的話跳出對應原因的警告視窗
+        （「全部索引」聚合模式底下沒有單一目標檔案／根本沒有任何索引檔案可用
+        兩種情況文字不一樣），回傳 None。"""
+        if self._current_index_path is not None:
+            return self._current_index_path
+        if self._index_var.get() == _ALL_INDEXES_LABEL:
+            messagebox.showwarning(action_title, "目前是「全部索引」檢視模式，請先切換到指定的索引集才能新增資料。")
+        else:
+            messagebox.showwarning(action_title, "目前沒有可寫入的索引檔案，請先在 indexes/ 底下建立一份 .md。")
+        return None
+
+    def _on_drop_files(self, event):
+        self._add_files_manually(_parse_dnd_paths(event.data))
+
+    def _on_add_file_dialog(self):
+        paths = filedialog.askopenfilenames(title="選擇要加入索引的檔案")
+        if paths:
+            self._add_files_manually(paths)
+
+    def _add_files_manually(self, raw_paths):
+        """拖曳與「新增檔案...」共用的唯一入口與驗證流程。"""
+        if self._require_write_target("新增到索引") is None:
+            return
+        existing = {
+            os.path.normcase(os.path.abspath(str(Path(p))))
+            for p, _c, _d, _o in self._all_entries
+        }
+        accepted = []
+        seen = set()
+        missing = 0
+        folders = 0
+        duplicates = 0
+        for raw in raw_paths:
+            p = Path(raw).expanduser()
+            if not p.exists():
+                missing += 1
+                continue
+            if not p.is_file():
+                folders += 1
+                continue
+            resolved = str(p.resolve())
+            key = os.path.normcase(os.path.abspath(resolved))
+            if key in existing or key in seen:
+                duplicates += 1
+                continue
+            seen.add(key)
+            accepted.append(resolved)
+
+        if missing or folders or duplicates:
+            notes = []
+            if duplicates:
+                notes.append(f"略過 {duplicates} 個已收錄或重複選取的檔案")
+            if missing:
+                notes.append(f"略過 {missing} 個不存在的路徑")
+            if folders:
+                notes.append(f"略過 {folders} 個資料夾（請使用「匯入資料夾...」）")
+            messagebox.showinfo("新增到索引", "\n".join(notes))
+        if not accepted:
+            return
+
+        # 多檔案逐筆顯示同一個新增視窗，不會像原本迴圈那樣一次疊出多個 modal。
+        queue = list(accepted)
+
+        def _open_next():
+            if not queue:
+                return
+            path_str = queue.pop(0)
+            self._prompt_add_entry(path_str, on_complete=_open_next)
+
+        _open_next()
+
+    def _on_import_folder(self):
+        if self._require_write_target("匯入資料夾") is None:
+            return
+        folder = filedialog.askdirectory(title="選擇要匯入的資料夾")
+        if not folder:
+            return
+        existing_paths = {str(Path(p)) for p, _c, _d, _o in self._all_entries}
+        existing_categories = sorted({c.strip() for _p, c, _d, _o in self._all_entries if c.strip()})
+
+        def _on_confirm(new_files, category):
+            for p in new_files:
+                _append_index_row(self._current_index_path, str(p), category, "")
+            self._reload_index()
+            messagebox.showinfo(
+                "匯入資料夾",
+                f"已新增 {len(new_files)} 筆（說明欄留空，之後可用「編輯索引檔案」補上關鍵字）。",
+            )
+
+        ImportFolderDialog(self, Path(folder), existing_paths, existing_categories, _on_confirm)
+
+    def _prompt_add_entry(self, path_str, on_complete=None):
+        target = self._current_index_path  # 呼叫端（拖曳／新增檔案）已經先經過 _require_write_target 檢查過
+        existing_categories = sorted({c.strip() for _p, c, _d, _o in self._all_entries if c.strip()})
+
+        def _on_confirm(category, desc):
+            _append_index_row(target, path_str, category, desc)
+            self._reload_index()
+            if on_complete:
+                self.after_idle(on_complete)
+
+        AddEntryDialog(
+            self, path_str, existing_categories, _on_confirm,
+            on_cancel=on_complete,
+        )
+
+    def _selected_origin_path(self):
+        """回傳目前選定那一列實際來自哪一份索引檔案——「全部索引」聚合模式下
+        每一列可能來自不同檔案，編輯/刪除都要用這個而不是 self._current_index_path
+        （聚合模式下那個是 None）。"""
+        sel = self._tree.selection()
+        if not sel:
+            return None
+        return self._tree_row_origin.get(sel[0])
+
+    def _on_edit_selected(self):
+        """編輯清單裡已經選定的那一列——跟「新增檔案...」共用同一個對話框，
+        只是預先填好目前的分類／說明，確認後改的是原本那一列（用路徑精確比對
+        找到要改的資料列，寫回它實際的來源索引檔案，不管目前是不是「全部索引」
+        聚合檢視），不會產生重複列，也不影響它在表格裡的原本位置。"""
+        sel = self._tree.selection()
+        if not sel:
+            messagebox.showinfo("編輯所選列", "請先在清單中選一筆。")
+            return
+        origin = self._selected_origin_path()
+        if origin is None:
+            return
+        _serial, icon, name, category, desc, path_str, _source, _added_at = self._tree.item(sel[0], "values")
+        existing_categories = sorted({c.strip() for _p, c, _d, _o in self._all_entries if c.strip()})
+
+        def _on_confirm(new_category, new_desc):
+            updated = _update_index_row(origin, path_str, new_category, new_desc)
+            self._reload_index()
+            if updated == 0:
+                messagebox.showwarning(
+                    "編輯所選列",
+                    "在索引檔案裡找不到這一列了（可能索引檔案剛好被外部修改過），"
+                    "請按「重新載入索引」確認目前內容後再試一次。",
+                )
+
+        AddEntryDialog(
+            self, path_str, existing_categories, _on_confirm,
+            title="編輯索引列", confirm_text="儲存變更",
+            initial_category=category, initial_desc=desc,
+        )
+
+    def _on_delete_selected(self, _event=None):
+        """Delete 鍵刪除目前藍色選取列；只改索引檔，不碰實體檔案。"""
+        sel = self._tree.selection()
+        if not sel:
+            return "break"
+        origin = self._selected_origin_path()
+        path_str = self._selected_path()
+        if origin is None or not path_str:
+            return "break"
+        name = Path(path_str).name
+        if not messagebox.askyesno(
+            "確認刪除索引項目",
+            f"確定要從索引清單刪除這一筆嗎？\n\n{name}\n{path_str}\n\n"
+            "只會刪除索引紀錄，硬碟上的實體檔案仍會保留。",
+            icon="warning",
+        ):
+            self._tree.focus_set()
+            return "break"
+        removed, new_text = _remove_rows_by_paths(origin, {path_str})
+        if not removed:
+            messagebox.showwarning(
+                "刪除索引項目",
+                "找不到對應的索引列（可能索引檔案剛被外部修改），請重新載入後再試。",
+            )
+            return "break"
+        origin.write_text(new_text, encoding="utf-8")
+        self._reload_index()
+        self._tree.focus_set()
+        return "break"
+
+    # ── 索引清理 ─────────────────────────────────────────────────────
+
+    def _target_files(self):
+        """目前檢視範圍牽涉到的索引檔案清單——單一索引模式就是那一份，「全部
+        索引」聚合模式就是全部 .md 檔案，供「清除失效項目」「批次刪除」這種
+        原本針對單一檔案、現在要能在聚合檢視下也對全部檔案生效的操作共用。"""
+        if self._current_index_path is not None:
+            return [self._current_index_path]
+        return _list_index_files()
+
+    def _cleanup_missing(self):
+        files = self._target_files()
+        if not files:
+            return
+        pending = []  # [(file, new_text, removed_count), ...]，先全部算好，確認後才真的寫
+        total_removed = 0
+        for f in files:
+            removed, new_text = _remove_missing_rows(f)
+            if removed:
+                pending.append((f, new_text))
+                total_removed += removed
+        if total_removed == 0:
+            messagebox.showinfo("清除失效項目", "目前檢視範圍內沒有找不到檔案的項目。")
+            return
+        scope = "目前檢視的全部索引集" if len(files) > 1 else f"「{files[0].name}」"
+        if not messagebox.askyesno(
+            "清除失效項目",
+            f"{scope}裡有 {total_removed} 筆索引指向的檔案目前找不到（可能已搬移或刪除）。\n\n"
+            "確定要把這幾筆從索引檔案裡刪除嗎？其餘內容不受影響。",
+        ):
+            return
+        for f, new_text in pending:
+            f.write_text(new_text, encoding="utf-8")
+        self._reload_index()
+        messagebox.showinfo("清除失效項目", f"已刪除 {total_removed} 筆。")
+
+    def _on_bulk_delete(self):
+        """開啟批次刪除對話框——跟「清除失效項目」不同，那個只能刪「檔案已經
+        找不到」的項目；這個是列出目前檢視範圍內的全部項目（單一索引集，或
+        「全部索引」聚合模式下的全部索引集），讓使用者自己搜尋、勾選任意想
+        刪掉的幾筆（檔案還在不在都可以），確認後依每筆實際的來源檔案分別寫回。"""
+        if not self._all_entries:
+            messagebox.showinfo("批次刪除索引項目", "目前沒有可操作的索引項目。")
+            return
+        def _on_confirm(rows_to_remove):
+            by_origin = defaultdict(set)
+            for path_str, origin in rows_to_remove:
+                by_origin[origin].add(path_str)
+            total_removed = 0
+            for origin, paths in by_origin.items():
+                removed, new_text = _remove_rows_by_paths(origin, paths)
+                if removed:
+                    origin.write_text(new_text, encoding="utf-8")
+                    total_removed += removed
+            if total_removed == 0:
+                messagebox.showwarning(
+                    "批次刪除索引項目",
+                    "找不到對應的資料列了（可能索引檔案剛好被外部修改過），"
+                    "請按「重新載入索引」確認目前內容後再試一次。",
+                )
+                return
+            self._reload_index()
+            messagebox.showinfo("批次刪除索引項目", f"已刪除 {total_removed} 筆。")
+
+        BulkDeleteDialog(self, list(self._all_entries), _on_confirm)
+
+    # ── 內容快取／全文檢索底層 ───────────────────────────────────────
+
+    def _refresh_caches_in_background(self, files, title, initial_text, on_done):
+        """在背景更新快取；工作執行緒只寫 Queue，所有 Tkinter 更新留在主執行緒。"""
+        totals = {f: len(_load_index(f)) for f in files}
+        grand_total = sum(totals.values())
+        progress = tk.Toplevel(self)
+        progress.title(title)
+        progress.configure(bg=COLOR_BG)
+        progress.transient(self)
+        progress.grab_set()
+        progress.resizable(False, False)
+        progress.geometry("520x150")
+        label_var = tk.StringVar(value=initial_text)
+        status_label = tk.Label(
+            progress, textvariable=label_var, bg=COLOR_BG, fg=COLOR_MISSING_FG,
+            font=self._font_warning, padx=22, pady=0, anchor="w",
+            justify="left", wraplength=470,
+        )
+        # (20, 10) 是 pack 的上下外距格式，不能傳給 Label 的 -pady（只接受單值）；
+        # 舊版因此在建立標籤時拋 TclError，只留下空白 Toplevel。
+        status_label.pack(fill="x", pady=(20, 10))
+        progress_bar = ttk.Progressbar(progress, maximum=max(1, grand_total), mode="determinate")
+        progress_bar.pack(fill="x", padx=22, pady=(0, 18))
+        progress.update_idletasks()
+
+        result_queue = queue.Queue()
+
+        def _worker():
+            completed_before = 0
+            try:
+                for f in files:
+                    def cb(done, total, fname=f.name, offset=completed_before):
+                        result_queue.put(("progress", offset + done, grand_total, fname, done, total))
+                    _update_cache_for_index(f, progress_cb=cb)
+                    completed_before += totals[f]
+                result_queue.put(("done",))
+            except Exception as exc:
+                result_queue.put(("error", str(exc)))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+        def _poll():
+            try:
+                while True:
+                    message = result_queue.get_nowait()
+                    if message[0] == "progress":
+                        overall, all_count, fname, done, total = message[1:]
+                        progress_bar["value"] = overall
+                        label_var.set(f"{fname}：{done} / {total}（總進度 {overall} / {all_count}）")
+                    elif message[0] == "error":
+                        progress.destroy()
+                        messagebox.showerror(title, f"更新內容快取失敗：\n{message[1]}")
+                        return
+                    elif message[0] == "done":
+                        progress.destroy()
+                        on_done()
+                        return
+            except queue.Empty:
+                pass
+            if progress.winfo_exists():
+                progress.after(80, _poll)
+
+        progress.protocol("WM_DELETE_WINDOW", lambda: None)
+        progress.after(80, _poll)
+
+    def _on_update_cache(self):
+        """更新全部索引集的內容快取（SHA-256＋擷取文字）——手動觸發；每次
+        都重新驗證檔案內容雜湊，文字內容則只在檔案變動時重新擷取。"""
+        files = _list_index_files()
+        if not files:
+            messagebox.showinfo("更新內容快取", "目前沒有任何索引檔案。")
+            return
+        total_entries = sum(len(_load_index(f)) for f in files)
+        if total_entries == 0:
+            messagebox.showinfo("更新內容快取", "目前索引裡沒有任何項目。")
+            return
+        if not messagebox.askyesno(
+            "更新內容快取",
+            f"要更新全部 {len(files)} 份索引集、共 {total_entries} 筆項目的內容快取嗎？\n\n"
+            "（會重新驗證全部檔案的 SHA-256；大型影片或檔案很多時可能需要一點時間）",
+        ):
+            return
+
+        def _done():
+            self._reload_index()
+            messagebox.showinfo(
+                "更新內容快取",
+                "快取已更新完成，全文檢索現在會使用最新內容；重複偵測按下時也會再次驗證 SHA-256。",
+            )
+
+        self._refresh_caches_in_background(files, "更新內容快取", "準備更新內容快取…", _done)
+
+    # ── 找出未收錄檔案／常用資料夾 ─────────────────────────────────────
+
+    def _on_manage_known_folders(self):
+        KnownFoldersDialog(self)
+
+    def _on_find_unindexed(self):
+        files = _list_index_files()
+        if not files:
+            messagebox.showinfo("找出未收錄檔案", "目前沒有任何索引檔案可以加入，請先建立一份 .md。")
+            return
+        existing_paths_all = {str(Path(p)) for f in files for p, _c, _d in _load_index(f)}
+        existing_categories = sorted({c.strip() for f in files for _p, c, _d in _load_index(f) if c.strip()})
+        default_index = self._current_index_path or files[0]
+
+        def _on_confirm(new_files, target, category):
+            for p in new_files:
+                _append_index_row(target, str(p), category, "")
+            self._reload_index()
+            messagebox.showinfo(
+                "找出未收錄檔案",
+                f"已新增 {len(new_files)} 筆到「{target.name}」（說明欄留空，之後可用「批次補說明...」或「編輯所選列」補上）。",
+            )
+
+        UnindexedScanDialog(
+            self, existing_paths_all, existing_categories, files, default_index,
+            _on_confirm, self._on_manage_known_folders,
+        )
+
+    # ── 重複檔案偵測 ─────────────────────────────────────────────────
+
+    def _on_find_duplicates(self):
+        """跨全部索引集依檔案大小＋SHA-256 分組。
+
+        每次按下按鈕都先重新驗證所有索引項目的雜湊，避免新加入的檔案尚未建立
+        快取，或檔案內容變更後仍沿用舊結果，造成明明相同卻漏判。"""
+        files = _list_index_files()
+        if not files:
+            messagebox.showinfo("重複檔案偵測", "目前沒有任何索引檔案。")
+            return
+
+        total_entries = sum(len(_load_index(f)) for f in files)
+        if total_entries == 0:
+            messagebox.showinfo("重複檔案偵測", "目前索引裡沒有任何項目。")
+            return
+
+        def _after_hash_refresh():
+            self._reload_index()
+            by_hash = defaultdict(list)
+            for f in files:
+                cache = _load_cache(f)
+                for row_index, (path, cat, desc) in enumerate(_load_index(f)):
+                    cached = cache.get(path, {})
+                    h = cached.get("hash")
+                    if h and cached.get("hash_algo") == _HASH_ALGO:
+                        key = (cached.get("size"), h)
+                        by_hash[key].append((path, cat, desc, f, row_index))
+            groups = [g for g in by_hash.values() if len(g) > 1]
+            if not groups:
+                messagebox.showinfo(
+                    "重複檔案偵測",
+                    "已重新驗證全部索引項目的 SHA-256，目前沒有找到內容完全相同的檔案。\n\n"
+                    "檔名相同不代表檔案內容相同；只要任何標籤、音訊資料或位元內容不同，SHA-256 就會不同。",
+                )
+                return
+
+            def _on_confirm(delete_records):
+                by_origin = defaultdict(set)
+                for _path, origin, row_index in delete_records:
+                    by_origin[origin].add(row_index)
+                total_removed = 0
+                for origin, row_indexes in by_origin.items():
+                    removed, new_text = _remove_rows_by_occurrences(origin, row_indexes)
+                    if removed:
+                        origin.write_text(new_text, encoding="utf-8")
+                        total_removed += removed
+                self._reload_index()
+                messagebox.showinfo("重複檔案偵測", f"已刪除 {total_removed} 筆重複的索引紀錄。")
+
+            DuplicateDialog(self, groups, _on_confirm)
+
+        self._refresh_caches_in_background(
+            files, "重複檔案偵測", "正在重新驗證全部檔案的 SHA-256…", _after_hash_refresh,
+        )
+
+    # ── 批次補齊說明 ─────────────────────────────────────────────────
+
+    def _on_batch_describe(self):
+        """對目前檢視範圍內「說明是空的」項目，用內容擷取邏輯產生建議說明，
+        開審核畫面讓使用者逐筆看過/修改/決定要不要套用，確認後才寫入。"""
+        self._reload_index()
+        blanks = [(p, c, o) for p, c, d, o in self._all_entries if not d.strip()]
+        if not blanks:
+            messagebox.showinfo("批次補齊說明", "目前檢視範圍內沒有說明是空的項目。")
+            return
+        def _on_confirm(items):
+            by_origin = defaultdict(list)
+            for path, origin, desc in items:
+                by_origin[origin].append((path, desc))
+            total = 0
+            for origin, pairs in by_origin.items():
+                cat_lookup = {p: c for p, c, _d in _load_index(origin)}
+                for path, desc in pairs:
+                    total += _update_index_row(origin, path, cat_lookup.get(path, ""), desc)
+            self._reload_index()
+            messagebox.showinfo("批次補齊說明", f"已更新 {total} 筆說明。")
+
+        # 文字擷取改在背景執行；主執行緒只輪詢進度，視窗不再整段凍結。
+        progress = tk.Toplevel(self)
+        progress.title("準備批次說明")
+        progress.configure(bg=COLOR_BG)
+        progress.transient(self)
+        progress.grab_set()
+        progress.resizable(False, False)
+        progress.geometry("520x175")
+        status_var = tk.StringVar(value=f"準備讀取 {len(blanks)} 個檔案…")
+        tk.Label(
+            progress, textvariable=status_var, bg=COLOR_BG, font=self._font_label,
+            anchor="w", justify="left", wraplength=470,
+        ).pack(fill="x", padx=20, pady=(20, 10))
+        progress_bar = ttk.Progressbar(progress, maximum=len(blanks), mode="determinate")
+        progress_bar.pack(fill="x", padx=20)
+        cancel_event = threading.Event()
+        _styled_button(
+            progress, "取消", lambda: cancel_event.set(),
+            BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_hint,
+        ).pack(side="right", padx=20, pady=14)
+        progress.protocol("WM_DELETE_WINDOW", cancel_event.set)
+
+        result_queue = queue.Queue()
+
+        def _worker():
+            suggestions = []
+            for done, (path, cat, origin) in enumerate(blanks, start=1):
+                if cancel_event.is_set():
+                    result_queue.put(("cancelled", suggestions))
+                    return
+                p = Path(path)
+                if p.exists():
+                    if _HAS_PIL and p.suffix.lower() in _IMAGE_EXTS:
+                        suggestion = ""
+                    else:
+                        cached = self._entry_cache.get(path, {}).get("text", "")
+                        try:
+                            text = cached[:1200] if cached else (_extract_preview_text(p, max_chars=1200) or "")
+                        except Exception:
+                            text = ""
+                        suggestion = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+                    suggestions.append((path, cat, origin, suggestion))
+                result_queue.put(("progress", done, p.name))
+            result_queue.put(("done", suggestions))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+        def _poll_worker():
+            try:
+                while True:
+                    message = result_queue.get_nowait()
+                    kind = message[0]
+                    if kind == "progress":
+                        done, name = message[1], message[2]
+                        progress_bar["value"] = done
+                        status_var.set(f"正在擷取文字：{done} / {len(blanks)}\n{name}")
+                    elif kind in ("done", "cancelled"):
+                        suggestions = message[1]
+                        progress.destroy()
+                        if kind == "cancelled":
+                            return
+                        if not suggestions:
+                            messagebox.showinfo(
+                                "批次補齊說明",
+                                "說明是空的項目，對應的檔案目前都找不到，沒有內容可以擷取。",
+                            )
+                            return
+                        BatchDescribeDialog(self, suggestions, _on_confirm)
+                        return
+            except queue.Empty:
+                pass
+            if progress.winfo_exists():
+                progress.after(80, _poll_worker)
+
+        progress.after(80, _poll_worker)
+
+    # ── 結果操作 ─────────────────────────────────────────────────────
+
+    def _jump_to_tree_edge(self, last=False):
+        """選取並確實捲到目前清單的第一筆或最後一筆。"""
+        items = self._tree.get_children("")
+        if not items:
+            return "break"
+        target = items[-1] if last else items[0]
+        self._tree.selection_set(target)
+        self._tree.focus(target)
+        self._tree.see(target)
+        # yview_moveto 可確保最後一列貼近視窗底部，不只做到「剛好可見」。
+        self._tree.yview_moveto(1.0 if last else 0.0)
+        self._tree.focus_set()
+        return "break"
+
+    def _selected_path(self):
+        sel = self._tree.selection()
+        if not sel:
+            return None
+        return self._tree.item(sel[0], "values")[5]
+
+    def _open_selected(self):
+        path = self._selected_path()
+        if not path:
+            messagebox.showinfo("開啟檔案", "請先在清單中選一筆。")
+            return
+        if not Path(path).exists():
+            messagebox.showerror("開啟檔案", f"檔案不存在，可能已搬移或刪除：\n{path}")
+            return
+        try:
+            os.startfile(path)  # 用作業系統預設關聯程式開啟，一般文件/圖片/影音都適用
+        except OSError as e:
+            messagebox.showerror("開啟檔案", f"開啟失敗：{e}")
+
+    def _reveal_selected(self):
+        path = self._selected_path()
+        if not path:
+            messagebox.showinfo("顯示於檔案總管", "請先在清單中選一筆。")
+            return
+        file_path = Path(path).resolve()
+        if not file_path.exists():
+            messagebox.showerror("顯示於檔案總管", f"檔案不存在，可能已搬移或刪除：\n{file_path}")
+            return
+        try:
+            # Windows Explorer 對 /select, 的解析很特殊：開關與路徑分成兩個
+            # argv 最穩定，subprocess 會自行替含空格／中文的完整路徑加引號。
+            subprocess.Popen(["explorer.exe", "/select,", os.path.normpath(str(file_path))])
+        except OSError as e:
+            # 即使 Explorer 的選取參數不可用，也至少開到正確的父資料夾。
+            try:
+                os.startfile(str(file_path.parent))
+            except OSError:
+                messagebox.showerror("顯示於檔案總管", f"無法開啟檔案總管：\n{e}")
+
+    def _copy_selected_path(self):
+        path = self._selected_path()
+        if not path:
+            messagebox.showinfo("複製路徑", "請先在清單中選一筆。")
+            return
+        self.clipboard_clear()
+        self.clipboard_append(path)
+
+    def _open_index_file(self):
+        """用文字編輯器開目前這份索引 .md 方便新增/修改——優先用 VS Code，找不到
+        就退回記事本（用完整路徑，不靠 PATH 解析，避免某些啟動環境 PATH 不含
+        System32 導致 FileNotFoundError）。"""
+        if self._require_write_target("編輯索引檔案") is None:
+            return
+        editor = shutil.which("code")
+        fallback = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "notepad.exe")
+        try:
+            subprocess.Popen([editor or fallback, str(self._current_index_path)])
+        except OSError as e:
+            messagebox.showerror("編輯索引檔案", f"開啟失敗：{e}")
+
+    def _focus_search(self, _event=None):
+        self._search_entry.focus_set()
+        self._search_entry.select_range(0, "end")
+        return "break"
+
+    def _clear_search(self, event=None):
+        # bind_all 會收到子對話框與影片大視窗的 Esc；只允許主視窗本身及其子元件
+        # 清空搜尋，避免在 Dialog 按 Esc 時偷偷改變背景搜尋結果。
+        if event is not None:
+            try:
+                if event.widget.winfo_toplevel() is not self:
+                    return None
+            except tk.TclError:
+                return None
+        self._search_var.set("")
+        return "break"
+
+
+if __name__ == "__main__":
+    FileSearchApp().mainloop()

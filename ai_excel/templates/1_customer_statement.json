@@ -1,0 +1,47 @@
+{
+  "company_name": "1",
+  "report_type": "customer_statement",
+  "sheet_name": "工作表1",
+  "header_row": 3,
+  "headers": [
+    "貨單日期",
+    "貨單名稱",
+    "數量",
+    "單價",
+    "退貨 元",
+    "合計",
+    "總計金額"
+  ],
+  "canonical_mapping": {
+    "date": "貨單日期",
+    "item": "貨單名稱",
+    "quantity": "數量",
+    "unit_price": "單價",
+    "return_quantity": "退貨 元",
+    "subtotal": "合計",
+    "total": "總計金額"
+  },
+  "region_signature": {
+    "n_rows": 22,
+    "n_cols": 7
+  },
+  "formula_rules": {
+    "合計": "={C}{row}*{D}{row}"
+  },
+  "blank_inheritance_rules": {
+    "貨單日期": "date"
+  },
+  "summary_rules": {
+    "total_row_offset": null
+  },
+  "key_columns": [
+    "date",
+    "item",
+    "quantity",
+    "unit_price",
+    "return_quantity",
+    "subtotal",
+    "total"
+  ],
+  "updated_at": "2026-08-19 20:13:20"
+}

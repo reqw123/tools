@@ -1,0 +1,912 @@
+{
+ "C:\\Tools\\file_search\\document\\螢幕擷取畫面 2026-08-13 115714.png": {
+  "mtime": 1786593434.5488563,
+  "size": 762835,
+  "hash": "9e00461544746628025b1a5ab87e4e0c93f086b0ab1cc65e9754bcb250292b89",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Tools\\file_search\\document\\論文方向.pptx": {
+  "mtime": 1764650359.0,
+  "size": 21148818,
+  "hash": "999549e8c43d4cae7d91ffcac1b96f0848ae2eaab95367af117d4f7f6cab8829",
+  "hash_algo": "sha256",
+  "text": "【第 1 頁】論文方向 研究類型 : 應用類 目前在研究的技術 : yolo,  raspberry pi , esp32,  MQTT,  node-red 題目 : 基於 yolo 的貓咪異常行為偵測與提前預警系統   近年飼主對寵物健康與行為監控的需求日增，但市面上多以活動量或定位為主，難以精確判斷異常姿態或健康警訊。本研究構想提出一套結合  YOLO  影像偵測與物聯網感測器的貓咪行為監測系統。透過攝影機擷取貓咪影像進行姿態與行為辨識，並整合環境或可穿戴感測數據（如加速度、溫濕度），建立多模態異常偵測模型。當系統偵測到跌倒、抽搐或長時間靜止等異常行為時，可即時發送警示訊息給飼主。 1\n【第 2 頁】動機 現有的寵物監控只能偵測到寵物在動，但無法判斷牠的姿態是否健康。貓咪又很會隱藏病痛，等主人發現時通常為時已晚。 我的做法是，想用 YOLO 這類快速的 AI 模型，不僅偵測貓咪，更進一步去分析牠的關節姿態。透過辨識像是跛行、疼痛蹲姿、或呼吸急促這些異常，來提前發現潛在的健康問題，並即時通知主人。 2\n【第 3 頁】類別 說明 lying 平躺休息 sitting 坐姿休息 standing 站立但未移動 walking 行走中 jumping 跳躍中 grooming 自我清潔（舔毛） eating_ drinking 進食或飲水 playing 活動互動狀態 建立貓咪基本行為辨識模型 （ 8  類正常行為） 單看影像分類，有時  YOLO  很難分清 「 grooming 」 和 「 sleeping 」 。 這時可以結合姿態偵測 （ poseestimation ）。 讓  YOLO 偵測出貓的關鍵點（頭、腳、尾巴、脊椎等 ）， 再觀察 「 頭部與身體其他部位的距離變化 」。 例如： 如果頭部與胸部距離持續變化、且速度快  → 可能在舔毛 （ grooming ） 如果頭部與胸部距離穩定、且幾乎不動  → 可能在睡覺 （ sleeping ） 這樣你就能利用動態特徵強化  YOLO 的靜態分類結果。 二、姿態估計（ Pose Estimation ） 輔助特徵 3\n【第 4 頁】方便檢測的疾病 / 異常行為 YOLOv8  檢測目標 數據收集方式 論文重點 1.  體表皮膚問題 偵測特定區域的 紅腫、脫毛、傷口、或過度舔舐 。 樹莓派攝像頭，對準寵物休息區或特定角度拍攝。 目標檢測： 識別病灶位置（如臉部、腹部、爪子）。 2.  跛行與關節疼痛 偵測寵物 走路 / 跑步的姿態（姿態估計） ；識別特定的 步態異常 或 肢體不著地 的行為。 樹莓派攝像頭，錄製寵物行走影片。 姿態估計：  追蹤關節點，量化步態數據。 3.  嘔吐物與排泄物異常 偵測地面上 嘔吐物或血便 的存在；偵測寵物在 非指定區域排泄 的行為。 樹莓派攝像頭，監測固定區域（如室內地面）。 目標檢測：  識別並計數嘔吐物或排泄物（顏色、形狀異常需人工標註）。 4.  異常活動量 偵測 長時間蜷縮不動 或 持續性踱步 的焦慮行為。 樹莓派攝像頭。 行為識別：  判斷「不動 / 休息」與「持續活動 / 焦慮」的狀態。 5. 皮膚與毛髮 過度舔毛導致局部脫毛、紅腫、皮屑多、有異味。 樹莓派攝像頭。 行為識別：  識別舔舐、啃咬的動作，並進行計數。 yolo 改善問題 4\n【第 5 頁】方便檢測的疾病 / 異常行為 ESP32  檢測目標  ( 感測器 ) 數據傳輸 論文重點 6.  呼吸異常 / 心率 呼吸頻率  ( RR ) 和 心率  ( HR ) 。 ESP32 搭配 雷達波、震動或低功耗  ECG 感測器 （需結合穿戴或非接觸式設計），透過  MQTT 傳輸。 數據分析：  建立異常呼吸或心率的閾值，提早預警心臟或呼吸道疾病。 7.  飲水 / 進食行為異常 飲水機 / 食盆重量或液位 的變化。 ESP32 搭配 重量感測器  ( Load Cell ) 或 液位感測器 ，透過  MQTT 傳輸。 數據分析：  監測每天的進食量和飲水量，異常增減（如多喝多尿）可預警糖尿病或腎臟病。 8.  環境壓力 / 舒適度 環境溫度、濕度、氨氣濃度 （與排泄物氣味有關）。 ESP32  搭配 溫濕度感測器  ( 如  DHT11/22 )  及 氣體感測器 ，透過  MQTT 傳輸。 環境監測：  確保寵物生活環境舒適，間接預防熱衰竭或呼吸道問題。 9.  睡眠時間異常 寵物 睡墊下的重量 / 壓力感測器 。 ESP32 搭配 壓力感測器 ，透過  MQTT 傳輸。 行為分析：  追蹤每日睡眠時長和規律性，長期異常可能指向疼痛或精神問題。 嵌入式系統 5\n【第 6 頁】系統流程 6\n【第 7 頁】樹梅派  pi 4  和  pi 5  的性能比較 pi5 YOLO : 10FPS 7 pi4 YOLO : 3FPS\n【第 8 頁】Node-red 上的 MQTT 通訊 將影像以及感測器的數據傳到 node-red 上進行監控，如檢測到異常行為則發布警報到各通訊軟體 1. 睡眠狀態 2. 活動量 3. 慣用姿態 4. 身體狀況 8\n【第 9 頁】Ear_right （ 右耳 ） Ear_left （ 左耳） Eye_right （ 右眼） Chest （ 胸部） Elbow_right （ 右手肘 ） Wrist_right （ 右手腕） Backpaw _ right （ 右後腳掌） Elbow_left （ 左手肘） Ankle_right （ 右腳踝） Tail_2 （ 尾巴段 2 ） Tail_3 （ 尾巴段 3 ） Tail_4 （ 尾巴末端） Eye_left （ 左眼） Nose （ 鼻子） Mouth （ 嘴巴） Frontpaw _ right （ 右前腳掌） Wrist_ left （ 左手腕 ） Frontpaw _ left （ 左前腳掌） Knee_right （ 右膝） Hip （ 髖部） Tail_1 （ 尾巴基部） Knee_left （ 左膝） Ankle_ left （ 左腳踝） Backpaw _left （ 左後腳掌） 24 個關鍵點 目前不知道要選擇多少個關鍵點 以及時間序列   ( DTW/LSTM/TCN ) 來做動作分類。 太少（8–10 個）無法準確判斷跛行、抽搐這類細緻動作 。 太多（20–30 個）會讓模型抖動、大幅增加資料需求 。 🟣 抽搐 🟡 喝水 🟡 跛行 🟢 一拐 🟤 趴下 🔵 站立 🔵 駝背 🌀 甩頭 想分類的動作 : 抽搐：四肢或頭部相對軀幹的高頻抖動跛行  一拐：左右肢步態不對稱（用 DTW 、 TCN 做分析） 喝水：頭部高度下降並維持、身體穩定 駝背：胸 – 髖 – 尾巴的彎曲角度變大 甩頭：頭部左右高頻擺動而軀幹穩定在模型上我會結合 幾何規則  +  時間序列模型 （ TCN / LSTM / DTW ），先用規則產生粗略標籤，再用深度學習優化動作分類 9\n【第 10 頁】Yolo-pose模型 695 張 (82% ) 49 張 (6%) 108 張 (13%) nose_y ：第  3  號點（鼻子） chest_y ：第  6  號點（胸口） hip_y ：第  11  號點（臀部） tail_y ：第  21  號點（尾巴末端） activity : 活動量 從 24 個關鍵點中挑出 4 個關鍵點 做數據統計和邏輯判斷 以下對  ” 背對   ” 行為做為測試目標 10\n【第 11 頁】如果臉部特徵消失或不在合理位置，並且身體軸線的方向與一般狀態不同，就代表背對鏡頭。 1 .( nose_y  <  chest_y )  → 頭偏上方 2 .( nose_y  === 0)  →  臉消失 3 .( chest_y  <  hip_y )  → 鏡頭看到的是背部線條（胸較高、臀較低 ) 4. chest_y > 0 &  hip_y  > 0  →  身體有偵測到 條件 : 當 “back” 狀態持續判定三秒以上，發送通知到雙平台。 (discord/line) nose_y ：第  3  號點（鼻子） chest_y ：第  6  號點（胸口） hip_y ：第  11  號點（臀部） tail_y ：第  21  號點（尾巴末端） activity : 活動量 11\n【第 12 頁】12 自動化流程 使用 windows 的啟動資料夾 開機後自動啟動 Node-red 啟動後內建的節點可以自動執行 CMD 手機和電腦都可以查看 UI 介面 滿足條件時 自動發送通知\n【第 13 頁】影片 : 13\n【第 14 頁】Webcam 固定攝影角度 每個關鍵點的骨架連線 處理遮蔽  &  亂跳點 用關鍵點提取成「生物力學特徵」 檢查特徵的持續變化 透過「時序條件」來定義異常 輸出結果 14\n【第 15 頁】15 行為類別  ( Category) 靜態異常 動態異常 使用關鍵點  ( Keypoints ) 理由  ( Reasoning) 🟡  跛行 ❌ ✔（動態異常） 左右前腳 / 後腳（膝、踝、爪）共  8  點 步態是「連續動作」，異常來自週期不一致、左右不對稱。 🟣  抽搐 ❌ ✔（動態異常） 頭、胸、臀、四肢末端  6–10  點 抽搐一定是「高速連續震動」，單張看不出來，必須用時序。 🟤  喝水 ✔（初始狀態下降） ✔（維持姿勢） 頭、胸 先是頭部下降（動態），再維持固定高度（接近靜態）。 🔵  駝背 ✔（靜態異常） ❌ 胸、髖、尾巴 背部角度變大是「幀級姿勢異常」，不依賴時間變化。 離群分析與時間序列\n【第 16 頁】16\n【第 17 頁】17\n【第 18 頁】18 ✔ 研究問題  (Research Questions) 例如： 如何利用  YOLO-pose  擷取貓咪步態與關鍵點的穩定特徵？ 如何用時序模型（ TCN/DTW ）準確辨識「跛行」或「抽搐」等異常行為？ 如何透過  IoT （ ESP32 + Node-RED ）在異常行為發生時即時通知飼主？ ✔ 研究貢獻  (Contributions) 提出一套「影像  +  關鍵點  +  時序」的貓異常行為偵測流程 建立自訂  24  點關鍵點的  Pose  資料集 設計簡易可部署的邊緣裝置流程（ Raspberry Pi ） 建立  IoT  即時預警系統 你怎麼知道你的模型成功？ 建議加入以下指標： Accuracy / F1-score （動作分類） DTW distance （步態週期差異） 持續時間判斷（ 3  秒  rule ） 誤報率（ False Alarm Rate ） 延遲（ Latency, Pi 4: 3FPS, Pi 5: 10FPS ）\n【第 19 頁】19\n【第 20 頁】20 1.  發情（ Estrus ） 典型姿勢： 腰部微拱、臀部抬高 尾巴偏向一側 前肢放低、後肢蹲低 屬於姿態類型： 弓背（輕度） 尾巴側偏 臀部抬高 2.  懷孕（ Pregnancy ） 典型姿勢： 行走時步幅變小 腹部下垂、背部變直或微拱 躺姿偏向側躺 屬於姿態類型： 步態變慢  /  小步伐 背微拱 側躺率增加 疾病可能共用姿勢： 關節炎（步幅減少） 腹痛（側躺增加） 心臟病（ Heart Disease  ） 典型姿勢： 前肢分開、胸部抬高、頸部前伸 腹部收縮 不願久站 屬於姿態類型： 呼吸姿勢異常 胸抬高姿勢 疾病共用姿勢： 呼吸問題、氣喘 腹痛（胸口提高，但幅度較小） 關節炎（ Arthritis ） 典型姿勢： 走路僵硬、起步困難 不願跳 步幅縮短 屬於姿態類型： 步態異常 不願跳（疼痛姿勢） 疾病共用姿勢： 懷孕（步幅減少） 糖尿病（後腳沉） 後腿血栓（拖腿） 10.  皮膚病（ Dermatitis / Allergies ） 典型姿勢： 頻繁舔某部位（尤其後肢與腹部） 屁股抬高以舔尾巴根部 偏側彎身搔癢 屬於姿態類型： 舔拭姿勢 側彎身體 尾巴根部抬高 疾病共用姿勢： 1\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\貓咪辨識系統 文字說明.docx": {
+  "mtime": 1777993732.0,
+  "size": 16580,
+  "hash": "b11b67ff58c881a93a045348588cb030743d284dc54ff8aaaa7f918c9b01f78d",
+  "hash_algo": "sha256",
+  "text": "貓咪辨識系統 文字說明\n系統整體描述（完整整理版）\n本研究旨在建立一套基於影像與姿態分析的貓咪行為辨識與健康監測系統，透過電腦視覺與時序分析技術，自動辨識貓咪日常行為，並進一步推估其健康狀態，達成早期預警之目的。\n在系統設計上，首先於AI層採用 YOLO Pose 進行貓咪17點關鍵點偵測，取得骨架資訊後，結合時序模型（如 ST-GCN / LSTM）進行行為分類，將貓咪行為劃分為四大類：行走（walk）、舔舐（lick）、搔抓（scratch）、甩頭（shake）。同時，系統亦整合 LOF（Local Outlier Factor）作為異常偵測機制，用於識別不符合正常行為模式的狀態，提升健康判斷的準確性。\n在資料層中，系統以逐幀時間差（delta time）進行行為時間累積，將整體監測時間劃分為：\n活動時間（active_time）：當辨識為四種行為之一時累積\n休息時間（rest_time）：當未辨識到任何行為（如低信心或無動作）時累積\n並進一步統計各行為的次數與持續時間，形成結構化的行為資料（today_stats），作為後續分析與視覺化依據。\n在雲端／系統整合層中，透過 Python 後端（Flask API）將即時推論結果封裝為 JSON 格式，傳送至 Node-RED 平台。Node-RED 負責資料流整合、邏輯處理與視覺化呈現，包含：\n行為統計（時間／次數）\n活動與休息比例\n健康警示（如過度舔舐、頻繁搔抓、活動力下降等）\n最後，在前端 Dashboard（Node-RED ui_template）中，將上述資訊轉換為直觀的圖形化介面，包含時間分配、行為卡片與警示提示，使使用者能即時掌握貓咪狀態。\n整體系統從**感知（姿態偵測）→ 理解（行為分類）→ 判斷（異常與健康評估）→ 呈現（視覺化介面）**形成完整流程，最終目標為建立一套具備實用性與可解釋性的智慧寵物健康監測系統。\n🎯 一句話版本（你之後快速用）\n本系統透過 YOLO 姿態偵測與時序模型分析貓咪行為，並結合 Node-RED 進行資料整合與視覺化，將行為轉換為健康指標與警示，實現貓咪健康的即時監測與早期預警。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\2s.py": {
+  "mtime": 1761652469.0,
+  "size": 10658,
+  "hash": "cab0aea4a975d5eba38bc112d7de8f5f0ba61b6a2ef00bff376bb8b2942a7d0b",
+  "hash_algo": "sha256",
+  "text": "import tkinter as tk\r\nfrom tkinter import ttk\r\nimport random\r\nimport threading\r\nimport time\r\nimport os\r\nimport sys\r\nimport pandas as pd\r\nif getattr(sys, 'frozen', False):\r\n    # exe 運行時，設定 Tcl/Tk 環境變數\r\n    os.environ['TCL_LIBRARY'] = os.path.join(sys._MEIPASS, 'tcl')\r\n    os.environ['TK_LIBRARY'] = os.path.join(sys._MEIPASS, 'tk')\r\n    \r\n# 獲取螢幕大小\r\nroot = tk.Tk()\r\nscreen_width = root.winfo_screenwidth()\r\nscreen_height = root.winfo_screenheight()\r\nroot.destroy()\r\n\r\n# 視窗大小\r\nWINDOW_WIDTH = 400\r\nWINDOW_HEIGHT = 300\r\n\r\n# 生成亂碼函數\r\ndef generate_glitch_text():\r\n    glitch_chars = \"㊣♠♣♥♦▓▒░█▄▀■□●○◎◇◆★☆※卍卐♂♀¿¡‰†‡§¶ΩΨΦΣΠΘΔΛαβγδεζηθικλμνξπρστυφχψω\"\r\n    random_chars = ''.join(random.choice(glitch_chars) for _ in range(random.randint(3, 8)))\r\n    return random_chars\r\n\r\n# 錯誤訊息（混合亂碼和英文）\r\nerror_messages = [\r\n    f\"ERROR: {generate_glitch_text()} DETECTED\",\r\n    f\"VIRUS {generate_glitch_text()}: TROJAN.EXE\",\r\n    f\"{generate_glitch_text()} AT 0x{random.randint(10000, 99999):X}\",\r\n    f\"UNAUTHORIZED {generate_glitch_text()} ACCESS\",\r\n    f\"CRITICAL {generate_glitch_text()} FAILURE\",\r\n    f\"FATAL {generate_glitch_text()} IN KERNEL\",\r\n    f\"DATA {generate_glitch_text()} PROGRESS\",\r\n    f\"{generate_glitch_text()} ENCRYPTION {generate_glitch_text()}\",\r\n    f\"SYSTEM {generate_glitch_text()} COMPROMISED\",\r\n    f\"WARNING: {generate_glitch_text()} DETECTED\",\r\n    f\"{generate_glitch_text()} VIOLATION 0x00000000\",\r\n    f\"{generate_glitch_text()} PROTOCOL {generate_glitch_text()}\",\r\n    f\"NETWORK {generate_glitch_text()} DETECTED\",\r\n    f\"{generate_glitch_text()} MINER ACTIVE\",\r\n    f\"RANSOMWARE {generate_glitch_text()} FILES\",\r\n    f\"{generate_glitch_text()} BACKDOOR {generate_glitch_text()}\",\r\n    f\"ROOTKIT {generate_glitch_text()}...\",\r\n    f\"{generate_glitch_text()} KEYLOGGER {generate_glitch_text()}\",\r\n    f\"FILES {generate_glitch_text()} ENCRYPTED\",\r\n    f\"BITCOIN {generate_glitch_text()} RUNNING\",\r\n    f\"SENDING {generate_glitch_text()} TO SERVER\",\r\n    f\"DOWNLOADING {generate_glitch_text()}\",\r\n    f\"{generate_glitch_text()}電腦{generate_glitch_text()}感染\",\r\n    f\"系統{generate_glitch_text()}加密{generate_glitch_text()}\",\r\n    f\"{generate_glitch_text()}惡意軟體{generate_glitch_text()}\"\r\n]\r\n\r\nwarning_titles = [\r\n    f\"{generate_glitch_text()}警告\",\r\n    \"CRITICAL ERROR\",\r\n    f\"{generate_glitch_text()}病毒\",\r\n    \"SYSTEM ALERT\",\r\n    f\"{generate_glitch_text()}威脅\",\r\n    \"WARNING\",\r\n    f\"{generate_glitch_text()}錯誤\",\r\n    \"VIRUS DETECTED\",\r\n    f\"{generate_glitch_text()}嚴重\",\r\n    \"DANGER\",\r\n    f\"{generate_glitch_text()}偵測\",\r\n    \"INFECTED\"\r\n]\r\n\r\nclass VirusWindow:\r\n    def __init__(self, window_id, manager):\r\n        self.id = window_id\r\n        self.manager = manager\r\n        self.window = tk.Toplevel()\r\n        \r\n        # 隨機位置\r\n        x = random.randint(0, max(0, screen_width - WINDOW_WIDTH))\r\n        y = random.randint(0, max(0, screen_height - WINDOW_HEIGHT))\r\n        self.window.geometry(f\"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{x}+{y}\")\r\n        \r\n        # 隨機標題\r\n        self.window.title(random.choice(warning_titles))\r\n        \r\n        # 隨機樣式\r\n        self.style = random.choice(['red', 'blue', 'yellow'])\r\n        if self.style == 'red':\r\n            self.bg_color = 'black'\r\n            self.fg_color = 'red'\r\n        elif self.style == 'blue':\r\n            self.bg_color = 'black'\r\n            self.fg_color = 'blue'\r\n        else:\r\n            self.bg_color = '#8B0000'\r\n            self.fg_color = 'yellow'\r\n        \r\n        self.window.configure(bg=self.bg_color)\r\n        \r\n        # 防止關閉 - 什麼都不做\r\n        self.window.protocol(\"WM_DELETE_WINDOW\", lambda: None)\r\n        \r\n        # 建立介面\r\n        self.create_widgets()\r\n        \r\n        # 開始動畫\r\n        self.progress = 0\r\n        self.creation_time = time.time()\r\n        self.animate()\r\n        \r\n    def create_widgets(self):\r\n        # 警告標題\r\n        title_label = tk.Label(\r\n            self.window,\r\n            text=\"!!! VIRUS ALERT !!!\",\r\n            font=(\"Courier New\", 20, \"bold\"),\r\n            bg=self.bg_color,\r\n            fg=self.fg_color\r\n        )\r\n        title_label.pack(pady=20)\r\n        \r\n        # 警告圖示框架\r\n        icon_frame = tk.Frame(self.window, bg=self.bg_color)\r\n        icon_frame.pack(pady=10)\r\n        \r\n        # 用Canvas畫X圖示\r\n        self.canvas = tk.Canvas(\r\n            icon_frame,\r\n            width=80,\r\n            height=80,\r\n            bg=self.bg_color,\r\n            highlightthickness=0\r\n        )\r\n        self.canvas.pack()\r\n        \r\n        # 畫圓圈和X\r\n        self.canvas.create_oval(10, 10, 70, 70, outline=self.fg_color, width=3)\r\n        self.canvas.create_line(25, 25, 55, 55, fill=self.fg_color, width=3)\r\n        self.canvas.create_line(55, 25, 25, 55, fill=self.fg_color, width=3)\r\n        \r\n        # 錯誤訊息\r\n        self.error_label = tk.Label(\r\n            self.window,\r\n            text=random.choice(error_messages),\r\n            font=(\"Courier New\", 10),\r\n            bg=self.bg_color,\r\n            fg='white',\r\n            wraplength=350,\r\n            justify='left'\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\2月18日 (3).mp4": {
+  "mtime": 1771428268.0,
+  "size": 15824279,
+  "hash": "96ca1d6383523a8e18bb3a14fe110d8659763fdb4d83113d94478d5165c6bf7e",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\445 (1).html": {
+  "mtime": 1763468861.0,
+  "size": 33889,
+  "hash": "52f58d49e2830f468eb2de3fac27d8b2c811c4d9105096f333b6bfa986b9950b",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\c.h": {
+  "mtime": 1762434112.0,
+  "size": 471682,
+  "hash": "dae22066b8ab584c2b35e77fa26d7c940e49e5110cec25fbf40b135a2b644013",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\問題 1.docx": {
+  "mtime": 1779451155.0,
+  "size": 17641,
+  "hash": "dc7e3a977c28130217fd5ff4425e989220af0fb17a68e191e7386ea6d2635e3e",
+  "hash_algo": "sha256",
+  "text": "問題 1：Node-RED template 太巨大\n你現在：\n一個 ui_template 幾百行\n後期會非常難維護。\n建議：\nCSS 拆 global\nJS 拆 helper\nHTML 分 component\n不然後面：\n甩頭\n耳朵疾病\n體重分析\n歷史圖表\n一加進去會炸。\n問題 2：你現在 REST endpoint 沒有驗證\n任何人都能：\nPOST /yolo_result\n亂送資料。\n建議：\n最少加入：\ntokenapikeysecret\n問題 3：目前是 localhost\n你現在：\n127.0.0.1:5000/stream\n這代表：\n只能本機看。\n未來如果：\nESP32-CAM\nTapo\n遠端 Dashboard\n要改：\n內網IPreverse proxyRTSP relay\n問題 4（論文超重要）\n你現在：\nif (stats.scratch_time > 10)\n這種是：\nhard threshold\n論文會被問：\n為什麼是10秒？\n你之後要：\n文獻支持或\ndataset statistics或\npercentile-based threshold\n不然教授一定問。\n問題 5：目前沒有資料持久化\n你現在全靠：\nmsg.payload\n重開 Node-RED 就沒了。\n之後建議：\nSQLite\n或：\nInfluxDB\n因為你之後一定會想做：\n日統計\n週統計\n趨勢圖\n異常歷史\n我認為你現在已經到哪個階段？\n如果用研究生角度：\n你現在其實已經：\n超過「只有模型訓練」\n進入：\nAIoT 系統整合 prototype\n很多碩論只有：\nYOLO + Accuracy\n但你現在已經有：\ninference pipeline\nUI\nbehavior logic\nhealth estimation\nevent monitoring\nstreaming\nnotification\n這其實已經接近：\n可展示系統\n了。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\暫定論文題目.docx": {
+  "mtime": 1761659180.0,
+  "size": 22878,
+  "hash": "ef920a8c95cf7aae0b1ce3bda209f989bfc9d9aaf7f6d8dcfd1c20cf60721265",
+  "hash_algo": "sha256",
+  "text": "暫定論文題目\n🎓 題目一：\n「基於YOLO與語音回饋的智慧安全帽輔助系統設計」\n💡 研究動機\n工地、機車騎士或外送員常因視野受限而發生事故。若能在安全帽上整合影像辨識與語音警示，可在第一時間提醒使用者避免危險。\n⚙️ 研究方法\n使用 Raspberry Pi 攝影機 + YOLOv8 偵測「來車」、「人員」、「障礙物」。\n將辨識結果透過 MQTT 傳給 ESP32 控制 DFPlayer Mini 播放語音提示（如「左後方有車」）。\n設計可穿戴式原型，並進行延遲與準確度測試。\n🎯 預期成果\n可穿戴智慧安全帽雛形。\n實測 YOLO 模型在移動場景下的準確率與反應時間。\n輕量化 AI 模型在邊緣裝置運行的效能分析。\n🎓 題目二：\n「基於物件偵測與語音提示之智慧防撞行人警示系統」\n💡 研究動機\n城市中手機低頭族與夜間行人事故頻傳。若行人攜帶的裝置能主動偵測前方障礙並語音提醒，可降低碰撞風險。\n⚙️ 研究方法\n使用 YOLOv8 偵測行人、車輛、腳踏車等物體。\nESP32 接收 MQTT 訊息並透過 DFPlayer Mini 語音提醒。\n分析不同距離與光線條件下的辨識效能。\n🎯 預期成果\n建立即時警示系統原型（可手持或穿戴）。\n改進模型的光線適應性與低延遲通訊效能。\n🎓 題目三：\n「結合YOLO與MQTT的智慧停車場監控與語音導引系統」\n💡 研究動機\n停車場常需人工監控與語音指示，若能自動偵測空位與車輛位置並提供語音導引，可提升自動化程度。\n⚙️ 研究方法\n使用 Raspberry Pi 攝影機 + YOLOv8 偵測空車位與車牌位置。\n使用 MQTT 傳送空位資訊至 ESP32 控制端。\n透過 DFPlayer Mini 播放語音引導（如「前方右側有空位」）。\n可選擇整合雲端資料庫（例如 Firebase）記錄即時停車資訊。\n🎯 預期成果\n智慧停車導引系統雛形。\n分析 YOLO 模型於固定監控環境的準確率與即時性。\n🧓 四、長者與弱勢族群照護\n這與導盲概念很接近，但範圍更廣，教授也比較能接受。\n🔹 研究主題建議\n智慧跌倒偵測系統（電腦視覺 / 加速度感測器）\n長者行為追蹤與健康預警 IoT 系統\n智慧拐杖或助行裝置（非導盲）→ 偵測跌倒、提醒用藥、監測心率。\n居家安全監測系統（含瓦斯偵測、異常聲音辨識）\n🎯 一、智慧防護系統主題方向\n主題構想：\n以物聯網與影像辨識為基礎的智慧入侵預警系統（Smart Intrusion Prevention System）\n🧠 可能的技術組合：\n功能\n技術/設備\n說明\n🔍 入侵者偵測\nYOLOv8 + Raspberry Pi\n偵測人形或可疑動作（例如深夜出現人影、破門進入、徘徊等）。\n🧾 行為分析\nOpenCV + Motion Detection\n區分正常家人活動與異常行為（長時間站立、闖入禁止區等）。\n🔈 即時回饋\nESP32 + DFPlayer Mini\n當偵測到入侵，透過語音警報「警告！入侵偵測到！」。\n💡 照明控制\nESP32 控制燈光\n立即開啟室內燈光、嚇阻入侵者。\n📡 遠端通報\nMQTT + Node-RED + Telegram/LINE\n傳送入侵照片與警報訊息給使用者手機。\n📷 錄影取證\nRaspberry Pi Camera\n自動錄影與上傳影像到雲端或本地儲存。\n🧩 可延伸研究議題\n入侵者行為模式辨識\n使用 YOLO 偵測「姿態」、「工具」（如手持刀具）。\n可延伸為「攻擊性行為辨識」。\n智慧門窗感測整合\n加入震動感測器（偵測門窗強行開啟）。\n使用 ESP32 收集訊號並觸發影像分析。\n防搶預警背包 / 攜帶型裝置\n將相同系統縮小，應用在登山、夜跑、單人通勤等場合。\n若偵測到可疑接近行為，立刻發出警示聲與定位資訊。\n📚 參考論文方向（可在 IEEE Xplore 或 Google Scholar 查找）\n類別\n論文範例\n關鍵字建議\n智慧居家安全\n“IoT-Based Smart Home Security System Using Face Recognition”\nsmart home security, IoT, face recognition\n影像入侵偵測\n“Real-time Intruder Detection Using YOLOv5”\nintrusion detection, YOLO, CCTV\n行為辨識\n“Human Activity Recognition for Home Security”\nhuman activity, security surveillance\n緊急通報\n“MQTT-Based IoT Security Alert System”\nMQTT, alert, Raspberry Pi\n💡 若你想聚焦於碩士論文級研究主題：\n可以選擇一個具創新點的核心問題，例如：\n「結合 YOLO 與聲音辨識的雙模態入侵預警系統」\n「基於邊緣運算的低功耗入侵者行為辨識」\n「以 MQTT 為中樞的多裝置協同家庭防護架構」\n是否想讓我幫你篩選幾篇近三年的相關學術論文（IEEE、Springer、ScienceDirect）？我可以幫你找出與「入侵防護」或「家庭安全」有關、並結合 YOLO 或 IoT 的研究方向。\n五、智慧登山輔助系統（擴展你的導盲拐杖構想）\n🎯 題目建議：\n“An Edge-AI-Based Smart Hiking Assistant with Object Detection and Environmental Awareness”\n🧩 研究內容：\n以 YOLO 辨識登山環境中的障礙物、動物或其他登山者。\n加入 GPS 與 MQTT 系統，提供位置／危險區警報。\n探討 AI 模型的運算負載、延遲、電力使用等。\n🚀 可行實作：\nRaspberry Pi 運行 YOLOv8n 偵測；ESP32 控制 DFPlayer Mini 播報語音警示。\n結合 Node-RED 建立 地圖 + 警報 儀表板。\n若想加深學術性，可研究「模型壓縮對偵測延遲與準確率的影響」。\n「基於邊緣AI的登山者行為與危險預測系統」\n內容特點：\n結合 YOLO 偵測＋感測器融合（氣壓、加速度、環境光）\n登山杖內建微型發電模組或跌倒偵測功能\n加入行為分類（姿態辨識、疲勞檢測）\n✅ 優點：創新度高，可發表 IEEE / MDPI Sensors 類期刊⚠️ 缺點：需跨 AI、電路、機構整合三個領域，難度較高\n基於 YOLO 與 MQTT 的智慧居家跌倒監測系統"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\樹梅派環境.docx": {
+  "mtime": 1761399850.0,
+  "size": 53056,
+  "hash": "d59ec534f412a7c66e1bce73a8e3bd3f5b37ef91af6afe62616c2b442db93ae8",
+  "hash_algo": "sha256",
+  "text": "一、在 Raspberry Pi（Linux）安裝 Arduino IDE\n打開終端機（Terminal），輸入以下指令：\nsudo apt install arduino -y\n🪄 二、在 Raspberry Pi 安裝 VS Code\n打開「終端機（Terminal）」並輸入以下指令：\nsudo apt install code -y\n一、圖形介面方式（最像 Word）\nLibreOffice 是 Linux 上最完整的 Office 套件，完全免費，可以直接開啟 .docx、.xlsx、.pptx 等檔案。\n📦 安裝方法：\nsudo apt install libreoffice -y\n安裝後，你可以從選單中找到：\n「Office → LibreOffice Writer」\n它的功能幾乎等同於 Microsoft Word，支援 .doc、.docx、.odt、.rtf 等格式。\n🧩 一、安裝 7-Zip 工具\n打開終端機（Terminal），輸入：\nsudo apt update\nsudo apt install p7zip-full -y\n這會安裝完整版本的 7-Zip，支援 .7z、.zip、.rar、.tar、.gz 等壓縮格式。\n📦 二、壓縮檔案或資料夾\n✅ 壓縮成 .7z 檔案\n7z a output.7z inputfile\n例子：\n7z a project.7z /home/pi/Documents/myproject/\n這會把 myproject 資料夾壓成 project.7z。\n✅ 壓縮成 .zip 檔案\n7z a output.zip inputfile\n例子：\n7z a data.zip *.txt\n這會把目前資料夾裡的所有 .txt 檔打包成 data.zip。\n✅ 壓縮並加密（需要密碼）\n7z a -p123456 secret.7z private_folder/\n這樣解壓時就會要求輸入密碼。\n📂 三、解壓縮\n✅ 解壓 .7z 檔案\n7z x archive.7z\nx 會保持原本的資料夾結構。\n✅ 解壓 .zip 檔案\n7z x archive.zip\n⚙️ 二、安裝 Node-RED\nNode-RED 提供官方安裝腳本，一行指令即可完成所有設定：\nbash <(curl -sL https://raw.githubusercontent.com/node-red/linux-installers/master/deb/update-nodejs-and-nodered)\n這個腳本會自動：\n安裝 / 更新 Node.js\n安裝 Node-RED\n建立系統服務（systemd）\n建立快捷命令 node-red-start、node-red-stop、node-red-restart\n過程大約需要 5–10 分鐘（取決於網速）。\n🚀 三、啟動 Node-RED\n安裝完成後，輸入：\nnode-red-start\n它會啟動 Node-RED 並顯示類似以下訊息：\nStarted flows\nYou can now view the Node-RED editor at:\nhttp://127.0.0.1:1880/\n打開瀏覽器，在 Raspberry Pi 上輸入：\n👉 http://localhost:1880/或用另一台電腦（同一 Wi-Fi 下）輸入：👉 http://<你的樹莓派IP>:1880\n就能看到 Node-RED 的圖形化流程編輯介面了 🎉\n🧩 四、設為開機自動啟動（建議）\n讓 Node-RED 在每次開機時自動啟動：\nsudo systemctl enable nodered.service"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\看板.vbs": {
+  "mtime": 1768638747.0,
+  "size": 110,
+  "hash": "8d68f86eb645bde5524af224b51d219b08e3e298686cdd07eccdaa32dfa4d13e",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\貓咪行為生成提示詞.docx": {
+  "mtime": 1780312979.593969,
+  "size": 19352,
+  "hash": "5eaa73c182f08655b154f06db5d5e7256f72aab1d30f1542a96acc8c0ce27f0f",
+  "hash_algo": "sha256",
+  "text": "真實貓咪搔抓（Scratching）提示詞   //影片\nThe video duration must be exactly 5 seconds.\nThe cat begins in the exact original resting pose and remains naturally still at the beginning of the video.\nAfter a brief still moment, the cat performs a single realistic feline hind-leg scratching behavior directed toward the neck or head area while remaining seated in the same position.\nThe scratching behavior must occur only once during the entire video.\nDo not generate multiple scratching sessions or repeated scratching events later in the video.\nThe scratching motion must resemble authentic real-world cat behavior commonly observed when cats experience itchiness, irritation, or discomfort around the neck or ears.\nThe rear leg repeatedly kicks upward in a fast, rhythmic, continuous scratching motion against the neck/head area.\nThe scratching sequence itself should be one continuous scratching event with no pauses or resets.\nAfter the scratching sequence finishes, the cat naturally stops scratching and remains calm and still for the remainder of the video.\nThe scratching behavior should appear instinctive, biologically accurate, and physically believable rather than animated or scripted.\nDuring scratching:\nthe hind leg moves rapidly in repeated cycles\nthe upper body leans slightly backward naturally\nsubtle body balance adjustments are visible\nthe front paws remain mostly stable for support\nthe tail remains mostly stable with minimal natural movement\nslight fur movement and body inertia are visible\nMaintain realistic feline anatomy, muscle physics, body weight distribution, and natural timing throughout the sequence.\nThe motion must look like genuine real-world footage captured by a normal camera, not AI-generated, not synthetic, and not computer-rendered.\nAvoid any artificial animation feeling, over-smoothed motion, floating limbs, warped anatomy, unrealistic fur behavior, distorted joints, or unnatural temporal interpolation.\nPreserve realistic fur texture, lighting consistency, body proportions, and subtle natural micro-movements.\nThe scratching rhythm should remain naturally fast and continuous like real cats observed in veterinary recordings, home videos, or surveillance footage.\nStatic camera.\nKeep the original framing and environment unchanged.\nFull body visible at all times.\nNo camera movement.\nNo cinematic effects.\nNo slow motion.\nNo exaggerated motion blur.\nNo cartoon-like animation.\nNo stylized rendering.\nNo dramatic acting behavior.\nNo unrealistic body deformation.\n1080p, 30 frames per second.\n真實貓咪甩頭（Head Shaking）提示詞   //影片\nThe video duration must be exactly 5 seconds.\nThe cat performs a highly realistic feline head shaking behavior triggered by sudden ear or skin irritation.\nAt the beginning of the video, the cat maintains the exact original standing posture naturally and remains still.\nWithout any exaggerated preparation movement, the cat suddenly initiates an instinctive rapid head shake commonly seen in real cats experiencing itchiness, ear discomfort, or irritation.\nThe head shaking motion must begin naturally and remain extremely fast, tight, continuous, and physically believable, with rapid left-right oscillation driven by neck inertia and natural muscle movement.\nThe actual shaking motion itself must last exactly 1 seconds only.\nDo not extend the shaking behavior before or after the 1-second interval.\nDo not generate multiple shaking cycles separated by pauses.\nThe shaking sequence should resemble authentic real-world feline behavior observed in veterinary videos, home surveillance footage, or natural pet recordings.\nThe movement must look spontaneous, instinctive, and biologically accurate rather than animated or scripted.\nDuring the shake:\nthe head rotates rapidly side-to-side in continuous motion\nthe ears naturally follow inertia\nslight neck compression and rebound are visible\nminimal secondary body movement is allowed\nthe torso and legs remain mostly stable for balance\nImmediately after the 1-second shaking phase, the cat naturally stops and remains calm in a neutral posture for the remainder of the 5-second video.\nMaintain realistic feline anatomy, weight balance, muscle physics, and natural motion timing throughout the sequence.\nThe video must look like genuine real-world footage captured by a normal camera, not AI-generated, not synthetic, and not computer-rendered.\nAvoid any artificial animation feeling, over-smoothed motion, floating body parts, warped anatomy, distorted fur, unrealistic physics, or unnatural temporal interpolation.\nPreserve realistic fur texture, body proportions, lighting consistency, and natural micro-movements.\nThe motion should contain subtle imperfections naturally found in real camera recordings.\nStatic camera.\nFull body visible at all times.\nNo camera movement.\nNo cinematic effects.\nNo slow motion.\nNo exaggerated motion blur.\nNo cartoon-like animation.\nNo stylized rendering.\nNo dramatic acting behavior.\nNo artificial facial expressions.\nNo unrealistic body deformation.\n1080p,\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\貓科動物搔癢行為與皮膚疾病之病理關聯性及頻率異常評估指南.txt": {
+  "mtime": 1782286381.0590353,
+  "size": 32703,
+  "hash": "36529652c4d8d049a4e873ccb71ff711d2e77ce868db673634fb1d07dc9b323a",
+  "hash_algo": "sha256",
+  "text": "貓科動物搔癢行為與皮膚疾病之病理關聯性及頻率異常評估指南\r\n貓科動物的理毛行為（Grooming behavior）是其與生俱來的複雜生理本能，在演化上具有極其重要的生存意義。透過舌頭上遍佈的向後倒刺狀絲狀乳突（Filiform papillae），貓咪不僅能夠有效清除體表的寄生蟲、灰塵與廢毛，更能藉由唾液的蒸發來調節體溫，並透過重複性的理毛動作釋放腦內啡，達到緩解心理壓力的效果。然而，當理毛、舔舐或後肢搔抓的行為跨越了正常的生理界線，轉變為強迫性、破壞性的病理狀態時，往往是潛在皮膚疾病或系統性免疫失衡的首要臨床警訊。由於貓咪天性善於隱藏自身的病痛與不適，且其搔癢行為常以過度舔毛的隱蔽形式表現，導致飼主極易將其合理化為單純的愛乾淨，進而錯失了早期診斷與醫療介入的黃金時機。   \r\n\r\n本報告旨在針對貓咪抓癢行為與皮膚病理機制之間的深度關聯進行全面性的剖析，並系統性地建立一套基於時間頻率與行為模式的異常評估標準。透過導入貓專用搔癢視覺模擬量表（VAScat）等量化臨床工具，結合外寄生蟲感染、異位性皮膚病候群（FASS）、微生態與腸膚軸（Gut-Skin Axis）失衡等多維度病因，為獸醫皮膚病學與高階臨床照護提供詳盡、精確且具實證醫學基礎的診斷與處置指南。\r\n\r\n生理與病理理毛之時間邊界與頻率評估\r\n精確區分貓咪的抓癢行為是屬於正常的生理性清潔，抑或是病理性的異常搔癢，首要任務是建立一套量化的基準線（Baseline）。在正常的生理狀態下，一隻健康的貓咪每天會將大約百分之三十至百分之五十的清醒時間投入在理毛與自我清潔上。若將其換算為具體的行為表現，健康的貓咪每日約花費一小時左右進行全身性的理毛，而單純使用後肢進行搔抓（Scratching）的總時間，每日通常不會超過一分鐘。這種正常的理毛行為在空間分佈上呈現均勻的全身性覆蓋，在時間維度上則是零散、分段式地進行，通常發生在進食完畢、睡醒後或玩耍的間隙，整體姿態顯得自然且放鬆，絕不會呈現強迫性的連續動作。   \r\n\r\n當理毛行為跨越了生理界線，進入病理性的「搔癢（Pruritus）」狀態時，其頻率與時間軸的表現會出現顯著的異常。異常的搔癢不再只是單純次數的增加，而是反映在行為的強迫性、中斷日常作息的程度，以及對表皮屏障造成的實質物理性破壞。臨床上，評估頻率與時間異常的核心指標在於觀察貓咪是否會因為難以忍受的癢感，而突然中斷當下正在進行的核心生存活動，例如進食、深層睡眠或是專注的玩耍。若一隻貓咪幾乎每隔數分鐘便停下手邊動作開始瘋狂舔舐或搔抓，且長時間無法停止，這便構成了明顯的異常警訊。此外，異常的搔癢通常不再是全身性的均勻理毛，而是強迫性地反覆針對單一特定解剖區域進行破壞性的舔咬或搔抓，形成「癢感引發搔抓，搔抓破壞表皮屏障，屏障受損引發更嚴重發炎與癢感」的惡性循環。   \r\n\r\n為了協助臨床工作者與飼主更清晰地界定這兩者的差異，以下透過結構化資料呈現生理性與病理性理毛在多個維度上的具體特徵對比。\r\n\r\n評估維度\t正常生理性理毛（Grooming）\t異常病理性搔癢（Pruritus）\t臨床病理意義\r\n時間佔比與頻率\t佔清醒時間 30%∼50%，後肢搔抓每日 <1 分鐘。\t理毛時間顯著增加，搔抓頻繁且連續，每隔數分鐘即發作一次。\t超越正常清潔需求，神經末梢受到持續性的發炎介質刺激。\r\n行為之連續性\t零散、片段式進行，如飯後或睡醒時的短暫清潔。\t具有強迫性，長時間停不下來，陷入反覆搔抓的行為迴圈。\t癢感閾值被突破，大腦持續接收強烈的周邊神經痛癢訊號。\r\n日常作息干擾\t絕對不會為了理毛而中斷睡眠、進食或玩耍。\t經常從睡夢中醒來抓癢，或中斷進食與玩耍進行啃咬。\t嚴重影響生活品質，為中度至重度皮膚疾病之明確指標。\r\n解剖區域分佈\t均勻覆蓋全身，無特定執著點。\t高度集中於特定部位（如腹部、大腿內側、耳根、尾巴根部）。\t提示局部性的病原體感染（如耳疥蟲、跳蚤）或特定過敏反應。\r\n表皮屏障完整性\t毛髮柔順，無脫毛，皮膚表面平整無紅腫。\t出現局部禿毛、斷毛、紅斑、皮屑、結痂或組織滲出液。\t皮膚防禦機制崩潰，極易併發細菌或酵母菌的繼發性感染。\r\n臨床量化評估：貓專用搔癢視覺模擬量表（VAScat）之應用\r\n在傳統的獸醫診療過程中，飼主對於貓咪搔癢程度的描述往往帶有高度的主觀性，這使得臨床醫師難以精確追蹤疾病的嚴重程度與治療成效。為解決此一痛點，國際獸醫皮膚病學術界針對貓咪特殊的行為模式，發展出了具備高度信度與效度的貓專用搔癢視覺模擬量表（Visual Analog Scale for feline pruritus severity scoring，簡稱 VAScat）。   \r\n\r\n與犬隻或人類單一維度的搔癢評估系統不同，貓咪表達皮表不適的方式呈現高度的二元分化特徵。部分貓咪在面對神經刺激時，傾向於頻繁地使用後肢進行「搔抓（Scratching）」；然而，另一大部分的貓咪則傾向於使用粗糙的舌頭進行過度「舔舐（Licking）」，甚至啃咬。由於這兩種行為表徵在臨床表現上截然不同，若採用單一量表將無法完整捕捉貓咪的搔癢輪廓。研究數據顯示，VAS 舔舐分數與 VAS 搔抓分數之間的皮爾森相關係數（Pearson's r）僅為 0.26，這在統計學上強烈證實了兩種量表測量的是搔癢的不同表現形式，支持了雙軌評估系統的絕對必要性。   \r\n\r\n因此，VAScat 創新地採用了「雙視覺模擬量表（Double VAS）」架構，分別針對「舔舐」與「搔抓」兩種行為，給予 0 至 10 分的獨立行為描述評分。在臨床數據整合時，系統會自動提取這兩項評分中的最高數值，作為該病患的總搔癢指數（VAS-max），其數學定義表示為 VAS \r\nmax\r\n​\r\n =max(VAS \r\nlicking\r\n​\r\n ,VAS \r\nscratching\r\n​\r\n )。這種取最大值的邏輯能確保無論貓咪是偏向哪一種行為模式，其最嚴重的不適狀態都能被如實記錄。   \r\n\r\nVAScat 的分數級距搭配了極為具體的行為描述（Behavioural descriptors），使得飼主能客觀地對照貓咪過去二十四小時內的真實狀態。以下為 VAScat 評分系統在臨床上的結構化應用標準：   \r\n\r\n評分級距 (0-10)\t舔舐行為之嚴重度描述 (Licking)\t搔抓行為之嚴重度描述 (Scratching)\t臨床介入與病理意義\r\n0 分\t健康貓咪的正常理毛狀態，舔舐從不導致脫毛。\t健康貓咪的正常搔抓（每日最多 1 分鐘），無皮損。\t生理屏障完整，無需醫療介入。\r\n1 - 2 分 (極輕度)\t理毛頻率略高於以往，偶爾舔毛，但從未導致任何毛髮脫落。\t搔抓頻率略高於以往，屬於輕微且偶發性的搔抓，無皮膚損傷。\t輕微的環境刺激，可透過日常梳理與居家環境除濕進行初步控制。\r\n3 - 4 分 (輕度)\t從不因舔毛而中斷睡眠或進食；偶爾躲藏；舔舐極少導致脫毛。\t從不因搔抓而中斷睡眠或進食；偶爾躲藏；搔抓極少導致皮膚病變。\t神經末梢已開始釋放癢感訊號，需密切監控並排查潛在過敏原。\r\n5 - 6 分 (中度)\t經常躲藏，有時會因想舔毛而從睡眠中醒來，但不中斷進食；常導致局部脫毛。\t經常躲藏，有時會因想抓癢而從睡眠中醒來，但不中斷進食；常導致破皮結痂。\t癢感已顯著干擾生活品質，表皮屏障受損，必須尋求獸醫進行鑑別診斷。\r\n7 - 8 分 (重度)\t經常因舔毛而中斷進食、玩耍或從睡眠中醒來；頻繁躲藏；極頻繁導致大面積脫毛。\t經常因搔抓而中斷進食、玩耍或從睡眠中醒來；頻繁躲藏；極頻繁導致嚴重皮損。\t強烈且持續的發炎反應，極可能伴隨組織潰瘍與繼發性細菌感染。\r\n9 - 10 分 (極重度)\t在看診時仍持續舔毛，近乎不間斷；持續躲藏；不可避免地造成嚴重自殘性脫毛。\t在看診時仍持續搔抓，近乎不間斷；持續躲藏；不可避免地造成嚴重皮膚流血與損傷。\t災難性的神經性與免疫性崩潰，伴隨極大的心理壓力，需立即給予強效藥物阻斷。\r\n在臨床治療的監控過程中，VAScat 分數被廣泛應用於評估藥物療效。若在給藥後四至八週內，病患的 VAS-max 評分下降幅度超過 50%，或者絕對分數降至 2 分（極輕度）以下，在臨床實證上即被定義為達到臨床相關的治療成功閾值。除了 VAScat 之外，獸醫師亦常合併使用 SCORFAD（貓過敏性皮膚炎評分指數）或 CADESI-4（犬貓異位性皮膚炎嚴重度指數）等工具，針對紅斑、苔蘚化、脫毛與表皮剝落等實質病灶進行客觀評分，以達到全方位的病理監控。   \r\n\r\n搔癢行為與潛在皮膚疾病之深層病理關聯\r\n貓咪的過度抓癢並非單一獨立的疾病實體，而是一種由多種複雜、甚至是相互交織的潛在病理機制所引發的臨床症狀。在臨床鑑別診斷上，必須深入探究導致表皮神經末梢活化的根本原因，其主要涵蓋了寄生蟲感染、過敏與免疫失調、微生物繼發感染、內分泌代謝異常，以及心因性神經異常等五大核心領域。   \r\n\r\n寄生蟲感染引發之極度過敏與搔癢\r\n外寄生蟲感染是導致貓咪出現急性、劇烈且難以忍受之搔癢的最常見原發性病因。寄生蟲不僅透過物理性的挖掘與叮咬破壞表皮，其唾液與代謝產物更是極強的抗原，會誘發宿主強烈的免疫風暴。\r\n\r\n跳蚤（Ctenocephalides felis）是引發貓咪皮膚問題的頭號元兇，其叮咬所引發的跳蚤過敏性皮膚炎（Flea Allergy Dermatitis, FAD）是臨床上最棘手的疾病之一。當跳蚤吸血時，會將含有多種致敏蛋白質、酶類與抗凝血物質的唾液注入貓咪體內。對於具有過敏體質的貓咪而言，這會同時觸發第一型（立即型，由 IgE 介導）以及第四型（遲發型，由 T 細胞介導）的超敏反應。其結果是，即便環境中僅有極少數的一兩隻跳蚤，也能在貓咪身上引發猶如星火燎原般的全身性劇烈搔癢，其 VAScat 評分常輕易飆升至八分以上。FAD 的典型病灶分佈於尾巴根部、四肢後方與腹部內側，表現為如同青春痘般密集分佈的粟粒狀丘疹，梳理毛髮時常可發現黑色的跳蚤糞便，遇水即化為血紅色的暈痕。   \r\n\r\n耳疥蟲（Otodectes cynotis）則是另一種極為常見的寄生蟎蟲，主要棲息於貓咪的外耳道深處。耳疥蟲並不深入組織，而是利用其口器刺穿表皮，吸食滲出的淋巴液與組織液維生。其活動與分泌的毒素會引發耳道上皮的嚴重發炎，導致貓咪出現極度頻繁的甩頭與瘋狂抓扒耳部的行為，嚴重者常因微血管破裂而併發耳血腫（Otohematoma）。臨床檢查時，可於耳道內觀察到大量如咖啡渣般深黑色、厚重的結痂與分泌物。此外，貓疥癬蟲（Notoedres cati）雖然盛行率較低，但其傳染性與致病力極高。疥癬蟲會在角質層內挖掘隧道產卵，引發劇烈難耐的搔癢，病變多從耳廓邊緣、面部與頸部開始，引發嚴重的角質增生、發紅與脫毛，貓咪常因無節制地搔抓而導致患部出血化膿。   \r\n\r\n貓異位性皮膚病候群（FASS）與免疫過度活化\r\n當臨床上透過驅蟲治療排除了寄生蟲感染的可能性後，慢性且反覆發作的過敏反應便成為搔癢的核心病因。近年來，國際動物過敏疾病委員會（ICADA）逐漸將由環境與食物抗原所引起的貓咪過敏性皮膚炎，統稱為「貓異位性皮膚病候群（Feline Atopic Skin Syndrome, FASS）」。FASS 具有高度的遺傳背景與個體體質差異，其本質是免疫系統對於環境中無害的物質產生了錯誤且過度放大的攻擊反應。   \r\n\r\n食物過敏（Adverse Food Reaction）是貓咪免疫系統對飲食中特定的大分子蛋白質（如雞肉、牛肉、魚類或乳製品）所產生的異常反應。這種過敏可能在貓咪生命中的任何階段突然發病，但通常需要數週至數個月的持續接觸才會完成致敏過程，因此較少見於一歲以下的幼貓。食物過敏的臨床表現具有一定的特異性，常強烈集中於頭頸部的劇烈搔癢（Head and neck pruritus），且有部分病例會同步伴隨腸胃道症狀，如慢性軟便或嘔吐。   \r\n\r\n環境過敏（Atopic Dermatitis）則是免疫系統對吸入性或接觸性的環境過敏原（如花粉、塵蟎、黴菌孢子或化學清潔劑）產生了由 IgE 抗體介導的過敏\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\功能測試\\🐈 貓咪姿態關鍵點.docx": {
+  "mtime": 1780215535.5993898,
+  "size": 19241,
+  "hash": "eaa1a29873ff2d4d8ffa38f2896bcbcbd85e90bcf39cc37b9e779c47b42cf6fa",
+  "hash_algo": "sha256",
+  "text": "🐈 貓咪姿態關鍵點（中英文 + 標準命名）\n✅ 頭部 Head (3 points)\n中文名稱\n英文名稱\nYOLO 寫法（建議）\n鼻子\nnose\n左耳尖\nleft_ear_tip\n右耳尖\nright_ear_tip\n✅ 身體 Body (3 points)\n中文名稱\n英文名稱\nYOLO 寫法\n胸口（胸腔中心）\nchest\n中背（背中段）\nmid_back\n臀部（髖部前端）\nhip\n✅ 四肢 Limbs （四肢各 2 點，共 8 點\n中文名稱\nYOLO 寫法\n左前腿肘部\nleft_front_elbow\n左前爪\nleft_front_paw\n右前腿肘部\nright_front_elbow\n右前爪\nright_front_paw\n中文名稱\nYOLO 寫法\n左後腿膝部（或後腿中段）\nleft_hind_knee\n左後爪\nleft_hind_paw\n右後腿膝部\nright_hind_knee\n右後爪\nright_hind_paw\n✅ 尾巴 Tail（3 點）\n中文名稱\n英文名稱\nYOLO 寫法\n尾巴根部\ntail_base\n尾巴中段\ntail_mid\n尾巴尖端\ntail_tip\n📌 全部 Keypoints 清單（依建議順序排列 — YOLO Ready）\n[\n👉 總點數：17 點（非常適合 YOLOv8/YOLOv9 Pose）\nCAT_SKELETON = [\n# 頭部\n(0, 1),   # nose → left ear\n(0, 2),   # nose → right ear\n# 頭 → 身體\n(0, 3),   # nose → chest\n(3, 4),   # chest → mid_back\n(4, 5),   # mid_back → hip\n# 前左腿\n(3, 6),   # chest → left front elbow\n(6, 7),   # left elbow → left paw\n# 前右腿\n(3, 8),   # chest → right front elbow\n(8, 9),   # right elbow → right paw\n# 後左腿\n(5, 10),  # hip → left hind knee\n(10, 11), # left knee → left hind paw\n# 後右腿\n(5, 12),  # hip → right hind knee\n(12, 13), # right knee → right hind paw\n# 尾巴\n(5, 14),  # hip → tail base\n(14, 15), # tail base → tail mid\n(15, 16), # tail mid → tail tip\n頭部連線：0-1, 0-2, 1-2\n身體連線：0-3, 3-4, 4-5\n前肢：3-6, 6-7, 3-8, 8-9\n後肢：5-10, 10-11, 5-12, 12-13\n尾巴接身體：5-14\n尾巴末端：14-15, 15-16\n發情 懷孕 糖尿病 心臟病 關節炎 後腿血栓 嘔吐 耳璊 腹痛 皮膚病，(上述會指向那些相同的姿勢?請幫我整理)"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\2s.py": {
+  "mtime": 1761652469.0,
+  "size": 10658,
+  "hash": "cab0aea4a975d5eba38bc112d7de8f5f0ba61b6a2ef00bff376bb8b2942a7d0b",
+  "hash_algo": "sha256",
+  "text": "import tkinter as tk\r\nfrom tkinter import ttk\r\nimport random\r\nimport threading\r\nimport time\r\nimport os\r\nimport sys\r\nimport pandas as pd\r\nif getattr(sys, 'frozen', False):\r\n    # exe 運行時，設定 Tcl/Tk 環境變數\r\n    os.environ['TCL_LIBRARY'] = os.path.join(sys._MEIPASS, 'tcl')\r\n    os.environ['TK_LIBRARY'] = os.path.join(sys._MEIPASS, 'tk')\r\n    \r\n# 獲取螢幕大小\r\nroot = tk.Tk()\r\nscreen_width = root.winfo_screenwidth()\r\nscreen_height = root.winfo_screenheight()\r\nroot.destroy()\r\n\r\n# 視窗大小\r\nWINDOW_WIDTH = 400\r\nWINDOW_HEIGHT = 300\r\n\r\n# 生成亂碼函數\r\ndef generate_glitch_text():\r\n    glitch_chars = \"㊣♠♣♥♦▓▒░█▄▀■□●○◎◇◆★☆※卍卐♂♀¿¡‰†‡§¶ΩΨΦΣΠΘΔΛαβγδεζηθικλμνξπρστυφχψω\"\r\n    random_chars = ''.join(random.choice(glitch_chars) for _ in range(random.randint(3, 8)))\r\n    return random_chars\r\n\r\n# 錯誤訊息（混合亂碼和英文）\r\nerror_messages = [\r\n    f\"ERROR: {generate_glitch_text()} DETECTED\",\r\n    f\"VIRUS {generate_glitch_text()}: TROJAN.EXE\",\r\n    f\"{generate_glitch_text()} AT 0x{random.randint(10000, 99999):X}\",\r\n    f\"UNAUTHORIZED {generate_glitch_text()} ACCESS\",\r\n    f\"CRITICAL {generate_glitch_text()} FAILURE\",\r\n    f\"FATAL {generate_glitch_text()} IN KERNEL\",\r\n    f\"DATA {generate_glitch_text()} PROGRESS\",\r\n    f\"{generate_glitch_text()} ENCRYPTION {generate_glitch_text()}\",\r\n    f\"SYSTEM {generate_glitch_text()} COMPROMISED\",\r\n    f\"WARNING: {generate_glitch_text()} DETECTED\",\r\n    f\"{generate_glitch_text()} VIOLATION 0x00000000\",\r\n    f\"{generate_glitch_text()} PROTOCOL {generate_glitch_text()}\",\r\n    f\"NETWORK {generate_glitch_text()} DETECTED\",\r\n    f\"{generate_glitch_text()} MINER ACTIVE\",\r\n    f\"RANSOMWARE {generate_glitch_text()} FILES\",\r\n    f\"{generate_glitch_text()} BACKDOOR {generate_glitch_text()}\",\r\n    f\"ROOTKIT {generate_glitch_text()}...\",\r\n    f\"{generate_glitch_text()} KEYLOGGER {generate_glitch_text()}\",\r\n    f\"FILES {generate_glitch_text()} ENCRYPTED\",\r\n    f\"BITCOIN {generate_glitch_text()} RUNNING\",\r\n    f\"SENDING {generate_glitch_text()} TO SERVER\",\r\n    f\"DOWNLOADING {generate_glitch_text()}\",\r\n    f\"{generate_glitch_text()}電腦{generate_glitch_text()}感染\",\r\n    f\"系統{generate_glitch_text()}加密{generate_glitch_text()}\",\r\n    f\"{generate_glitch_text()}惡意軟體{generate_glitch_text()}\"\r\n]\r\n\r\nwarning_titles = [\r\n    f\"{generate_glitch_text()}警告\",\r\n    \"CRITICAL ERROR\",\r\n    f\"{generate_glitch_text()}病毒\",\r\n    \"SYSTEM ALERT\",\r\n    f\"{generate_glitch_text()}威脅\",\r\n    \"WARNING\",\r\n    f\"{generate_glitch_text()}錯誤\",\r\n    \"VIRUS DETECTED\",\r\n    f\"{generate_glitch_text()}嚴重\",\r\n    \"DANGER\",\r\n    f\"{generate_glitch_text()}偵測\",\r\n    \"INFECTED\"\r\n]\r\n\r\nclass VirusWindow:\r\n    def __init__(self, window_id, manager):\r\n        self.id = window_id\r\n        self.manager = manager\r\n        self.window = tk.Toplevel()\r\n        \r\n        # 隨機位置\r\n        x = random.randint(0, max(0, screen_width - WINDOW_WIDTH))\r\n        y = random.randint(0, max(0, screen_height - WINDOW_HEIGHT))\r\n        self.window.geometry(f\"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{x}+{y}\")\r\n        \r\n        # 隨機標題\r\n        self.window.title(random.choice(warning_titles))\r\n        \r\n        # 隨機樣式\r\n        self.style = random.choice(['red', 'blue', 'yellow'])\r\n        if self.style == 'red':\r\n            self.bg_color = 'black'\r\n            self.fg_color = 'red'\r\n        elif self.style == 'blue':\r\n            self.bg_color = 'black'\r\n            self.fg_color = 'blue'\r\n        else:\r\n            self.bg_color = '#8B0000'\r\n            self.fg_color = 'yellow'\r\n        \r\n        self.window.configure(bg=self.bg_color)\r\n        \r\n        # 防止關閉 - 什麼都不做\r\n        self.window.protocol(\"WM_DELETE_WINDOW\", lambda: None)\r\n        \r\n        # 建立介面\r\n        self.create_widgets()\r\n        \r\n        # 開始動畫\r\n        self.progress = 0\r\n        self.creation_time = time.time()\r\n        self.animate()\r\n        \r\n    def create_widgets(self):\r\n        # 警告標題\r\n        title_label = tk.Label(\r\n            self.window,\r\n            text=\"!!! VIRUS ALERT !!!\",\r\n            font=(\"Courier New\", 20, \"bold\"),\r\n            bg=self.bg_color,\r\n            fg=self.fg_color\r\n        )\r\n        title_label.pack(pady=20)\r\n        \r\n        # 警告圖示框架\r\n        icon_frame = tk.Frame(self.window, bg=self.bg_color)\r\n        icon_frame.pack(pady=10)\r\n        \r\n        # 用Canvas畫X圖示\r\n        self.canvas = tk.Canvas(\r\n            icon_frame,\r\n            width=80,\r\n            height=80,\r\n            bg=self.bg_color,\r\n            highlightthickness=0\r\n        )\r\n        self.canvas.pack()\r\n        \r\n        # 畫圓圈和X\r\n        self.canvas.create_oval(10, 10, 70, 70, outline=self.fg_color, width=3)\r\n        self.canvas.create_line(25, 25, 55, 55, fill=self.fg_color, width=3)\r\n        self.canvas.create_line(55, 25, 25, 55, fill=self.fg_color, width=3)\r\n        \r\n        # 錯誤訊息\r\n        self.error_label = tk.Label(\r\n            self.window,\r\n            text=random.choice(error_messages),\r\n            font=(\"Courier New\", 10),\r\n            bg=self.bg_color,\r\n            fg='white',\r\n            wraplength=350,\r\n            justify='left'\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\2月18日 (3).mp4": {
+  "mtime": 1771428268.0,
+  "size": 15824279,
+  "hash": "96ca1d6383523a8e18bb3a14fe110d8659763fdb4d83113d94478d5165c6bf7e",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\2月20日.mp4": {
+  "mtime": 1771582381.0,
+  "size": 24930449,
+  "hash": "f75e1e640a97ed57e7eeaf91360f2c63c2eadf3f321c15a6d4152b84f846c795",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\3712b402-1960-4d2a-ab3d-e55644f4b145.png": {
+  "mtime": 1768986148.0,
+  "size": 1336166,
+  "hash": "b9f61ffd4ba421a8ec9cbc9f32ef57712e5c3bb5e2cb43398ccb1648dcd0bdeb",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\3月25日.mp4": {
+  "mtime": 1774414665.0,
+  "size": 130695792,
+  "hash": "32a11980401a5e608276c55cc6bfeb7ce2fa3276faaa48d0cc75d1240b2a1102",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\445 (1).html": {
+  "mtime": 1763468861.0,
+  "size": 33889,
+  "hash": "52f58d49e2830f468eb2de3fac27d8b2c811c4d9105096f333b6bfa986b9950b",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\445.docx": {
+  "mtime": 1772860920.0,
+  "size": 22751,
+  "hash": "ade651cb886b0d844b93d7ae9b3c97a877fad64f0baf5826384e89339d175243",
+  "hash_algo": "sha256",
+  "text": "明白了，你說的情況是：射精後感到累，而且勃起硬度也明顯下降。這兩件事通常是互相關聯的，而且對很多 20 多歲男性來說，也可能是正常現象，但也值得仔細分析。\n1️⃣ 荷爾蒙與勃起硬度\nTestosterone（睪固酮） 是男性性慾和勃起硬度的核心\n青春期到 20 出頭時，睪固酮水平高峰，勃起硬度和頻率都很明顯\n24 歲左右，睪固酮開始慢慢穩定，如果生活作息不好（熬夜、壓力、久坐、缺乏運動）：\n勃起硬度會下降\n射精後疲倦感會更明顯\n這不代表睪固酮低，只是荷爾蒙和生活方式的平衡影響了勃起表現\n2️⃣ 血液循環影響勃起\n勃起需要陰莖海綿體充血\n心血管健康、血流循環、體脂比例都會影響硬度\n長時間久坐或缺乏運動的人可能會感覺硬度下降\n3️⃣ 神經系統疲勞\n成年後大腦對性高潮的反應更敏感\n射精後自律神經轉為副交感（休息模式） → 身體自然放鬆\n如果本身精神疲勞或壓力大 → 勃起硬度會更低，射精後更容易想睡\n4️⃣ 心理因素\n壓力、焦慮或對自己表現的擔心，都會讓勃起硬度下降\n精神緊張時，大腦會減少性刺激的神經反應\n✅ 綜合建議\n生活作息：睡眠充足、減少熬夜\n運動：重量訓練 + 有氧運動可改善血流與荷爾蒙\n減壓：壓力大、焦慮會直接影響勃起\n骨盆底肌訓練：Kegel 運動能改善硬度與控制力\n💡補充：如果你發現 勃起硬度明顯下降到影響性生活，或伴隨 晨勃消失、性慾下降，建議做個 睪固酮檢測 + 血液循環檢查，排除生理問題。\n我可以幫你整理一個 24 歲男性改善勃起硬度和疲倦感的實用方法清單，從生活、運動到飲食都包含，效果通常比想像中快。\n你想要我整理嗎？\n好的\n好，我幫你整理一個 針對 24 歲男性改善勃起硬度與射精後疲倦感的完整方法清單，從生活、運動到飲食都有實用建議。\n1️⃣ 生活習慣調整\n方法\n作用\n建議做法\n睡眠充足\n睪固酮分泌和自律神經恢復\n每晚 7–9 小時，固定作息\n減少壓力\n高壓會抑制性慾和勃起硬度\n冥想、深呼吸、適度休息\n戒煙限酒\n煙酒影響血管和血流\n限量飲酒、戒煙可改善硬度\n控制體脂\n過高體脂會降低睪固酮\n每週運動 + 健康飲食\n2️⃣ 運動建議\n運動類型\n作用\n頻率\n重量訓練（深蹲、硬舉、臥推）\n提升睪固酮、全身血流\n每週 2–3 次\n有氧運動（慢跑、游泳、快走）\n改善心血管健康、陰莖血流\n每週 2–3 次，每次 20–40 分鐘\n骨盆底肌訓練（Kegel）\n提升勃起硬度和控制射精\n每天 2–3 組，每組 10–15 下\n3️⃣ 飲食建議\n高蛋白質：雞胸肉、蛋、魚 → 支持荷爾蒙生成\n健康脂肪：堅果、橄欖油、深海魚 → 改善睪固酮水平\n多纖維蔬果：幫助血管健康\n避免過量加工食品和糖：影響血管彈性和血流\n4️⃣ 心理調節\n性慾和勃起也受大腦影響\n建議：\n避免過度依賴色情影片 → 可提高自然勃起敏感度\n放鬆心態，不急於每次「完美表現」\n透過伴侶或自我探索建立舒適感\n5️⃣ 其他補充\n晨勃檢查：晨勃仍存在 → 生理功能正常\n必要時檢查：如果勃起硬度下降明顯或性慾下降，可做血液檢查（睪固酮、血糖、血脂）\n漸進改善：運動、作息、飲食調整約 4–6 週會開始有明顯改善\n💡 重點提醒\n你的疲倦感 + 勃起硬度下降，大多是生活方式、荷爾蒙波動和自律神經反應的綜合結果\n適當運動、作息和飲食調整通常就能改善\n青春期後的自然生理變化也會讓射精後疲倦更明顯，但不代表健康有問題\n如果你願意，我可以幫你做一個每天可操作的 7 天改善計畫表，把運動、飲食、睡眠和骨盆底肌訓練都排進去，每天都知道該做什麼，效果會更快。\n你想要我幫你做這個計畫表嗎？\n好的\n太好了，我幫你做一個 7 天可操作的改善勃起硬度 + 射精後疲倦感計畫表，每天都有清楚的運動、飲食、睡眠和骨盆底肌訓練安排，方便你直接照做。\n📅 7 天改善計畫表（針對 24 歲男性）\n天數\n運動\n骨盆底肌 (Kegel)\n飲食/補充\n作息/其他建議\n第1天\n重量訓練：深蹲 3×10、臥推 3×10；快走 20 分鐘\n2 組 × 10 下\n高蛋白早餐：蛋 + 燕麥；多喝水\n睡眠 7–8 小時；放鬆 10 分鐘冥想\n第2天\n有氧：慢跑 30 分鐘\n3 組 × 12 下\n午餐多吃蔬菜 + 瘦肉；堅果作零食\n晚上避免手機刺激；固定睡眠時間\n第3天\n重量訓練：硬舉 3×10、肩推 3×12\n2 組 × 10 下\n深海魚晚餐 + 全穀類\n早晨伸展 10 分鐘；睡前深呼吸放鬆\n第4天\n有氧：游泳或快走 25 分鐘\n3 組 × 12 下\n高纖蔬菜 + 雞胸肉\n7–8 小時睡眠；避免熬夜\n第5天\n重量訓練：深蹲 3×12、臥推 3×12；快走 20 分鐘\n2 組 × 10 下\n多喝水；午餐加豆類蛋白\n晚上拉伸 10 分鐘，幫助血液循環\n第6天\n有氧：慢跑 30 分鐘\n3 組 × 12 下\n晚餐高蛋白 + 健康脂肪\n早晨 10 分鐘伸展，晚上冥想 5–10 分鐘\n第7天\n全身拉伸 + 核心肌群 20 分鐘\n3 組 × 12 下\n全天均衡飲食，蔬果 + 高蛋白\n睡眠 7–8 小時；週末放鬆，降低壓力\n🔑 執行重點\n運動強度：重量訓練用自己能承受的重量，不要追求極限，保持動作標準最重要\nKegel 運動：感覺像是在「收縮肛門和陰莖底部肌肉」，收緊 5 秒 → 放鬆 5 秒\n飲食：高蛋白 + 健康脂肪 + 蔬果，多喝水\n睡眠與放鬆：自律神經恢復直接影響勃起硬度與疲倦感\n💡 附加小技巧\n避免長時間久坐 → 每 1 小時起身走動 2–3 分鐘\n減少過度依賴色情刺激 → 提高自然勃起敏感度\n運動後拉伸 → 改善血液循環，幫助陰莖充血"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\465575738_1538107340175990_4163096877351459045_n.jpg": {
+  "mtime": 1732077506.0,
+  "size": 131123,
+  "hash": "cd9a6f24402d78e46567edc3d30650dd19ce686af054d67e9647daa349dc6612",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\6449d7c1-1324-4d31-adf8-e3d81de5d59b.png": {
+  "mtime": 1768989698.0,
+  "size": 5851230,
+  "hash": "69cbe04ce258119f9ca185ecedc3de142d7cbbebd5a58d21314d647517ab1e90",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\a.h": {
+  "mtime": 1762431137.0,
+  "size": 471682,
+  "hash": "db05482fb7c5712778189665a3420fbd02ecb1c09f91361ddf13036bcd9f7388",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\AI智慧輔助導盲杖之產品設計與商業模式研究.pdf": {
+  "mtime": 1762267514.0,
+  "size": 1628176,
+  "hash": "2d0d52cb3e60d26078584537bc7331826b674a89cf7d6c3990779c5069e49111",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\b.h": {
+  "mtime": 1762431181.0,
+  "size": 471683,
+  "hash": "ffb559a6e0c3ea94a9e798da8041ca278f2ba91ea0b9b59785c197a1594d06a9",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\c.h": {
+  "mtime": 1762434112.0,
+  "size": 471682,
+  "hash": "dae22066b8ab584c2b35e77fa26d7c940e49e5110cec25fbf40b135a2b644013",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\ChatGPT-YOLO Pose 分析 (1).pdf": {
+  "mtime": 1773413650.0,
+  "size": 1461890,
+  "hash": "a0052814264dce66056d67705110322316025c1213c77505291a7eec3d97ec02",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\ChatGPT-之川碩論討論 (1).pdf": {
+  "mtime": 1768781387.0,
+  "size": 7810602,
+  "hash": "672c5a3734a5e810ddd9b20590af5f3a3ed2bc7c896b6147af84b8bfe3528b63",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\d.h": {
+  "mtime": 1762432703.0,
+  "size": 20553,
+  "hash": "1c94f778d549370c19a38d93391cba4e279b6c438a60335d4a709a76bf94d054",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\desktop.ini": {
+  "mtime": 1787046311.6689875,
+  "size": 724,
+  "hash": "6f9d335d47e68323d9fc0b09a6fd0f46eae2f299092df8017677fc6de793a656",
+  "hash_algo": "sha256",
+  "text": "��\r\u0000\n\u0000[\u0000.\u0000S\u0000h\u0000e\u0000l\u0000l\u0000C\u0000l\u0000a\u0000s\u0000s\u0000I\u0000n\u0000f\u0000o\u0000]\u0000\r\u0000\n\u0000L\u0000o\u0000c\u0000a\u0000l\u0000i\u0000z\u0000e\u0000d\u0000R\u0000e\u0000s\u0000o\u0000u\u0000r\u0000c\u0000e\u0000N\u0000a\u0000m\u0000e\u0000=\u0000@\u0000%\u0000S\u0000y\u0000s\u0000t\u0000e\u0000m\u0000R\u0000o\u0000o\u0000t\u0000%\u0000\\\u0000s\u0000y\u0000s\u0000t\u0000e\u0000m\u00003\u00002\u0000\\\u0000w\u0000i\u0000n\u0000d\u0000o\u0000w\u0000s\u0000.\u0000s\u0000t\u0000o\u0000r\u0000a\u0000g\u0000e\u0000.\u0000d\u0000l\u0000l\u0000,\u0000-\u00002\u00001\u00007\u00007\u00009\u0000\r\u0000\n\u0000I\u0000n\u0000f\u0000o\u0000T\u0000i\u0000p\u0000=\u0000@\u0000%\u0000S\u0000y\u0000s\u0000t\u0000e\u0000m\u0000R\u0000o\u0000o\u0000t\u0000%\u0000\\\u0000s\u0000y\u0000s\u0000t\u0000e\u0000m\u00003\u00002\u0000\\\u0000s\u0000h\u0000e\u0000l\u0000l\u00003\u00002\u0000.\u0000d\u0000l\u0000l\u0000,\u0000-\u00001\u00002\u00006\u00008\u00008\u0000\r\u0000\n\u0000I\u0000c\u0000o\u0000n\u0000R\u0000e\u0000s\u0000o\u0000u\u0000r\u0000c\u0000e\u0000=\u0000%\u0000S\u0000y\u0000s\u0000t\u0000e\u0000m\u0000R\u0000o\u0000o\u0000t\u0000%\u0000\\\u0000s\u0000y\u0000s\u0000t\u0000e\u0000m\u00003\u00002\u0000\\\u0000i\u0000m\u0000a\u0000g\u0000e\u0000r\u0000e\u0000s\u0000.\u0000d\u0000l\u0000l\u0000,\u0000-\u00001\u00001\u00003\u0000\r\u0000\n\u0000I\u0000c\u0000o\u0000n\u0000F\u0000i\u0000l\u0000e\u0000=\u0000%\u0000S\u0000y\u0000s\u0000t\u0000e\u0000m\u0000R\u0000o\u0000o\u0000t\u0000%\u0000\\\u0000s\u0000y\u0000s\u0000t\u0000e\u0000m\u00003\u00002\u0000\\\u0000s\u0000h\u0000e\u0000l\u0000l\u00003\u00002\u0000.\u0000d\u0000l\u0000l\u0000\r\u0000\n\u0000I\u0000c\u0000o\u0000n\u0000I\u0000n\u0000d\u0000e\u0000x\u0000=\u0000-\u00002\u00003\u00006\u0000\r\u0000\n\u0000[\u0000L\u0000o\u0000c\u0000a\u0000l\u0000i\u0000z\u0000e\u0000d\u0000F\u0000i\u0000l\u0000e\u0000N\u0000a\u0000m\u0000e\u0000s\u0000]\u0000\r\u0000\n\u0000�e1X3\u0000.\u0000t\u0000x\u0000t\u0000=\u0000@\u0000�e1X3\u0000.\u0000t\u0000x\u0000t\u0000,\u00000\u0000\r\u0000\n\u0000�e1X0\u00006\u00000\u00006\u0000_\u00002\u0000.\u0000t\u0000x\u0000t\u0000=\u0000@\u0000�e1X0\u00006\u00000\u00006\u0000_\u00002\u0000.\u0000t\u0000x\u0000t\u0000,\u00000\u0000\r\u0000\n\u0000�e1X0\u00006\u00000\u00005\u0000_\u00001\u0000.\u0000t\u0000x\u0000t\u0000=\u0000@\u0000�e1X0\u00006\u00000\u00005\u0000_\u00001\u0000.\u0000t\u0000x\u0000t\u0000,\u00000\u0000\r\u0000\n\u0000"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\Eckstein 與 Hart（2000）研究指出，健康家貓約有 50.txt": {
+  "mtime": 1783878200.4188929,
+  "size": 4922,
+  "hash": "4f80e8c3b663484e56e2014edc2d211a02250742e38d0968de6fe07cb81000a6",
+  "hash_algo": "sha256",
+  "text": "Eckstein 與 Hart（2000）研究指出，健康家貓約有 50% 的時間處於睡眠或休息狀態，而口部理毛（oral grooming）約占全天時間的 4%，抓癢（scratch grooming）則僅占口部理毛時間的約 1/50，顯示舔舐與抓癢本身即屬正常日常行為的一部分，因此僅依據單一行為是否出現，並不足以判斷健康異常，仍須結合其持續時間、發生頻率及整體行為模式進行評估。\r\n\r\n下一段接著：\r\n\r\nColombo 等人（2023）於 VAScat 研究中亦指出，貓咪搔癢並非單一行為，而可能同時表現為舔舐增加、抓癢增加或兩者並存，因此臨床評估需分別量化不同類型行為，而非僅依單一指標判斷健康狀態。此結果進一步說明，不同行為具有不同之臨床意義，建立多維度行為量化指標有助於提升健康評估之完整性。研究結果顯示，單獨觀察舔舐或抓癢皆不足以完整反映搔癢程度，而需同時考量不同類型行為之變化。\r\n\r\n最後再整理：\r\n\r\n綜合上述研究可知，目前獸醫臨床健康評估已逐漸由單一症狀觀察轉向多種行為指標的綜合分析。然而，無論是正常行為統計或臨床評分量表，多數仍仰賴飼主觀察或人工紀錄，難以長時間且客觀地持續監測貓咪日常行為，因此如何利用智慧化方法自動蒐集並分析行為資訊，仍為目前健康監測的重要研究方向。\r\n\r\n\r\n\r\n例如到了 YOLO Pose：\r\n\r\nMathis 等人（2018）提出 DeepLabCut，首次證明深度學習可在無標記點之情況下完成高精度動物姿態估測，為 Animal Pose Estimation 奠定重要基礎。\r\n\r\n↓\r\n\r\n接著\r\n\r\nCao 等人（2019）提出 AP-10K，將姿態估測由單一物種擴展至多種動物，使跨物種骨架分析成為可能。\r\n\r\n↓\r\n\r\n接著\r\n\r\nJocher 等人（2023）於 YOLOv8 中整合 Pose Estimation，使目標偵測與關鍵點定位可於單一模型完成，大幅提升推論效率。\r\n\r\n↓\r\n\r\n最後你整理：\r\n\r\n綜合上述研究可知，動物姿態估測技術已逐漸成熟，並能穩定取得骨架資訊。然而，多數研究仍止於姿態定位，尚未進一步分析骨架所代表之時序行為資訊，因此後續研究開始導入 Skeleton-based Action Recognition 技術。\r\n\r\n\r\n然而，穿戴式裝置主要依賴加速度訊號推估活動量，較難辨識舔舐（Lick）、搔抓（Scratch）及甩頭（Shake）等細緻行為。Maniaki 等人（2023）利用加速規分析貓咪骨關節炎之早期活動變化，雖能偵測整體活動量下降，卻無法區分活動下降究竟源自行走減少、跳躍減少或休息增加，顯示其較適合量化整體活動，而非辨識具體行為類型（Maniaki et al., 2023）。\r\n\r\n\r\n然而，穿戴式裝置主要依賴加速度訊號推估活動量，較難辨識舔舐（Lick）、搔抓（Scratch）及甩頭（Shake）等細緻行為。Maniaki 等人（2023）利用加速規分析貓咪骨關節炎之早期活動變化，雖能偵測整體活動量下降，卻無法區分活動下降究竟源自行走減少、跳躍減少或休息增加，顯示其較適合量化整體活動，而非辨識具體行為類型（Maniaki et al., 2023）。\r\n\r\n綜合上述研究可知，近年 Animal Pose Estimation 已由早期跨物種姿態定位逐漸發展至特定物種之臉部分析與醫療應用。然而，目前貓咪相關研究仍以臉部關鍵點為主要研究對象，對於需描述全身動作之行為辨識仍缺乏合適之骨架表示方法。此外，多數研究著重於單張影像之姿態估測，而非連續骨架序列之時序分析。因此，本研究採用涵蓋頭部、軀幹、四肢及尾部之 17 點全身骨架，作為後續骨架式行為辨識（Skeleton-based Action Recognition）之基礎。下一節將進一步探討如何利用時空骨架序列辨識貓咪日常行為。\r\n\r\n\r\n相較於人體姿態估計（Human Pose Estimation），動物姿態估計之發展仍相對緩慢，其主要原因在於不同物種之骨架結構差異大，且缺乏大規模且高品質之姿態標註資料集，使模型訓練與跨物種泛化能力受到限制。\r\n\r\n值得注意的是，骨架式動作辨識之應用已逐漸由人體延伸至動物領域。Chai、Zhan 與 Su（2026）將改良式 BCST-GCN 應用於豬隻行為辨識，利用骨架序列分析採食、行走及休息等行為，進一步評估動物健康狀態與壓力反應。研究指出，透過長期監測骨架行為變化，可於臨床症狀出現前發現異常活動模式，顯示 Skeleton-based Action Recognition 已具備健康預警之應用潛力。\r\n\r\n\r\n然而，目前相關研究主要集中於經濟動物，如豬及牛等精準畜牧應用，對於伴侶動物之日常行為分析仍相對有限，尤其缺乏針對貓咪建立全身骨架行為辨識及個體化健康監測之相關研究。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\flows - 2026-01-23T225121.733.json": {
+  "mtime": 1769179882.0,
+  "size": 475995,
+  "hash": "090836f569765363f27f1ee516d4a61109b3ab96932b62655e968f2ea5a7ce7c",
+  "hash_algo": "sha256",
+  "text": "[{\"id\":\"a1d1b4f4b53a7a9d\",\"type\":\"tab\",\"label\":\"ESP32 MLX+DHT Dashboard\",\"disabled\":true,\"info\":\"\"},{\"id\":\"99e93a0cfcc38be1\",\"type\":\"tab\",\"label\":\"🧠 智慧警報與震動同步\",\"disabled\":true,\"info\":\"\"},{\"id\":\"bc53dc851f64ab71\",\"type\":\"tab\",\"label\":\"溫溼度\",\"disabled\":true,\"info\":\"\",\"env\":[]},{\"id\":\"flow-genshin-mqtt\",\"type\":\"tab\",\"label\":\"ESP32 控制多按鈕 Flow\",\"disabled\":true,\"info\":\"接受網頁 /control-led?button=... 請求並轉發給 ESP32 (button1~button10)\"},{\"id\":\"tab_multi_bot\",\"type\":\"tab\",\"label\":\"Multi Bot System\",\"disabled\":true,\"info\":\"\"},{\"id\":\"e53ca6e691f087b2\",\"type\":\"tab\",\"label\":\"🧠 智慧警報與震動同步\",\"disabled\":true,\"info\":\"\"},{\"id\":\"def393e1ea165f58\",\"type\":\"tab\",\"label\":\"呼叫py檔案\",\"disabled\":true,\"info\":\"\",\"env\":[]},{\"id\":\"7f4707d8498d68f5\",\"type\":\"tab\",\"label\":\"YOLO Dashboard\",\"disabled\":true,\"locked\":true,\"info\":\"\",\"env\":[]},{\"id\":\"ee99868e6b307422\",\"type\":\"tab\",\"label\":\"Pose Feature Monitor\",\"disabled\":true,\"info\":\"\"},{\"id\":\"line_verify_fix\",\"type\":\"tab\",\"label\":\"LINE/DC 通知\",\"disabled\":true,\"info\":\"\"},{\"id\":\"8891d137d52b8ed0\",\"type\":\"tab\",\"label\":\"ESP32 控制中心 Plus\",\"disabled\":true,\"info\":\"整合：六按鈕 + 狀態列 + 操作紀錄(永久) + 統計長條圖(永久) + MQTT 斷線重連\"},{\"id\":\"ecf0b1bb5b3bff2c\",\"type\":\"tab\",\"label\":\"多人答題遊戲 Flow (/game) - 客戶端同步版\",\"disabled\":true,\"info\":\"遊戲階段由客戶端發送 changePhase 訊息驅動\"},{\"id\":\"56e623b84af5f6a5\",\"type\":\"tab\",\"label\":\"五個聊天bot\",\"disabled\":true,\"info\":\"\",\"env\":[]},{\"id\":\"89821b68554a29ba\",\"type\":\"tab\",\"label\":\"😺 貓咪健康監測系統\",\"disabled\":true,\"info\":\"完整的貓咪健康監測系統\\n- 即時影像串流\\n- 行為時間記錄\\n- 詳細統計分析\\n- 健康警示系統\"},{\"id\":\"a100000000000001\",\"type\":\"tab\",\"label\":\"🐱 貓皇通知控制台（科技版）\",\"disabled\":true,\"info\":\"\"},{\"id\":\"20f3df018fd9bf44\",\"type\":\"tab\",\"label\":\"取得 Windows IP 並推送 Discord\",\"disabled\":true,\"info\":\"\"},{\"id\":\"4d73e3144bfedba0\",\"type\":\"tab\",\"label\":\"單純語音控制設備 (FIXED)\",\"disabled\":true,\"info\":\"修正:\\n1. 中文關鍵詞匹配問題\\n2. 新增更多語音命令\\n3. 改善錯誤處理\"},{\"id\":\"1fd1098a3128e769\",\"type\":\"tab\",\"label\":\"互動式語音控制2\",\"disabled\":true,\"info\":\"深層科技風格 AI 控制系統\"},{\"id\":\"08a3e65504160704\",\"type\":\"tab\",\"label\":\"互動式語音控制\",\"disabled\":true,\"info\":\"深層科技風格 AI 控制系統\"},{\"id\":\"1bd664d17aeb42ca\",\"type\":\"tab\",\"label\":\"語音驅動影像分析\",\"disabled\":true,\"info\":\"\"},{\"id\":\"2c859864d88132e3\",\"type\":\"tab\",\"label\":\"語音驅動影像分析\",\"disabled\":true,\"info\":\"\"},{\"id\":\"tab_dashboard\",\"type\":\"ui_tab\",\"name\":\"ESP32 MLX90614 Dashboard\",\"icon\":\"dashboard\"},{\"id\":\"d9b5f3a88f6bd13c\",\"type\":\"ui_base\",\"theme\":{\"name\":\"theme-light\",\"lightTheme\":{\"default\":\"#0094CE\",\"baseColor\":\"#0094CE\",\"baseFont\":\"-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif\",\"edited\":true,\"reset\":false},\"darkTheme\":{\"default\":\"#097479\",\"baseColor\":\"#097479\",\"baseFont\":\"-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif\",\"edited\":false},\"customTheme\":{\"name\":\"Untitled Theme 1\",\"default\":\"#4B7930\",\"baseColor\":\"#4B7930\",\"baseFont\":\"-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif\"},\"themeState\":{\"base-color\":{\"default\":\"#0094CE\",\"value\":\"#0094CE\",\"edited\":false},\"page-titlebar-backgroundColor\":{\"value\":\"#0094CE\",\"edited\":false},\"page-backgroundColor\":{\"value\":\"#fafafa\",\"edited\":false},\"page-sidebar-backgroundColor\":{\"value\":\"#ffffff\",\"edited\":false},\"group-textColor\":{\"value\":\"#1bbfff\",\"edited\":false},\"group-borderColor\":{\"value\":\"#ffffff\",\"edited\":false},\"group-backgroundColor\":{\"value\":\"#ffffff\",\"edited\":false},\"widget-textColor\":{\"value\":\"#111111\",\"edited\":false},\"widget-backgroundColor\":{\"value\":\"#0094ce\",\"edited\":false},\"widget-borderColor\":{\"value\":\"#ffffff\",\"edited\":false},\"base-font\":{\"value\":\"-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif\"}},\"angularTheme\":{\"primary\":\"indigo\",\"accents\":\"blue\",\"warn\":\"red\",\"background\":\"grey\",\"palette\":\"light\"}},\"site\":{\"name\":\"Node-RED Dashboard\",\"hideToolbar\":\"false\",\"allowSwipe\":\"false\",\"lockMenu\":\"false\",\"allowTempTheme\":\"true\",\"dateFormat\":\"DD/MM/YYYY\",\"sizes\":{\"sx\":48,\"sy\":48,\"gx\":6,\"gy\":6,\"cx\":6,\"cy\":6,\"px\":0,\"py\":0}}},{\"id\":\"group_sensor\",\"type\":\"ui_group\",\"name\":\"感測數據\",\"tab\":\"tab_dashboard\",\"order\":1,\"disp\":true,\"width\":\"12\",\"collapse\":false},{\"id\":\"tab_ui\",\"type\":\"ui_tab\",\"name\":\"ESP32 控制中心 🎵\",\"icon\":\"dashboard\",\"order\":1,\"disabled\":false,\"hidden\":false},{\"id\":\"grp_status\",\"type\":\"ui_group\",\"name\":\"📶 系統狀態\",\"tab\":\"tab_ui\",\"order\":1,\"disp\":true,\"width\":\"12\",\"collapse\":false},{\"id\":\"grp_controls\",\"type\":\"ui_group\",\"name\":\"🎮 手動控制面板\",\"tab\":\"tab_ui\",\"order\":2,\"disp\":true,\"width\":\"12\",\"collapse\":false},{\"id\":\"ui_tab_line_alert\",\"type\":\"ui_tab\",\"name\":\"📲 LINE 通知中心\",\"icon\":\"comment\",\"order\":1},{\"id\":\"ui_group_line_alert\",\"type\":\"ui_group\",\"name\":\"LINE 通知控制\",\"tab\":\"ui_tab_line_alert\",\"order\":1,\"disp\":true,\"width\":6,\"collapse\":false,\"className\":\"\"},{\"id\":\"3bc0809a962b0a24\",\"type\":\"mqtt-broker\",\"name\":\"\",\"broker\":\"10.103.118.34\",\"port\":1883,\"clientid\":\"\",\"autoConnect\":true,\"usetls\":false,\"protocolVersion\":4,\"keepalive\":60,\"cleansession\":true,\"autoUnsubscribe\":true,\"birthTopic\":\"\",\"birthQos\":\"0\",\"birthRetain\":\"false\",\"\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\flows - 2026-06-08T003938.718.json": {
+  "mtime": 1780850379.7308366,
+  "size": 793383,
+  "hash": "9e4d177df1e6356709205832b2eeb17cdc0cae674c7dec1f1e1552a7d099a2d2",
+  "hash_algo": "sha256",
+  "text": "[\n    {\n        \"id\": \"e53ca6e691f087b2\",\n        \"type\": \"tab\",\n        \"label\": \"🧠 智慧警報與震動同步\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"a1d1b4f4b53a7a9d\",\n        \"type\": \"tab\",\n        \"label\": \"ESP32 MLX+DHT Dashboard\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"bc53dc851f64ab71\",\n        \"type\": \"tab\",\n        \"label\": \"溫溼度\",\n        \"disabled\": true,\n        \"info\": \"\",\n        \"env\": []\n    },\n    {\n        \"id\": \"flow-genshin-mqtt\",\n        \"type\": \"tab\",\n        \"label\": \"ESP32 控制多按鈕 Flow\",\n        \"disabled\": true,\n        \"info\": \"接受網頁 /control-led?button=... 請求並轉發給 ESP32 (button1~button10)\"\n    },\n    {\n        \"id\": \"tab_multi_bot\",\n        \"type\": \"tab\",\n        \"label\": \"Multi Bot System\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"def393e1ea165f58\",\n        \"type\": \"tab\",\n        \"label\": \"呼叫py檔案\",\n        \"disabled\": true,\n        \"info\": \"\",\n        \"env\": []\n    },\n    {\n        \"id\": \"ee99868e6b307422\",\n        \"type\": \"tab\",\n        \"label\": \"Pose Feature Monitor\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"line_verify_fix\",\n        \"type\": \"tab\",\n        \"label\": \"LINE/DC 通知\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"8891d137d52b8ed0\",\n        \"type\": \"tab\",\n        \"label\": \"ESP32 控制中心 Plus\",\n        \"disabled\": true,\n        \"info\": \"整合：六按鈕 + 狀態列 + 操作紀錄(永久) + 統計長條圖(永久) + MQTT 斷線重連\"\n    },\n    {\n        \"id\": \"ecf0b1bb5b3bff2c\",\n        \"type\": \"tab\",\n        \"label\": \"多人答題遊戲 Flow (/game) - 客戶端同步版\",\n        \"disabled\": true,\n        \"info\": \"遊戲階段由客戶端發送 changePhase 訊息驅動\"\n    },\n    {\n        \"id\": \"56e623b84af5f6a5\",\n        \"type\": \"tab\",\n        \"label\": \"五個聊天bot\",\n        \"disabled\": true,\n        \"info\": \"\",\n        \"env\": []\n    },\n    {\n        \"id\": \"a100000000000001\",\n        \"type\": \"tab\",\n        \"label\": \"🐱 貓皇通知控制台（科技版）\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"20f3df018fd9bf44\",\n        \"type\": \"tab\",\n        \"label\": \"取得 Windows IP 並推送 Discord\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"9e6ef684d2f7a4bc\",\n        \"type\": \"tab\",\n        \"label\": \"語音控制設備 (OPTIMIZED)\",\n        \"disabled\": true,\n        \"info\": \"優化:\\n1. http in 正確接收 binary WAV\\n2. 提前回 200 給 ESP32，不等 Whisper\\n3. 加入錯誤處理節點\\n4. 修正關鍵字邏輯漏洞\"\n    },\n    {\n        \"id\": \"1fd1098a3128e769\",\n        \"type\": \"tab\",\n        \"label\": \"互動式語音控制2\",\n        \"disabled\": true,\n        \"info\": \"深層科技風格 AI 控制系統\"\n    },\n    {\n        \"id\": \"cb13a6602ef5f534\",\n        \"type\": \"tab\",\n        \"label\": \"物聯網安全報告\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"tab_ai_iot\",\n        \"type\": \"tab\",\n        \"label\": \"AI IoT 控制系統\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"fb_token_tab\",\n        \"type\": \"tab\",\n        \"label\": \"Messenger System\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"a57e2a51f4764c7e\",\n        \"type\": \"tab\",\n        \"label\": \"😺 貓咪健康監測系統\",\n        \"disabled\": true,\n        \"info\": \"\",\n        \"env\": []\n    },\n    {\n        \"id\": \"f374f5debb3b6a37\",\n        \"type\": \"tab\",\n        \"label\": \"CSV AI分析系統\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"f84d8e8fe41f2499\",\n        \"type\": \"tab\",\n        \"label\": \"研究秘書 v7\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"28e49804f409aa8d\",\n        \"type\": \"tab\",\n        \"label\": \"研究秘書 v8\",\n        \"disabled\": true,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"af00969307e4695d\",\n        \"type\": \"tab\",\n        \"label\": \"智慧拐杖-主控\",\n        \"disabled\": true,\n        \"info\": \"\",\n        \"env\": []\n    },\n    {\n        \"id\": \"7163a3f0055fa0d3\",\n        \"type\": \"tab\",\n        \"label\": \"智慧拐杖-AI影像\",\n        \"disabled\": false,\n        \"info\": \"\"\n    },\n    {\n        \"id\": \"b90c59a6967e8627\",\n        \"type\": \"tab\",\n        \"label\": \"智慧拐杖-主控\",\n        \"disabled\": false,\n        \"info\": \"\",\n        \"env\": []\n    },\n    {\n        \"id\": \"20a426aa12fe44b8\",\n        \"type\": \"group\",\n        \"z\": \"a57e2a51f4764c7e\",\n        \"style\": {\n            \"stroke\": \"#999999\",\n            \"stroke-opacity\": \"1\",\n            \"fill\": \"none\",\n            \"fill-opacity\": \"1\",\n            \"label\": true,\n            \"label-position\": \"nw\",\n            \"color\": \"#a4a4a4\"\n        },\n        \"nodes\": [\n            \"0b47210816be0ad4\",\n            \"2c7f1526410728b0\",\n            \"24d1a1677439734e\",\n            \"08d8bce3968d86f6\",\n            \"3f277d003df301be\",\n            \"01334d0781cc5822\",\n            \"306ff5952a190e04\",\n            \"a8424ee7758559af\",\n            \"eb0f92e5ddcecedf\",\n            \"c60345daba38a7bd\",\n            \"bcf77c03f24b4148\",\n            \"8f74501467cc6605\",\n            \"b837fc7fc33fbe1d\",\n            \"89b182d351391d5f\",\n            \"3ec14d6446e2c3c9\",\n            \"19227cd3418e36e6\",\n            \"b41970521d811237\",\n            \"d349c9a9a2509e65\",\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\github指令說明.pdf": {
+  "mtime": 1778493525.9867303,
+  "size": 737428,
+  "hash": "c234ee4a99eab7b48ccfb41fb8a809583aaa946f110939220700ba7c67220ce6",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\http_2.py": {
+  "mtime": 1780390336.0397654,
+  "size": 1903,
+  "hash": "8eafeee9e57fe6157ba58ea37c5738f13751c44d53437c437377980760bab91d",
+  "hash_algo": "sha256",
+  "text": "# -*- coding: utf-8 -*-\r\n\r\nfrom http.server import HTTPServer, SimpleHTTPRequestHandler\r\nfrom pathlib import Path\r\nimport mimetypes\r\nimport os\r\n\r\n\r\nPORT = 8000\r\nHOST = \"0.0.0.0\"\r\n\r\n\r\nclass UTF8FileServer(SimpleHTTPRequestHandler):\r\n    \"\"\"\r\n    解決 python -m http.server 顯示 .py 中文亂碼問題\r\n    會針對文字檔案補上 charset=utf-8\r\n    \"\"\"\r\n\r\n    UTF8_EXTENSIONS = {\r\n        \".py\",\r\n        \".txt\",\r\n        \".md\",\r\n        \".json\",\r\n        \".yaml\",\r\n        \".yml\",\r\n        \".csv\",\r\n        \".html\",\r\n        \".htm\",\r\n        \".css\",\r\n        \".js\",\r\n        \".xml\",\r\n        \".log\",\r\n    }\r\n\r\n    def guess_type(self, path):\r\n        ext = Path(path).suffix.lower()\r\n\r\n        if ext in self.UTF8_EXTENSIONS:\r\n            mime, _ = mimetypes.guess_type(path)\r\n\r\n            if mime is None:\r\n                mime = \"text/plain\"\r\n\r\n            if mime.startswith(\"text/\") or ext in {\r\n                \".py\", \".json\", \".yaml\", \".yml\", \".md\", \".csv\", \".log\"\r\n            }:\r\n                return f\"{mime}; charset=utf-8\"\r\n\r\n        return super().guess_type(path)\r\n\r\n    def end_headers(self):\r\n        self.send_header(\"Cache-Control\", \"no-cache, no-store, must-revalidate\")\r\n        self.send_header(\"Pragma\", \"no-cache\")\r\n        self.send_header(\"Expires\", \"0\")\r\n        super().end_headers()\r\n\r\n\r\ndef main():\r\n    folder = Path.cwd()\r\n\r\n    print(\"=\" * 60)\r\n    print(\"UTF-8 HTTP Server 已啟動\")\r\n    print(f\"分享資料夾：{folder}\")\r\n    print(f\"本機網址：http://localhost:{PORT}\")\r\n    print(f\"區網網址：http://reqw.local:{PORT}\")\r\n    print(\"停止伺服器：Ctrl + C\")\r\n    print(\"=\" * 60)\r\n\r\n    server = HTTPServer((HOST, PORT), UTF8FileServer)\r\n\r\n    try:\r\n        server.serve_forever()\r\n    except KeyboardInterrupt:\r\n        print(\"\\n伺服器已停止。\")\r\n    finally:\r\n        server.server_close()\r\n\r\n\r\nif __name__ == \"__main__\":\r\n    main()"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\IMG_20260502_235836.jpg": {
+  "mtime": 1777737677.0,
+  "size": 250554,
+  "hash": "b3e727aff98830875cdbbadb3f100e2059f747ceb583228a78326357e227070d",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\League of Legends (TM) Client 2026-01-03 14-13-32.mp4": {
+  "mtime": 1767420839.0,
+  "size": 34436999,
+  "hash": "d110eba28103c2b1e5fb358f1d0bec452f323f65d863cbda4452f9dba014fdf3",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\League of Legends (TM) Client 2026-01-03 14-16-04.mp4": {
+  "mtime": 1767421003.0,
+  "size": 47790580,
+  "hash": "e600014357fa8ba737c004a1cadd8fa6f1c2d669fa9e7e66ef33fcec35f5f11e",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\League of Legends (TM) Client 2026-01-03 14-19-09.mp4": {
+  "mtime": 1767421167.0,
+  "size": 25516732,
+  "hash": "3e797413373b16e4662f178f1ae1f5fe7b5456146958c4fb4140773f5358ae2d",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\League of Legends (TM) Client 2026-01-03 19-44-01.mp4": {
+  "mtime": 1767440660.0,
+  "size": 26080356,
+  "hash": "0ad4080397838493ff0877da2a22828896ddb3dd8b1cae658c656fcd6f78c8d3",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\League of Legends 2025-10-10 00-16-57.mp4": {
+  "mtime": 1760026638.0,
+  "size": 30745262,
+  "hash": "bb8085c8b58dcb121be729c256c11a2a4f4bef2c01e184024e993f7402e09426",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\linux中文輸入法.docx": {
+  "mtime": 1761384213.0,
+  "size": 17899,
+  "hash": "43783bf28de4cee986cb41f93e3e62c144bbd7df1bca096924e40b8d4550da78",
+  "hash_algo": "sha256",
+  "text": "1. 更新系統\n首先，確保你的系統已經是最新的。打開終端，輸入以下命令來更新所有軟件包：\nsudo apt update\nsudo apt upgrade\n2. 安裝必要的軟件\n酷音輸入法需要一些額外的軟件包，首先安裝這些依賴。\nsudo apt install fcitx fcitx-config-gtk fcitx-table\n3. 安裝酷音輸入法\n然後，你需要安裝酷音輸入法。輸入以下命令來安裝：\nsudo apt install fcitx-pinyin\n4. 配置輸入法\n接下來，你需要配置輸入法框架，使其使用酷音輸入法。\n進入 設定 > 地區與語言。\n在 輸入法 部分，選擇 Fcitx 作為你的輸入法框架。\n點擊 管理輸入法，選擇 添加輸入法，然後從列表中選擇 Fcitx 下的 酷音拼音。\n5. 重新啟動\nTerminal輸入指令:\nreboot\n🧩 一、更新系統\n先確保你的系統與套件是最新的：\nsudo apt update\nsudo apt upgrade -y\n🈶 二、安裝輸入法框架與新酷音模組\nChewing 本身需要配合輸入法框架（如 ibus 或 fcitx）。建議使用 fcitx5（新版、穩定、支援良好）。\n安裝 fcitx5 與 chewing：\nsudo apt install fcitx5 fcitx5-chewing fcitx5-configtool -y\n如果你的系統較舊，沒有 fcitx5 套件，可以改用：\nsudo apt install fcitx fcitx-chewing -y\n⚙️ 三、設定輸入法框架環境變數\n設定桌面環境在啟動時使用 fcitx5。\n執行：\nsudo nano /etc/environment\n在檔案末尾加入以下三行：\nGTK_IM_MODULE=fcitx\nQT_IM_MODULE=fcitx\nXMODIFIERS=\"@im=fcitx\"\n儲存後退出（Ctrl + O, Enter, Ctrl + X）。\n🔄 四、重新啟動系統\nsudo reboot\n🧭 五、啟動 fcitx 設定並加入 Chewing\n重新登入桌面後：\n點選桌面右上角的鍵盤圖示（或執行 fcitx5-configtool）。\n開啟「輸入法設定」。\n在「可用輸入法」中找到並加入 Chewing（新酷音）。\n你可以按 Ctrl + Space（或你設定的快捷鍵）在英文與注音之間切換。\n💡 六、測試輸入法\n開啟任何可輸入文字的地方（例如文字編輯器或瀏覽器），按下快捷鍵切換到 Chewing，開始輸入注音即可。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\liv2d動作.txt": {
+  "mtime": 1782501186.2929437,
+  "size": 5258,
+  "hash": "aacca9210be79b434e935fc6eda148cd8e50dc45e9c365271c41691cf9bc72d7",
+  "hash_algo": "sha256",
+  "text": "const cm = L2D._c2.model.internalModel.coreModel;\r\nconst m = cm._model;\r\nconst ids = [...m.parameters.ids];\r\nconst mins = [...m.parameters.minimumValues];\r\nconst maxs = [...m.parameters.maximumValues];\r\n\r\n// 儲存原始值\r\nconst originals = ids.map(id => cm.getParameterValueById(id));\r\n\r\n// 設定隨機值\r\nfunction randomize() {\r\n  ids.forEach((id, i) => {\r\n    const v = mins[i] + Math.random() * (maxs[i] - mins[i]);\r\n    cm.setParameterValueById(id, v);\r\n  });\r\n}\r\n\r\n// 還原\r\nfunction restore() {\r\n  ids.forEach((id, i) => cm.setParameterValueById(id, originals[i]));\r\n  console.log('✅ 還原完成');\r\n}\r\n\r\n// 每 1.5 秒換一次隨機姿勢，共 10 次後自動還原\r\nlet count = 0;\r\nconst timer = setInterval(() => {\r\n  if (count >= 10) { clearInterval(timer); restore(); return; }\r\n  count++;\r\n  console.log(`🎲 隨機姿勢 ${count}/10`);\r\n  randomize();\r\n}, 1500);\r\n\r\n\r\n\r\n_________________________________________________________\r\n\r\n\r\nconst cm = L2D._c2.model.internalModel.coreModel;\r\nconst m = cm._model;\r\nconst ids = [...m.parameters.ids];\r\nconst mins = [...m.parameters.minimumValues];\r\nconst maxs = [...m.parameters.maximumValues];\r\n\r\n// 儲存原始值\r\nconst originals = ids.map(id => cm.getParameterValueById(id));\r\n\r\n// 注入極限爆發隨機值（只挑選會影響身體、頭部與大動作的參數，避免小參數分流強度）\r\nfunction glitchRandomize() {\r\n  ids.forEach((id, i) => {\r\n    // 聚焦於關鍵的動態參數，給予最大幅度的隨機值，其餘參數隨機放大\r\n    if (id.includes('ANGLE') || id.includes('ROT') || id.includes('STRETCH') || id.includes('SHOLDER')) {\r\n      // 隨機在極大值（max）與極小值（min）之間極端跳躍，創造極強烈的視覺拉扯\r\n      const bias = Math.random() > 0.5 ? maxs[i] : mins[i];\r\n      const jitter = (Math.random() - 0.5) * (maxs[i] - mins[i]) * 0.3; // 帶有一點中央抖動\r\n      cm.setParameterValueById(id, Math.max(mins[i], Math.min(maxs[i], bias + jitter)));\r\n    } else {\r\n      // 一般參數全範圍亂數\r\n      const v = mins[i] + Math.random() * (maxs[i] - mins[i]);\r\n      cm.setParameterValueById(id, v);\r\n    }\r\n  });\r\n}\r\n\r\n// 還原\r\nfunction restore() {\r\n  ids.forEach((id, i) => cm.setParameterValueById(id, originals[i]));\r\n  console.log('⚡ 【失控崩壞】動作結束，已還原基本姿勢');\r\n}\r\n\r\n// 高頻率觸發：每 16ms 換一次隨機極端姿勢（高爆發抽搐），持續 1.5 秒（約 90 次）後還原\r\nlet count = 0;\r\nconst totalTicks = 90; \r\nconsole.log('🔥 啟動：【失控崩壞】極速隨機抽搐...');\r\n\r\nconst timer = setInterval(() => {\r\n  if (count >= totalTicks) { \r\n    clearInterval(timer); \r\n    restore(); \r\n    return; \r\n  }\r\n  count++;\r\n  glitchRandomize();\r\n}, 16); // 16ms 逼近螢幕刷新率，強行在原生 Motion 空隙塞滿殘影\r\n\r\n\r\n\r\n____________________________________________________________________________________________\r\n\r\n\r\nL2DGesturePlayer.play('random_5')\r\n____________________________________________________________________________________________\r\n\r\n\r\n\r\n\r\n(function () {\r\n  const actions = [\r\n    'pointing',\r\n    'crouch',\r\n    'victory',\r\n    'surprise',\r\n    'slump',\r\n    'tremble'\r\n  ];\r\n\r\n  const panel = document.createElement('div');\r\n  panel.style.position = 'fixed';\r\n  panel.style.top = '20px';\r\n  panel.style.right = '20px';\r\n  panel.style.zIndex = '99999';\r\n  panel.style.background = 'rgba(0,0,0,0.75)';\r\n  panel.style.padding = '12px';\r\n  panel.style.borderRadius = '10px';\r\n  panel.style.color = 'white';\r\n  panel.style.fontFamily = 'Arial';\r\n  panel.style.width = '160px';\r\n\r\n  const title = document.createElement('div');\r\n  title.innerText = 'Live2D 動作測試';\r\n  title.style.marginBottom = '10px';\r\n  title.style.fontWeight = 'bold';\r\n  panel.appendChild(title);\r\n\r\n  actions.forEach(action => {\r\n    const btn = document.createElement('button');\r\n    btn.innerText = action;\r\n    btn.style.width = '100%';\r\n    btn.style.marginBottom = '6px';\r\n    btn.style.padding = '6px';\r\n    btn.style.cursor = 'pointer';\r\n\r\n    btn.onclick = () => {\r\n      console.log('▶ 播放動作:', action);\r\n      L2DGesturePlayer.play(action);\r\n    };\r\n\r\n    panel.appendChild(btn);\r\n  });\r\n\r\n  const closeBtn = document.createElement('button');\r\n  closeBtn.innerText = '關閉面板';\r\n  closeBtn.style.width = '100%';\r\n  closeBtn.style.marginTop = '6px';\r\n  closeBtn.onclick = () => panel.remove();\r\n  panel.appendChild(closeBtn);\r\n\r\n  document.body.appendChild(panel);\r\n\r\n  console.log('✅ Live2D 動作測試面板已建立');\r\n})();\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\nconst cm = L2D._c2.model.internalModel.coreModel;\r\nconst m = cm._model;\r\nconst parts = m.parts;\r\nconsole.log('part count:', parts.ids.length);\r\n[...parts.ids].forEach((id, i) => {\r\n  console.log(id.padEnd(35), 'opacity:', parts.opacities[i]);\r\n});\r\n\r\n\r\n\r\n\r\n\r\n\r\nconst ids = [...L2D._c2.model.internalModel.coreModel._model.parameters.ids];\r\nconst mins = [...L2D._c2.model.internalModel.coreModel._model.parameters.minimumValues];\r\nconst maxs = [...L2D._c2.model.internalModel.coreModel._model.parameters.maximumValues];\r\nids.forEach((id, i) => console.log(id.padEnd(35), 'min:', String(mins[i]).padStart(5), ' max:', maxs[i]));"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\mosquitto安裝.docx": {
+  "mtime": 1777980054.3284488,
+  "size": 651643,
+  "hash": "087bdf3a28078eb53a34ce326d718c4596e985f0569a12d741b8b1b3c70222fc",
+  "hash_algo": "sha256",
+  "text": "第一部分：安裝 Mosquitto MQTT Broker（Windows）\n1️⃣ 下載 Mosquitto\n前往官網下載 Windows 版本：🔗 https://mosquitto.org/download/\n下載這個：\nmosquitto-2.x.x-install-windows-x64.exe\n2️⃣ 安裝過程中要勾選\n✔ Service✔ OpenSSL✔ mosquitto_pub / mosquitto_sub（clients）\nWindows Mosquitto 設定檔位置（重點！）\nWindows 安裝 Mosquitto 後，設定檔 不會自動啟用，你要自己建立。\nWindows 的預設路徑：\nC:\\Program Files\\mosquitto\\mosquitto.conf\n或\nC:\\Program Files\\mosquitto\\mosquitto.conf.example\n如果沒有 mosquitto.conf，你需要自己建立一個。\n✅ Windows 正確的 mosquitto.conf（最重要！）\n請建立或修改：\nC:\\Program Files\\mosquitto\\mosquitto.conf\n內容貼上：\nlistener 1883\nallow_anonymous true\n3️⃣ 啟動 Mosquitto\n安裝完成後打開 PowerShell（管理員模式）：\nnet start mosquitto\n如果看到：\nThe Mosquitto Broker service was started successfully.\n表示啟動成功。\n4️⃣ Windows 防火牆開放 MQTT 1883 port\n開 PowerShell（管理員）：\nnetsh advfirewall firewall add rule name=\"MQTT 1883\" dir=in action=allow protocol=TCP localport=1883\n第二部分：安裝 Node-RED（Windows）\n1️⃣ 安裝 Node.js（必須）\n到 Node.js 官網下載 LTS 版本（18/20/22 都可）🔗 https://nodejs.org/\n2️⃣ 安裝 Node-RED\nPowerShell（一般用戶即可）：\nnpm install -g --unsafe-perm node-red\n3️⃣ 啟動 Node-RED\nnode-red\n看到：\nServer now running at http://127.0.0.1:1880/\n代表成功，打開瀏覽器輸入：\nhttp://localhost:1880\n4️⃣ Windows 防火牆開放 Node-RED 1880 port\nPowerShell（管理員）：\nnetsh advfirewall firewall add rule name=\"NodeRED 1880\" dir=in action=allow protocol=TCP localport=1880"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\mqtt測試指令.txt": {
+  "mtime": 1781104867.8184597,
+  "size": 1213,
+  "hash": "895de6a046ba038f75e6fb5cfc8ce4a1ac10e9a22fd04f078ebec026f4ff0e78",
+  "hash_algo": "sha256",
+  "text": "for /L %i in (1,1,1000) do mosquitto_pub -h 192.168.0.171 -t stress/test -m \"test\"\r\n\r\nmosquitto_sub -h 192.168.0.171 -t stress/test\r\n\r\nmosquitto_passwd -c C:\\Users\\homec\\passwd esp32user\r\n\r\n\r\nmosquitto_sub -h 192.168.0.171 -u esp32user -P 12345678 -t \"#\"\r\n\r\n\r\n\r\nmosquitto_pub -h 192.168.0.171 -u esp32user -P 12345678 -t test -m \"MQTT Secure\"\r\n\r\n\r\n\r\nfor /L %i in (1,1,1000) do mosquitto_pub -h 192.168.0.171 -u esp32user -P 12345678 -t test -m \"MQTT Secure\"\r\n\r\n\r\n發送端 1（健康資訊）\r\n\r\nfor /L %i in (1,1,1000) do @(mosquitto_pub -h 127.0.0.1 -u esp32user -P 12345678 -t cat/health -m \"health_%i\" & timeout /t 1 >nul)\r\n\r\n發送端 2（搔抓行為）\r\n\r\nfor /L %i in (1,1,1000) do @(mosquitto_pub -h 127.0.0.1 -u esp32user -P 12345678 -t cat/action/scratch -m \"scratch_%i\" & timeout /t 1 >nul)\r\n\r\n發送端 3（舔舐行為）\r\n\r\nfor /L %i in (1,1,1000) do @(mosquitto_pub -h 127.0.0.1 -u esp32user -P 12345678 -t cat/action/lick -m \"lick_%i\" & timeout /t 1 >nul)\r\n\r\n訂閱端（接收所有 cat 底下 Topic）\r\n\r\nmosquitto_sub -h 127.0.0.1 -u esp32user -P 12345678 -t \"#\" -v\r\n\r\n\r\n\r\n\r\n\r\n\r\ncd C:\\Program Files\\Mosquitto\r\n\r\nmosquitto_pub -h 192.168.0.171 -t cat/warning -m \"你的安全性非常有疑慮\""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\node-red.cmd": {
+  "mtime": 1777979292.7882671,
+  "size": 330,
+  "hash": "7d6484761ee244d78ee19a161bc97c76d40eb8ff389e2404efc5e6437825d01d",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\Node.docx": {
+  "mtime": 1763385950.0,
+  "size": 1474606,
+  "hash": "5343ec8adc6e0c78739980409513564096e592e05a8941aec9391f4c0e40dfdf",
+  "hash_algo": "sha256",
+  "text": "Node-red啟動步驟\n我已經設定樹梅派開機後自動運行node-red，如不小心打斷運行\n打開 terminal or cmd  ，輸入 node-red\n如果有本就在運行，他會:\n想要連上網頁需要先確認是否同個網域❗ (樹梅派網路一定要連)\n連上指定wifi後\n你要的ip你要的ip打開終端機(terminal or cmd)\n你要的ip\n你要的ip\n輸入ifconfig    (windows是 ipconfig)  ，查看自己ipv4位址\nArduino、node-red、樹梅派 全部ip必須一致 ❗\n手機分享熱點後，須將樹梅派先連線至指定wifi，並打開終端查看ip\n隨後arduino、node-red節點的ip必須修改跟他一樣。\n步驟1:檢查流程是否有鎖定，  先解除鎖定>啟用流程\n步驟2:點擊這些紫色的節點\n步驟3 修改成樹梅派的ip\n設定完後按布署❗\n打開瀏覽器輸入 <你的ip> :1880/ui  例: http://127.0.0.1:1880/ui❗\n就可以看到畫面了\n提示:成功連上下面會顯示..\n樹梅派也可以燒錄arduino"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\ol.docx": {
+  "mtime": 1786696895.631418,
+  "size": 46592,
+  "hash": "fca08da871820dfbfa5690d7f621a86ab8f6a480cb8db5d7cddb644a29d8fc05",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\plate_info.txt": {
+  "mtime": 1735831627.0,
+  "size": 14296,
+  "hash": "43611bf370ac083b21a684c30635033f42713aafaf28ca630c456e72eed2c9a2",
+  "hash_algo": "sha256",
+  "text": "1.jpg,52 64 68 46 41 43 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n2.jpg,52 64 68 46 41 43 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n3.jpg,52 64 68 46 41 43 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n4.jpg,52 64 68 46 41 43 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n5.jpg,52 64 68 46 41 43 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n6.jpg,52 64 68 46 41 43 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n7.jpg,52 64 68 46 41 43 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n8.jpg,52 64 68 46 41 43 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n9.jpg,52 64 68 46 41 43 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n10.jpg,52 64 68 46 41 43 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n11.jpg,51 69 60 50 49 42 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n12.jpg,51 69 60 50 49 42 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n13.jpg,51 69 60 50 49 42 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n14.jpg,51 69 60 50 49 42 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n15.jpg,51 69 60 50 49 42 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n16.jpg,51 69 60 50 49 42 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n17.jpg,51 69 60 50 49 42 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n18.jpg,51 69 60 50 49 42 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n19.jpg,51 69 60 50 49 42 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n20.jpg,51 69 60 50 49 42 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n21.jpg,52 64 65 49 50 50 46  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n22.jpg,52 64 65 49 50 50 46  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n23.jpg,52 64 65 49 50 50 46  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n24.jpg,52 64 65 49 50 50 46  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n25.jpg,47 41 42 64 52 68  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n26.jpg,55 64 63 48 41 43 42  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n27.jpg,58 46 59 46 43 42  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n28.jpg,62 68 52 42 41 50 46  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n29.jpg,62 68 52 42 41 50 46  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n30.jpg,62 68 52 42 41 50 46  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n31.jpg,51 53 72 47 50 46 46  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n32.jpg,48 41 49 61 69 51  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n33.jpg,51 55 74 41 50 44 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n34.jpg,50 50 42 54 71 52  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n35.jpg,48 49 49 53 51 63  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n36.jpg,62 56 71 42 49 41 44  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n37.jpg,62 68 52 46 47 50 42  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n38.jpg,63 53 56 47 49 47 43  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n39.jpg,62 74 58 50 49 44 46  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n40.jpg,55 64 61 48 47 42 42  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n41.jpg,51 61 60 43 43 49 47  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n42.jpg,63 59 52 41 44 49 48  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n43.jpg,44 50 41 58 63 67  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n44.jpg,41 48 43 53 53 64  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n45.jpg,63 53 58 43 41 50 48  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n46.jpg,63 60 55 44 48 48 42  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n47.jpg,63 63 67 43 48 42 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n48.jpg,63 58 58 42 43 49 41  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n49.jpg,44 58 53 49 44 42  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n50.jpg,62 55 59 48 44 41 47  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n51.jpg,62 73 68 48 43 47 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n52.jpg,62 66 71 50 43 49 41  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n53.jpg,63 57 62 49 50 44 41  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n54.jpg,63 61 60 43 44 50 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n55.jpg,73 54 54 45 41 43  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n56.jpg,63 63 64 50 50 49 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n57.jpg,62 73 60 49 50 48 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n58.jpg,62 71 53 49 47 47 50  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n59.jpg,62 74 56 42 43 44 41  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n60.jpg,63 63 69 48 46 50 43  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n61.jpg,62 74 56 41 42 49 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n62.jpg,62 52 60 48 48 42 47  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n63.jpg,62 69 55 41 46 42 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n64.jpg,63 63 64 47 46 50 47  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n65.jpg,55 64 63 48 41 43 42  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n66.jpg,63 55 58 44 47 41 49  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n67.jpg,48 49 48 64 73 74  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n68.jpg,62 69 51 50 48 46 46  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n69.jpg,62 52 59 44 41 48 44  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n70.jpg,47 41 42 64 52 68  0  0  0  0  0  0  0  0  0  0  0  0  0  0  0\r\n71.jpg,62 61 68 49 44 43 44  0  0  0  0\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\Raspberry Pi 400 YOLOv8完整建置流程.docx": {
+  "mtime": 1761150746.0,
+  "size": 91497,
+  "hash": "906990b3e4516c1e7ab4bf713677a832d5cbf5d23db3a3b13601356dedd0b224",
+  "hash_algo": "sha256",
+  "text": "Raspberry Pi 400 YOLOv8完整建置流程\n前置條件\nRaspberry Pi 400（建議 64-bit OS）\n網路可用\nSD 卡空間 ≥ 16GB\n已安裝攝影機或有測試圖片\nStep 1：安裝 Miniforge（Conda for ARM）\nwget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh\nbash Miniforge3-Linux-aarch64.sh\nsource ~/.bashrc\nconda --version  # 確認安裝成功\nStep 2：建立 YOLO 專用 Conda 環境\nconda create -n yolo python=3.10 -y\nconda activate yolo\nStep 3：安裝基礎套件\nconda install -c conda-forge opencv numpy pillow -y\nStep 4：安裝 PyTorch（CPU 版本）\nconda install pytorch torchvision torchaudio -c pytorch -c conda-forge\n測試 PyTorch：\nimport torch\nprint(torch.__version__)\nprint(torch.cuda.is_available())  # Pi 沒 GPU，會是 False\nStep 5：安裝 Ultralytics YOLO\npip install ultralytics\n測試模型:\nfrom ultralytics import YOLO\nmodel = YOLO(\"yolov8n.pt\")  # 使用輕量 nano 模型\nresults = model(\"test.jpg\")\nresults.show()               # 顯示偵測結果\nStep 6：攝影機即時偵測程式\n###程式碼\nfrom ultralytics import YOLO\nimport cv2\n# 載入模型\nmodel = YOLO(\"yolov8n.pt\")\n# 使用 Pi 攝影機\ncap = cv2.VideoCapture(0)\nwhile True:\nret, frame = cap.read()\nif not ret:\nbreak\n# YOLO 推論\nresults = model(frame, imgsz=320)  # 輕量尺寸，加速推論\n# 在影像上畫框\nannotated_frame = results[0].plot()  # 自動標註物件\n# 顯示影像\ncv2.imshow(\"YOLO Detect\", annotated_frame)\n# 按 q 鍵退出\nif cv2.waitKey(1) & 0xFF == ord('q'):\nbreak\ncap.release()\ncv2.destroyAllWindows\n###\n📦 YOLOv8n.pt 模型大小\n官方的 YOLOv8n.pt 模型檔案大小為 6.53 MB，這使其成為輕量級的選擇，適合在資源有限的設備上運行，如樹莓派。 Hugging Face\n🧠 訓練資料集規模\n官方 YOLOv8 模型（如 YOLOv8n）是基於 COCO 資料集進行訓練的。COCO 資料集包含：\n超過 330,000 張圖片，其中超過 200,000 張已標註\n涵蓋 80 種物件類別\n總計約 1.5 百萬個物件實例 kaggle.com\n這樣龐大的資料集使得 YOLOv8 在多種物件檢測任務中表現出色。\n🖥️ 在樹莓派上平衡效能與準確度\n在樹莓派上運行 YOLOv8 時，為了達到最佳的效能與準確度平衡，建議採取以下策略：\n選擇輕量級模型：使用 YOLOv8n 模型，因其設計上較為輕量，適合在資源有限的設備上運行。\n降低輸入解析度：將輸入影像解析度設定為 640x640 像素，以減少運算量，同時保持合理的準確度。\n使用量化技術：考慮使用 INT8 量化格式，以減少模型大小並提升推論速度。\n利用硬體加速：如果可能，搭配使用 Coral USB 加速器等硬體加速裝置，以進一步提升推論效能。\n監控效能指標：定期測量推論速度（FPS）、溫度和功耗，以確保系統運行在最佳狀態。\n根據測試結果，在樹莓派 4B 上，使用 YOLOv8n 模型的推論時間約為每張影像 500 毫秒。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\Record_2026-02-22-21-27-14_2332cb9b27b851b548ba47a91682926c.mp4": {
+  "mtime": 1771767923.0,
+  "size": 342594322,
+  "hash": "244b3b863ee54925efbd832da832f411e276ba3b99727a7bd9c176891f713503",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\Rmeenaitri.docx": {
+  "mtime": 1775057542.0,
+  "size": 13878,
+  "hash": "a3aaf65d0a17df494f2cc45fdf2501ca3f06faf0c75785356b970b19b21e9a4c",
+  "hash_algo": "sha256",
+  "text": "Rmeenaitri\nRP1750Taiwangdian"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\settings.js": {
+  "mtime": 1780577962.97174,
+  "size": 25879,
+  "hash": "48a89e19c4d6fbd4786e9e68dbf1748d211e65c56f515a92d82385cab9bb74fc",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\temp_label.h": {
+  "mtime": 1762424991.0,
+  "size": 3316,
+  "hash": "9cd0766c82dcdb6077132a8ec6993d91dca63f7700f32ad59d64c3a96695a151",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\x.h": {
+  "mtime": 1762433290.0,
+  "size": 471683,
+  "hash": "c2bb61f3e691f6a8dad9fd6d9d0f34dc1f82e3be4531afbefc97221469273ea6",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\y.h": {
+  "mtime": 1762433282.0,
+  "size": 471681,
+  "hash": "131f6e7771982ee9d04fdd462d8891dbdef2af305fab272d8452dd5bf51bbf38",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\zip指令.docx": {
+  "mtime": 1766290329.0,
+  "size": 16623,
+  "hash": "536224fa04df6366534f418180c754e01cbb8de3777082deecd826b9b9498cfe",
+  "hash_algo": "sha256",
+  "text": "3. 只想看看 zip 裡有什麼（不解）\n!unzip -l file.zip\n1️⃣ 先建立目標資料夾\n!mkdir -p data\n2️⃣ 解壓到 data/\n!unzip no.zip -d /content/dataset\n移除路徑下的資料（例如不要 no）\n!rm -rf /content/dataset/yes\n壓縮「整個資料夾」（⭐ 最常用）\n!zip -r model.zip /content/models"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\中性背景上肌肉骨架型猫科动物的解剖模型-中性背景下肌肉骨架型猫的解剖学模型-316006274.webp": {
+  "mtime": 1765110566.0,
+  "size": 108020,
+  "hash": "94acae3b91bea0eb22ef08d2168f695c2ee32966c3724e5f891fa8fe72e5130b",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\之川論文.docx": {
+  "mtime": 1783878205.7479022,
+  "size": 77084,
+  "hash": "9acb1ce63b1d8178fa389783c7b016e8de21597a0fb7af26f421d11a2e1b4929",
+  "hash_algo": "sha256",
+  "text": "中 華 大 學\n博 士 論 文\n中華大學研究生畢業論文格式規則\nChung Hua University Regulations of Thesis Format\n學 系 別：\n科技管理學系碩士班\n學號姓名：\nE10103001 陳 中 華\n指導教授：\n林  依  俄  博  士\n中  華  民  國  106  年 7 月\n摘要\nABSTRACT\n目錄\n目錄\n1 摘要i\n2 ABSTRACTii\n3 目錄iii\n4 表目錄v\n5 圖目錄vi\n1 第一章 緒論1\n1.1 研究背景與動機1\n1.2 現代人情感需求與養貓趨勢1\n1.3 健康監測的重要性1\n1.4 貓咪健康管理挑戰2\n1.5 研究問題2\n1.6 研究目的3\n1.7 本研究理念和研究定位4\n1.8 論文架構5\n2 第二章 文獻探討7\n2.1 貓咪健康與行為變化7\n2.1.1 健康異常與貓咪行為變化之關聯7\n2.1.2 健康異常所造成之行為變化8\n2.1.3 貓咪日常行為及其功能9\n2.1.4 長期行為監測之必要性9\n2.2 貓咪健康監測方法與研究現況10\n2.3 動物姿態估計11\n2.4 骨架式動作辨識（Animal Pose Estimation）12\n2.5 時空圖卷積網路於骨架行為辨識之應用（ST-GCN）14\n2.6 行為量化（Behavior Quantification）15\n2.7 個體化基線(Individual Behavioral Baseline)16\n318\n419\n520\n621\n7 第三章 研究方法22\n表目錄\n圖目錄\n第一章 緒論\n研究背景與動機\n近年來，隨著少子化、高齡化及家庭結構改變，伴侶動物已逐漸成為家庭的重要成員，飼主對於寵物健康照護的需求亦持續提升。另一方面，人工智慧、物聯網及電腦視覺等技術快速發展，使智慧科技逐步應用於寵物健康照護，朝向自動化、持續化及智慧化監測發展。\n現代人情感需求與養貓趨勢\n其中，家貓因適應都市生活、活動空間需求較低及照護便利等特性，逐漸成為現代家庭重要的伴侶動物之一。近年來，隨著都市化、少子化及家庭結構改變，國人飼養家貓的比例持續增加，室內飼養及多貓家庭亦日益普及。根據我國農業部全國家犬貓飼養數量調查結果，112 年全國推估家貓數已達 131 萬餘隻，較 110 年大幅成長約 50%，顯示家貓已成為近年成長最快的伴侶動物之一。 對許多飼主而言，貓咪已不僅是寵物，更是家庭的重要成員，其所帶來的陪伴、情感支持及心理慰藉，使飼主對於生活品質與照護品質的重視程度亦隨之提升。\n健康監測的重要性\n相較於其他伴侶動物，貓咪具有隱藏疼痛與疾病徵兆的行為特性。由於演化上兼具掠食者與獵物之角色，貓咪在身體出現不適時，往往傾向抑制疼痛表現，以降低暴露自身弱點的風險，因此即使健康狀況已受到影響，其外觀與日常活動仍可能維持正常，使飼主難以及時察覺異常。此外，貓咪多採室內飼養，且具獨立性高、休息時間長等行為特性，使飼主更難透過短時間相處觀察其健康變化。相較於其他伴侶動物，貓咪健康狀態常需透過長時間觀察日常行為與生活習慣的細微變化，才能及早發現異常徵兆，因此建立持續且客觀的健康監測機制具有重要性。\n貓咪健康管理挑戰\n近年來，智慧寵物照護產品與人工智慧技術快速發展，相關研究已能透過電腦視覺及深度學習技術進行動物姿態估測與行為辨識，市面上亦陸續推出智慧項圈、活動量監測器及智慧攝影機等產品，提供定位追蹤、活動監測及遠端影像等功能。然而，現有產品多著重於活動量統計或定位追蹤，而相關研究則多聚焦於行為辨識或疾病分類，較少進一步建立個體長期行為模式，並將行為變化作為健康評估依據。因此，如何建立兼具行為辨識、行為量化及個體差異分析能力之健康監測方法，仍是目前智慧寵物健康照護領域尚待解決的重要問題。\n研究問題\n第一章前四節已說明，隨著伴侶動物家庭化及養貓人口增加，飼主對於貓咪健康管理的需求逐漸提升。然而，由於貓咪具有隱藏疼痛與疾病徵兆的行為特性，僅依靠日常觀察往往難以及時發現健康異常。另一方面，現有智慧寵物照護產品多提供定位追蹤、活動量監測及遠端影像等功能，而相關研究亦多著重於姿態估測、行為辨識或疾病分類，較少針對貓咪長期日常行為建立可量化之分析方式，亦缺乏考量個體差異之健康評估機制。因此，如何利用日常行為資訊建立符合個體差異之健康預警方法，仍為目前智慧寵物健康照護領域的重要研究課題。基於上述研究背景與研究缺口，本研究提出以下研究問題：\n（一）如何建立一套非侵入式且可長期監測貓咪日常行為的方法？\n現有健康監測方式多仰賴穿戴式裝置或人工觀察，容易受到配戴舒適性、飼主照護方式及觀察時間限制之影響。因此，本研究希望透過影像分析方式，在不影響貓咪正常生活情況下，建立可持續蒐集日常行為資訊之健康監測流程。\n（二）如何將貓咪日常行為轉換為可客觀分析之量化指標？\n僅能辨識行為類別仍不足以反映健康狀態變化，因此，本研究探討如何將日常行為進一步轉換為可量化之指標，例如行為發生頻率、持續時間及行為比例等，使行為資訊得以作為後續健康分析之依據。\n（三）如何建立符合不同貓咪個體差異之行為基線？\n不同年齡、品種及生活習慣之貓咪，其日常行為模式存在明顯差異，若採用固定評估標準，容易造成健康判斷偏差。因此，本研究探討如何建立個體化行為基線，以各個體歷史日常行為作為健康評估基準，而非使用單一固定閾值。\n（四）如何利用行為偏離分析提供健康異常之早期預警？\n當貓咪健康狀態逐漸改變時，其日常行為模式通常會先出現偏離正常生活習慣之現象。因此，本研究探討如何分析目前行為與個體歷史基線之差異，作為健康異常早期預警依據，以協助飼主及早察覺潛在健康問題。\n綜合上述，本研究希望透過貓咪日常行為之長期量化分析，建立兼具非侵入式、個體化及持續監測能力之健康預警方法，以提升智慧寵物健康照護之應用價值。\n研究目的\n綜合前述研究背景、研究問題與現有智慧寵物健康監測之限制，本研究旨在建立一套以電腦視覺與骨架行為分析為基礎之非侵入式貓咪健康預警系統。不同於以疾病分類或特定疾病診斷為目標之研究，本研究以貓咪日常行為為觀察對象，透過長期量化分析個體行為模式，建立符合不同個體差異之健康評估方法，並以行為偏離作為健康異常早期預警依據。為達成上述研究目標，本研究之具體研究目的如下：\n（一）建立非侵入式貓咪日常行為監測流程\n本研究以影像分析方式持續蒐集貓咪日常活動資訊，避免穿戴式裝置可能造成之干擾，建立適用於居家環境之長期健康監測流程，以提升日常健康監測之便利性與可行性。\n（二）建立貓咪日常行為之量化分析方法（Behavior Quantification）\n本研究透過姿態估測與骨架行為辨識技術，辨識貓咪之行走、舔舐、搔抓、甩頭及靜止等日常行為，並將其轉換為可客觀分析之量化指標，包括行為發生頻率、持續時間及行為比例等，以提供後續健康評估所需之客觀資料。\n（三）建立個體化行為基線（Individual Behavioral Baseline）\n考量不同貓咪於年齡、品種、生活習慣及活動模式上具有顯著個體差異，本研究以個體歷史日常行為資料建立專屬之行為基線，避免採用固定閾值所造成之評估偏差，使健康監測更符合個體特性。\n（四）建立行為偏離分析與健康預警機制（Behavior Deviation for Health Early Warning）\n本研究比較貓咪目前行為與個體歷史基線之差異，分析其行為是否產生異常偏離，並將偏離程度作為健康狀態改變之早期指標，以提供飼主健康風險提醒，提升潛在健康異常之早期發現能力。\n本研究理念和研究定位\n有鑑於現有智慧寵物監測產品及相關研究仍存在上述限制，本研究提出一套以貓咪日常行為分析為核心之非侵入式健康預警方法。不同於以特定疾病診斷為目標之研究，本研究著重於長期觀察貓咪日常行為模式，透過分析其是否偏離個體平時生活習慣，作為健康狀態改變之早期指標，以協助飼主及早察覺潛在健康異常。\n為降低人工觀察所造成之主觀判斷與監測限制，本研究以影像分析方式持續蒐集貓咪日常姿態與行為資訊，並將各項行為轉換為可客觀分析之量化指標，進一步建立個體化行為基線（Individual Behavioral Baseline）。藉由比較個體目前行為與歷史正常行為模式之差異，評估其行為是否產生異常偏離，作為健康狀態評估之依據。\n期望本研究所提出之方法，能提供一套兼具非侵入式、客觀化及個體化之智慧健康監測機制，提升貓咪健康異常早期發現之能力，並作為未來智慧寵物健康照護系統及相關研究發展之參考。\n論文架構\n本論文旨在建立一套以電腦視覺與骨架行為分析為基礎之非侵入式貓咪個體化健康預警系統，透過姿態估測、骨架行為辨識、行為量化分析、個體化行為基線建立及行為偏離分析等技術，提供健康異常之早期預警機制。全文共分為五章，各章內容說明如下：\n第一章　緒論\n本章首先說明本研究之研究背景與研究動機，探討近年伴侶動物照護需求增加及智慧寵物健康管理之發展趨勢，並分析貓咪健康監測的重要性及現有智慧寵物健康管理方式之限制。接著提出本研究之研究問題、研究目的及研究定位，說明本研究以健康預警為目標，而非疾病診斷，最後介紹本論文之整體架構與各章內容。\n第二章　文獻探討\n本章蒐集並整理與本研究相關之文獻，包括貓咪疼痛與行為改變、智慧寵物健康監測技術、動物姿態估測（Animal Pose Estimation）、骨架行為辨識（Skeleton-based Action Recognition）、時空圖卷積網路（ST-GCN）、行為量化（Behavior Quantification）及個體化行為基線（Individual Behavioral Baseline）等相關研究，並分析現有研究之限制與研究缺口，作為本研究之理論基礎。\n第三章 研究方法\n本章介紹本研究所提出之健康預警系統架構與研究方法，包括貓咪姿態估測、骨架行為辨識模型、行為量化方法、個體化行為基線建立及行為偏離分析流程，並說明各模組之功能、系統流程及相關實驗設定，以建立完整之健康預警架構。\n第四章　實驗結果\n本章首先介紹實驗環境、資料集及評估指標，接著分析姿態估測與骨架行為辨識模型之辨識效能，並呈現行為量化分析及個體化健康預警之驗證結果，以評估本研究所提出方法之可行性與應用效益。\n第五章　結論與未來展望\n本章歸納本研究之研究成果與主要貢獻，並針對研究限制提出未來研究方向，包括多貓追蹤（Multi-Cat Tracking）、模型輕量化與邊緣設備部署（Edge AI）等議題，以提升系統於多貓家庭及實際居家環境之應用能力，作為後續智慧寵物健康照護研究之發展方向。\n第二章 文獻探討\n貓咪健康與行為變化\n健康異常與貓咪行為變化之關聯\n動物的日常行為受到神經系統、生理狀態、內分泌系統及外在環境等多重因素共同調控，因此當個體受到疾病、疼痛、發炎或其他健康異常因素影響時，其原有之行為模式通常會產生不同程度之改變。此類行為改變並非單純的疾病伴隨現象，而是動物為維持生理平衡、降低能量消耗及促進身體恢復所產生之適應性反應。Hart（1988）將此現象稱為 Sickness Behavior，指出動物於疾病期間常出現活動量下降、探索行為減少、休息時間增加及攝食行為改變等特徵，此類行為有助於提升個體恢復能力與存活率。\n近年獸醫行為醫學研究亦指出，健康異常通常會先反映於動物之日常行為，而非立即出現明顯之外觀或臨床症狀。Stella 與 Buffington（2023）指出，相較於單次臨床檢查，持續觀察動物日常行為更能反映健康狀態之變化，而不同個體之正常行為模式亦存在差異，因此健康評估應著重於觀察個體相較於自身正常模式之變化，而非僅依固定標準判斷。Horwitz 與 Rodan（2018）亦認為，活動量、理毛、姿勢、休息及社交互動等日常行為皆可能受到疼痛、疾病及壓力影響，因此行為觀察已逐漸成為現代獸醫學重要之健康評估方式。\n相較於其他伴侶動物，貓咪於演化過程中同時具有掠食者（Predator）與獵物（Prey）之雙重角色，因此傾向隱藏疼痛及疾病徵兆，以降低暴露於危險之風險。此種演化特性使許多疾病於早期階段並不容易透過\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\之川論究文.docx": {
+  "mtime": 1783796403.881705,
+  "size": 50167,
+  "hash": "af1ab4e3334bcfdf4fb9a1a144991aa2a7fe699d8e0c66cc3750bb1c7ac1c03b",
+  "hash_algo": "sha256",
+  "text": "中 華 大 學\n博 士 論 文\n中華大學研究生畢業論文格式規則\nChung Hua University Regulations of Thesis Format\n學 系 別：\n科技管理學系碩士班\n學號姓名：\nE10103001 陳 中 華\n指導教授：\n林  依  俄  博  士\n中  華  民  國  106  年 7 月\n摘要\nABSTRACT\n目錄\n目錄\n1 摘要i\n2 ABSTRACTii\n3 目錄iii\n4 表目錄iv\n5 圖目錄v\n1 第一章 緒論1\n1.1 研究背景與動機1\n1.2 現代人情感需求與養貓趨勢1\n1.3 健康監測的重要性1\n1.4 貓咪健康管理挑戰2\n1.5 研究問題2\n1.6 研究目的3\n1.7 本研究理念和研究定位4\n1.8 論文架構5\n2 第二章 文獻探討7\n38\n49\n510\n611\n712\n8 第三章 研究方法13\n表目錄\n圖目錄\n第一章 緒論\n研究背景與動機\n近年來，隨著少子化、高齡化及家庭結構改變，伴侶動物已逐漸成為家庭的重要成員，飼主對於寵物健康照護的需求亦持續提升。另一方面，人工智慧、物聯網及電腦視覺等技術快速發展，使智慧科技逐步應用於寵物健康照護，朝向自動化、持續化及智慧化監測發展。\n現代人情感需求與養貓趨勢\n其中，家貓因適應都市生活、活動空間需求較低及照護便利等特性，逐漸成為現代家庭重要的伴侶動物之一。近年來，隨著都市化、少子化及家庭結構改變，國人飼養家貓的比例持續增加，室內飼養及多貓家庭亦日益普及。根據我國農業部全國家犬貓飼養數量調查結果，112 年全國推估家貓數已達 131 萬餘隻，較 110 年大幅成長約 50%，顯示家貓已成為近年成長最快的伴侶動物之一。 對許多飼主而言，貓咪已不僅是寵物，更是家庭的重要成員，其所帶來的陪伴、情感支持及心理慰藉，使飼主對於生活品質與照護品質的重視程度亦隨之提升。\n健康監測的重要性\n相較於其他伴侶動物，貓咪具有隱藏疼痛與疾病徵兆的行為特性。由於演化上兼具掠食者與獵物之角色，貓咪在身體出現不適時，往往傾向抑制疼痛表現，以降低暴露自身弱點的風險，因此即使健康狀況已受到影響，其外觀與日常活動仍可能維持正常，使飼主難以及時察覺異常。此外，貓咪多採室內飼養，且具獨立性高、休息時間長等行為特性，使飼主更難透過短時間相處觀察其健康變化。相較於其他伴侶動物，貓咪健康狀態常需透過長時間觀察日常行為與生活習慣的細微變化，才能及早發現異常徵兆，因此建立持續且客觀的健康監測機制具有重要性。\n貓咪健康管理挑戰\n近年來，智慧寵物照護產品與人工智慧技術快速發展，相關研究已能透過電腦視覺及深度學習技術進行動物姿態估測與行為辨識，市面上亦陸續推出智慧項圈、活動量監測器及智慧攝影機等產品，提供定位追蹤、活動監測及遠端影像等功能。然而，現有產品多著重於活動量統計或定位追蹤，而相關研究則多聚焦於行為辨識或疾病分類，較少進一步建立個體長期行為模式，並將行為變化作為健康評估依據。因此，如何建立兼具行為辨識、行為量化及個體差異分析能力之健康監測方法，仍是目前智慧寵物健康照護領域尚待解決的重要問題。\n研究問題\n第一章前四節已說明，隨著伴侶動物家庭化及養貓人口增加，飼主對於貓咪健康管理的需求逐漸提升。然而，由於貓咪具有隱藏疼痛與疾病徵兆的行為特性，僅依靠日常觀察往往難以及時發現健康異常。另一方面，現有智慧寵物照護產品多提供定位追蹤、活動量監測及遠端影像等功能，而相關研究亦多著重於姿態估測、行為辨識或疾病分類，較少針對貓咪長期日常行為建立可量化之分析方式，亦缺乏考量個體差異之健康評估機制。因此，如何利用日常行為資訊建立符合個體差異之健康預警方法，仍為目前智慧寵物健康照護領域的重要研究課題。基於上述研究背景與研究缺口，本研究提出以下研究問題：\n（一）如何建立一套非侵入式且可長期監測貓咪日常行為的方法？\n現有健康監測方式多仰賴穿戴式裝置或人工觀察，容易受到配戴舒適性、飼主照護方式及觀察時間限制之影響。因此，本研究希望透過影像分析方式，在不影響貓咪正常生活情況下，建立可持續蒐集日常行為資訊之健康監測流程。\n（二）如何將貓咪日常行為轉換為可客觀分析之量化指標？\n僅能辨識行為類別仍不足以反映健康狀態變化，因此，本研究探討如何將日常行為進一步轉換為可量化之指標，例如行為發生頻率、持續時間及行為比例等，使行為資訊得以作為後續健康分析之依據。\n（三）如何建立符合不同貓咪個體差異之行為基線？\n不同年齡、品種及生活習慣之貓咪，其日常行為模式存在明顯差異，若採用固定評估標準，容易造成健康判斷偏差。因此，本研究探討如何建立個體化行為基線，以各個體歷史日常行為作為健康評估基準，而非使用單一固定閾值。\n（四）如何利用行為偏離分析提供健康異常之早期預警？\n當貓咪健康狀態逐漸改變時，其日常行為模式通常會先出現偏離正常生活習慣之現象。因此，本研究探討如何分析目前行為與個體歷史基線之差異，作為健康異常早期預警依據，以協助飼主及早察覺潛在健康問題。\n綜合上述，本研究希望透過貓咪日常行為之長期量化分析，建立兼具非侵入式、個體化及持續監測能力之健康預警方法，以提升智慧寵物健康照護之應用價值。\n研究目的\n綜合前述研究背景、研究問題與現有智慧寵物健康監測之限制，本研究旨在建立一套以電腦視覺與骨架行為分析為基礎之非侵入式貓咪健康預警系統。不同於以疾病分類或特定疾病診斷為目標之研究，本研究以貓咪日常行為為觀察對象，透過長期量化分析個體行為模式，建立符合不同個體差異之健康評估方法，並以行為偏離作為健康異常早期預警依據。為達成上述研究目標，本研究之具體研究目的如下：\n（一）建立非侵入式貓咪日常行為監測流程\n本研究以影像分析方式持續蒐集貓咪日常活動資訊，避免穿戴式裝置可能造成之干擾，建立適用於居家環境之長期健康監測流程，以提升日常健康監測之便利性與可行性。\n（二）建立貓咪日常行為之量化分析方法（Behavior Quantification）\n本研究透過姿態估測與骨架行為辨識技術，辨識貓咪之行走、舔舐、搔抓、甩頭及靜止等日常行為，並將其轉換為可客觀分析之量化指標，包括行為發生頻率、持續時間及行為比例等，以提供後續健康評估所需之客觀資料。\n（三）建立個體化行為基線（Individual Behavioral Baseline）\n考量不同貓咪於年齡、品種、生活習慣及活動模式上具有顯著個體差異，本研究以個體歷史日常行為資料建立專屬之行為基線，避免採用固定閾值所造成之評估偏差，使健康監測更符合個體特性。\n（四）建立行為偏離分析與健康預警機制（Behavior Deviation for Health Early Warning）\n本研究比較貓咪目前行為與個體歷史基線之差異，分析其行為是否產生異常偏離，並將偏離程度作為健康狀態改變之早期指標，以提供飼主健康風險提醒，提升潛在健康異常之早期發現能力。\n本研究理念和研究定位\n有鑑於現有智慧寵物監測產品及相關研究仍存在上述限制，本研究提出一套以貓咪日常行為分析為核心之非侵入式健康預警方法。不同於以特定疾病診斷為目標之研究，本研究著重於長期觀察貓咪日常行為模式，透過分析其是否偏離個體平時生活習慣，作為健康狀態改變之早期指標，以協助飼主及早察覺潛在健康異常。\n為降低人工觀察所造成之主觀判斷與監測限制，本研究以影像分析方式持續蒐集貓咪日常姿態與行為資訊，並將各項行為轉換為可客觀分析之量化指標，進一步建立個體化行為基線（Individual Behavioral Baseline）。藉由比較個體目前行為與歷史正常行為模式之差異，評估其行為是否產生異常偏離，作為健康狀態評估之依據。\n期望本研究所提出之方法，能提供一套兼具非侵入式、客觀化及個體化之智慧健康監測機制，提升貓咪健康異常早期發現之能力，並作為未來智慧寵物健康照護系統及相關研究發展之參考。\n論文架構\n本論文旨在建立一套以電腦視覺與骨架行為分析為基礎之非侵入式貓咪個體化健康預警系統，透過姿態估測、骨架行為辨識、行為量化分析、個體化行為基線建立及行為偏離分析等技術，提供健康異常之早期預警機制。全文共分為五章，各章內容說明如下：\n第一章　緒論\n本章首先說明本研究之研究背景與研究動機，探討近年伴侶動物照護需求增加及智慧寵物健康管理之發展趨勢，並分析貓咪健康監測的重要性及現有智慧寵物健康管理方式之限制。接著提出本研究之研究問題、研究目的及研究定位，說明本研究以健康預警為目標，而非疾病診斷，最後介紹本論文之整體架構與各章內容。\n第二章　文獻探討\n本章蒐集並整理與本研究相關之文獻，包括貓咪疼痛與行為改變、智慧寵物健康監測技術、動物姿態估測（Animal Pose Estimation）、骨架行為辨識（Skeleton-based Action Recognition）、時空圖卷積網路（ST-GCN）、行為量化（Behavior Quantification）及個體化行為基線（Individual Behavioral Baseline）等相關研究，並分析現有研究之限制與研究缺口，作為本研究之理論基礎。\n第三章 研究方法\n本章介紹本研究所提出之健康預警系統架構與研究方法，包括貓咪姿態估測、骨架行為辨識模型、行為量化方法、個體化行為基線建立及行為偏離分析流程，並說明各模組之功能、系統流程及相關實驗設定，以建立完整之健康預警架構。\n第四章　實驗結果\n本章首先介紹實驗環境、資料集及評估指標，接著分析姿態估測與骨架行為辨識模型之辨識效能，並呈現行為量化分析及個體化健康預警之驗證結果，以評估本研究所提出方法之可行性與應用效益。\n第五章　結論與未來展望\n本章歸納本研究之研究成果與主要貢獻，並針對研究限制提出未來研究方向，包括多貓追蹤（Multi-Cat Tracking）、模型輕量化與邊緣設備部署（Edge AI）等議題，以提升系統於多貓家庭及實際居家環境之應用能力，作為後續智慧寵物健康照護研究之發展方向。\n第二章 文獻探討\n貓咪健康異常與行為變化\n健康異常與貓咪行為變化之關聯\n動物的日常行為受到神經系統、生理狀態、內分泌系統及外在環境等多重因素共同調控，因此當個體受到疾病、疼痛、發炎或其他健康異常因素影響時，其原有之行為模式通常會產生不同程度之改變。此類行為改變並非單純的疾病伴隨現象，而是動物為維持生理平衡、降低能量消耗及促進身體恢復所產生之適應性反應。Hart（1988）將此現象稱為 Sickness Behavior，指出動物於疾病期間常出現活動量下降、探索行為減少、休息時間增加及攝食行為改變等特徵，此類行為有助於提升個體恢復能力與存活率。\n近年獸醫行為醫學研究亦指出，健康異常通常會先反映於動物之日常行為，而非立即出現明顯之外觀或臨床症狀。Stella 與 Buffington（2023）指出，相較於單次臨床檢查，持續觀察動物日常行為更能反映健康狀態之變化，而不同個體之正常行為模式亦存在差異，因此健康評估應著重於觀察個體相較於自身正常模式之變化，而非僅依固定標準判斷。Horwitz 與 Rodan（2018）亦認為，活動量、理毛、姿勢、休息及社交互動等日常行為皆可能受到疼痛、疾病及壓力影響，因此行為觀察已逐漸成為現代獸醫學重要之健康評估方式。\n相較於其他伴侶動物，貓咪於演化過程中同時具有掠食者（Predator）與獵物（Prey）之雙重角色，因此傾向隱藏疼痛及疾病徵兆，以降低暴露於危險之風險。此種演化特性使許多疾病於早期階段並不容易透過外觀觀察發現，而是先反映於活動能力、理毛模式及休息習慣等日常行為。Kogan 等人（2024）亦指出，即使具有多年飼養經驗之飼主，仍可能忽略貓咪細微之行為改變，顯示人工觀察仍具有相當限制。\n綜合上述研究可知，健康異常通常會透過改變原有行為模式反映於日常生活，而非直接產生全新之行為。因此，持續觀察並分析日常行為之變化，可提供重要之健康資訊，亦為建立健康監測系統的重要理論基礎。\n健康異常所造成之行為變化\n健康異常對貓咪日常行為的影響,普遍呈現為特定行為類別出現頻率或持續時間的改變,而非行為型態本身的消失或新增。具體而言,活動量下降(Walk\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\人工智慧專論.pptx": {
+  "mtime": 1767192300.0,
+  "size": 4973386,
+  "hash": "c8dfaebeb7c2e365b52f974e9a54ef014cbe96eaac4b847a901884d1fc67bdd8",
+  "hash_algo": "sha256",
+  "text": "【第 1 頁】Particle swarm optimization with YOLOv8 for improved detection performance of tomato plants M11302030 洪之川 基於 YOLOv8 的粒子群最佳化演算法 用於提高番茄植株的檢測性能 Sarah M. Ayyad 、 Nada M. Sallam 、 Samah A. Gamel 、 Zainab H. Ali Journal of Big Data (2025)\n【第 2 頁】研究背景與動機 全球農業面臨勞動力短缺與人工檢測誤差問題 番茄成熟度與病害判斷依賴人工經驗 → 缺乏一致標準 採收與分級程序成本高、效率低，無法支撐產業規模化 AI +  目標偵測逐漸成為智慧農業中的關鍵技術 因此需要能夠 快速、準確、可落地部署 的自動化番茄偵測系統 本研究提出了一種結合 粒子群演化算法  (PSO) 與  YOLOv8  架構的創新深度學習框架，旨在提升番茄採收過程中的自動化檢測與分級效率。該系統能精準識別 成熟、半熟、未熟 以及 受病害或腐爛 的五種番茄狀態\n【第 3 頁】研究貢獻與創新 五類別分類 實現對成熟、半熟、未熟、病害、腐爛種番茄狀態的同時偵測與分類，涵蓋番茄植株 所有可能 的 狀態 。 收集來自不同來源的 3,797 張圖像，建立獨特資料集，確保模型具備強健的泛化能力。 PSO超參數優化 全面比較分析 與 YOLOv3、YOLOv5、S-YOLOv5、YOLOv7 及多種先進物件偵測架構進行系統性比較評估。 將粒子群優化演算法與YOLOv8整合，用於超參數與激活函數的自動優化，顯著提升模型效能。 大規模多元資料集\n【第 4 頁】研究問題定義 現有自動化技術的瓶頸  檢測速度與精度不平衡：目前的採收機器人尚未商業化，主因在於番茄檢測速度緩慢且性能有限。 環境複雜性：在真實的溫室環境中，不均勻的光照、物體遮擋（被莖、葉或其他果實遮蔽）、果實重疊以及多變的拍攝角度，嚴重影響了計算機視覺系統的辨識能力 。 硬體資源限制：研究旨在將框架應用於硬體資源受限的工業環境，因此需要在保持高精度的同時實現實時（Real-time）操作。 2. 類別定義的缺失  分類不夠全面：過去的研究大多僅區分「成熟」與「未成熟」。 缺乏病害整合：文獻中缺乏同時針對成熟度（成熟、半熟、未熟）以及健康狀態（患病、腐爛）進行五類綜合檢測的模型 。 3. 模型優化的技術難題  超參數調整困難：YOLOv8 等深度學習模型的性能極大程度取決於超參數（如學習率、權重衰減等）的配置。\n【第 5 頁】系統流程\n【第 6 頁】資料來源與資料集 資料集來源與組成 研究團隊從多個來源收集番茄圖像，包括 Laboro Tomato 、 Kaggle 公開資料集及 Google 圖像搜尋，涵蓋不同光照條件、遮擋情況與拍攝角度。使用 Roboflow 標註工具進行邊界框標記。 類別  ( Class) 訓練集數量  ( Training) 驗證集數量  ( Validation) 測試集數量  ( Testing) 成熟  ( Ripped) 744  232  102  半熟  ( Semi-Ripped) 450  137  68  未熟  ( Not Ripped) 555  177  84  病害  ( Diseased) 304  88  49  腐爛  ( Rotten) 564  156  87  總計  ( Total) 2,617 790 390\n【第 7 頁】資料增強 （ Augmentation ） 作者採用數據增強主要有三個目的： •  解決類別不平衡 ：  原始數據中，某些類別（如病變番茄）的樣本較少。增強技術能生成新的訓練數據，使各類別的樣本分佈更加均勻，避免模型偏向預測多數類別。 •  防止過擬合：  透過擴充數據集的規模與多樣性，防止深度學習模型死記訓練數據，從而提升其泛化能力。 •  模擬真實環境干擾：  真實溫室中光線變化劇烈，透過調整圖像屬性，可以模擬自然界的光照差異，讓模型在不同環境下都能準確識別 。 用  Roboflow  工具進行 光度變換 : 1. 亮度調整（±25%） 2. 飽和度與對比度變化 3. 視角旋轉（±8°）與輕度裁切 4. 縮放與大小變化\n【第 8 頁】模型選擇： YOLOv8 模組 功能 與本研究的關係 Backbone (CSP-Darknet) 負責特徵抽取 擷取番茄外觀特徵（成熟度、病害斑點等） Neck (FPN + PAN) 融合不同尺度特徵 強化小番茄、中型果實與局部病害辨識 Detection Head (Anchor-Free) 輸出分類  +  邊界框 更適合不規則形狀的番茄與腐敗邊緣 Loss Function 控制學習方向 PSO  調參的主要介入點，提升準確率 / 穩定性 主幹網路 (Backbone) 採用CSPDarknet53架構負責特徵提取，引入 C2f 模組結合 YOLOv7 的 ELAN 概念，實現豐富的梯度流信息。包含 Conv 模組（Conv2d層、批次正規化層、 SiLU 激活函數）及SPPF模組。 頸部網路 (Neck) 使用 PAN-FPN 架構進行多尺度特徵融合，通過上採樣與C2f模組的組合，有效保留位置信息並增強小目標偵測能力 。 偵測頭 (Head) 採用無錨點 (Anchor-free) 單階段偵測方式，直接預測番茄中心點並計算邊界框距離，相較錨點方法更為高效 。\n【第 9 頁】PSO  超參數最佳化 此圖強調  PSO  如何優化  YOLOv8  的  21  個超參數（如學習率、資料增強因子），最終生成高效的番茄偵測模型。流程循環確保收斂到近最佳解，結合資料增強提升模型泛化能力。 PSO 速度更新公式 : PSO 位置更新公式 :\n【第 10 頁】訓練環境 硬體環境 GPU ： NVIDIA Tesla P100 / T4 （雲端運算平台） VRAM ： 16GB  顯示記憶體 CPU / RAM ：依雲端配置動態分配（ >25GB RAM ） 平台： Google  Colab  Pro / Kaggle Notebook 軟體與框架 OS ： Ubuntu / Linux-based VM 深度學習框架： PyTorch 模型版本： YOLOv8 最佳化方法： PSO （ Particle Swarm Optimization ） 程式語言： Python 3.9 訓練參數 設定項目 值 Input Size 320 × 320 Batch Size 16 Epoch 500 Optimizer PSO  搜尋超參數 評估指標 Precision / Recall / mAP@0.5\n【第 11 頁】實驗設計與結果評估 PSO 最佳化後的  YOLOv8  在五種類別皆取得可部署水準，特別在成熟度判定上表現最穩定，證明參數優化確實有效。\n【第 12 頁】資料增強前後模型表現比較 使用增強 : 不使用增強 :\n【第 13 頁】與其他 YOLO 版本比較\n【第 14 頁】優化演算法統計分析 多種元啟發式演算法比較 將PSO與四種先進演算法進行比較：小龍蝦優化演算法(COA)、遺傳演算法(GA)、爬行動物搜索演算法(RSA)、灰狼優化器(GWO)。所有演算法執行10次，最大迭代15次。 Friedman檢定結果 採用非參數統計檢定評估演算法效能差異，結果顯示p值 =0.015<0.05，表明各演算法效能存在顯著統計差異。 PSO 展現最佳整體效能，收斂速度快，中位數值 (0.034) 顯著低於其他演算法，證實 PSO-YOLOv8 整合的優越性。 最佳值 最差值 平均值 中位數 標準差 變異數\n【第 15 頁】結論 研究成果總結 實際應用價值 本 系統 可快速識別並分類番茄的 階段 性，確保食品安全與品質控制。精確分類有助於：早期偵測病害或污染品種、優化供應鏈效率減少浪費、支持更高農業生產力與 農 作物抗性 。 未來研究方向 擴展至其他蔬果偵測與分類；收集更多不同地理環境、栽培條件的資料；改進嚴重遮擋番茄的偵測效能；在溫室即時環境中驗證模型；開發網頁應用程式供用戶遠端使用模型進行病害偵測與噴灑建議 。 本研究提出的全自動化番茄果實成熟度分級與病害偵測框架，成功整合PSO與YOLOv8，在精確率(0.89)、召回率(0.90)、F1分數(0.89)、mAP(0.89)均達到最佳效能，處理速度約30ms/張，優於CNN、Mask R-CNN、YOLOv3-v7等現有方法，為智慧農業物件偵測領域提供新的研究方向。\n【第 16 頁】謝謝聆聽"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\勞資關係影片.mp4": {
+  "mtime": 1717601528.0,
+  "size": 754736668,
+  "hash": "3b487a99bcd7cf21a9ea99cdffb5a4409a19df0d6e2e974b7bd0a353cab8588e",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\在這個貓咪行為辨識系統中，sequence（序列） 是指一段固定長度的.txt": {
+  "mtime": 1782136005.2254267,
+  "size": 6257,
+  "hash": "9cab25b0a74d861057ab911f42c20ea5b8db99efa5d5e97e01e1c1b6debfc71f",
+  "hash_algo": "sha256",
+  "text": "在這個貓咪行為辨識系統中，sequence（序列） 是指一段固定長度的連續骨架幀，作為 ST-GCN 模型的單一輸入樣本。\r\n\r\n具體說明\r\n骨架資料是一幀一幀的關節點座標，但 ST-GCN 不是逐幀判斷行為，而是看一段時間內的動作變化才能判斷（例如「走路」需要看腿部如何連續移動）。\r\n\r\n因此需要把影片切成一段段固定長度的「時間窗口」：\r\n\r\n\r\n影片骨架幀：[0][1][2][3][4][5][6][7][8][9][10]...[N]\r\n                ↕ 每次移動 WINDOW_STRIDE=8 幀\r\n序列1：       [0][1][2][3][4][5][6][7][8][9][10][11][12][13][14][15]\r\n序列2：               [8][9][10][11][12][13][14][15][16][17][18][19][20][21][22][23]\r\n序列3：                        [16]...[31]\r\n參數\t值\t意義\r\nSEQUENCE_LENGTH\t16\t每個序列包含 16 幀（約 0.53 秒 @30fps）\r\nWINDOW_STRIDE\t8\t每次滑動 8 幀（視窗重疊 50%）\r\n一個 sequence = 模型的一次推論/訓練樣本，它的標籤就是這 16 幀中的主要行為類別（如 walk、lick 等）。\r\n\r\n為什麼 sequence 數量比秒數換算的多？\r\n因為視窗有50% 重疊（每次只移動 8 幀、但視窗長 16 幀），所以同一幀可能被算進多個序列，導致 sequence 數量比「總幀數 ÷ 16」更多。\r\n\r\ncount_sequences.py 的第 9 行也有說明這一點：\r\n\r\nsequence count 因視窗重疊會比秒數換算的理論值高\r\n\r\nClass          Sequences  Labeled Frames     Seconds   min:sec   Videos   Raw Video s  raw min:sec\r\n────────────────────────────────────────────────────────────────────────────────────────────────\r\n  lick                1003            8683      289.4s    4:49.4       37        467.8s    7:47.8\r\n  scratch              228            2502       83.4s    1:23.4       45        414.6s    6:54.6\r\n  shake                 80            1512       50.4s    0:50.4       61        562.0s    9:22.0\r\n  stop                1374           11540      384.7s    6:24.7       46        384.7s    6:24.7\r\n  walk                 891            7551      251.7s    4:11.7       22        273.4s    4:33.4\r\n────────────────────────────────────────────────────────────────────────────────────────────────\r\n  TOTAL               3576           31788     1059.6s   17:39.6      211       2102.5s   35:02.5   解釋這個表格\r\n表格解讀\r\n各欄位意義\r\n欄位\t意義\r\nSequences\t可切出的訓練樣本數（滑動視窗×STRIDE=8）\r\nLabeled Frames\t有效標注幀數（排除 unannotated，不含重疊）\r\nSeconds\t有效標注秒數 = Labeled Frames ÷ 30fps\r\nVideos\t影片數量\r\nRaw Video s\t原始影片總秒數（含未標注段）\r\n各類別問題一覽\r\nscratch — 最嚴重的不均衡問題\r\n45 支影片、6 分 55 秒原始影片，卻只切出 228 個序列\r\nRaw Video s（414s）vs Seconds（83s）：只有 20% 的影片內容有效標注\r\n原因推測：scratch 動作短促，大量幀被標為 unannotated，或 YOLO 偵測率低\r\nshake — 序列數偏少\r\n61 支影片（最多）、9 分 22 秒原始影片，僅 80 個序列\r\n有效標注只有 50 秒，利用率極低（9%）\r\nshake 動作瞬間完成（甩頭/抖身），每次只有幾幀，很難累積足夠序列\r\nstop — 標注最完整\r\nRaw Video s ≈ Seconds（384s ≈ 384s），幾乎全段都是有效標注\r\n因為 stop（靜止不動）容易整段標注，無過渡問題\r\nlick / walk — 相對健康\r\n有效利用率都在 60–90% 之間，資料品質較好\r\n類別不均衡摘要\r\n\r\nstop    1374  ████████████████████████████████████\r\nlick    1003  ██████████████████████████\r\nwalk     891  ███████████████████████\r\nscratch  228  ██████\r\nshake     80  ██\r\nshake（80）vs stop（1374）相差 17 倍，直接訓練會讓模型偏向多數類別。\r\n\r\n建議處置\r\n問題\t建議\r\nshake 序列太少（80）\t補拍影片，或降低 WINDOW_STRIDE（如 4）增加序列密度\r\nscratch 利用率低（20%）\t檢查標注是否漏標，或 YOLO 偵測率是否太低\r\n整體不均衡\t訓練時加 class_weights 或對少數類別做 oversampling\r\nshake/scratch 不足\t短期可先降低 STRICT_WINDOW_FILTER 的嚴格度\r\nraw min:se?\r\nRaw Video s / raw min:sec = 原始影片的總秒數（含未標注的片段）。\r\n\r\n例如 shake：你有 61 支影片，加起來共 9 分 22 秒的影片內容，但其中真正被標注為 shake 行為的只有 50 秒（0:50.4），其餘時間可能是過渡動作或未標注段。\r\n\r\n但於甩頭持續就分布0.5~1秒，無論怎麼擴充也比不上其他類別\r\n對，這是行為本質上的時間不對稱，不是資料量問題。\r\n\r\nshake 每次只有 0.5～1 秒（15～30 幀），而 stop/lick 可以持續幾十秒，所以：\r\n\r\n再多影片，shake 的序列密度天花板就是固定的\r\n\r\n實際可行的做法\r\n1. 縮短 SEQUENCE_LENGTH（最直接）\r\n\r\n現在 16 幀 ≈ 0.53 秒，已接近 shake 的持續時間\r\n改成 8 幀（≈0.27s），每次 shake 可切出更多視窗\r\n但代價是其他類別的時序資訊也變短，要重新評估模型效果\r\n2. 訓練時加 class_weight（最少改動）\r\n\r\n\r\n# 訓練時讓 shake 的 loss 放大 ~17 倍\r\nweights = {walk:1, lick:1, scratch:6, shake:17, stop:1}\r\n模型不會「忽略」少數類別，但不增加實際樣本\r\n\r\n3. 對 shake 做資料增強（Augmentation）\r\n\r\n隨機左右翻轉骨架 x 座標\r\n微量縮放/平移關節點座標\r\n這樣 80 個序列可擴充到 300～400 個\r\n4. 接受不均衡，改用 Focal Loss\r\n\r\n自動對難以分類的樣本（少數類別）加重懲罰\r\n不需要手動調 weight\r\n我的建議優先順序\r\nclass_weight 先上（零成本） → 再加骨架 augmentation → 視訓練結果決定要不要縮 SEQUENCE_LENGTH"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\多人問答遊戲-poweshell防火牆設定.txt": {
+  "mtime": 1781458441.2552404,
+  "size": 563,
+  "hash": "b630d6f892ec1853639932fae4586a14eebf219da2e1678bd21c87336b340f31",
+  "hash_algo": "sha256",
+  "text": "New-NetFirewallRule 是 PowerShell 指令，你現在開的是 CMD，所以不認識。\r\n\r\n兩個選擇\r\n方法 A：直接在這個 CMD 視窗輸入 PowerShell\r\n\r\n\r\npowershell -Command \"New-NetFirewallRule -DisplayName 'MQTT WebSocket 9001' -Direction Inbound -Protocol TCP -LocalPort 9001 -Action Allow\"\r\n方法 B：另開 PowerShell（建議）\r\n\r\n按 Win 鍵 → 搜尋「PowerShell」\r\n右鍵 → 以系統管理員身分執行\r\n貼入：\r\n\r\nNew-NetFirewallRule -DisplayName \"MQTT WebSocket 9001\" -Direction Inbound -Protocol TCP -LocalPort 9001 -Action Allow"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\小藍.pdf": {
+  "mtime": 1714696481.0,
+  "size": 52442489,
+  "hash": "a32dafe63f4014f350e135888352772de1a058fe55065faeab18b10b03a3b14c",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\就決定交給你們了學弟妹 - 1702734730853.mp4": {
+  "mtime": 1702734894.0,
+  "size": 237720557,
+  "hash": "17487ec3bd9cfde4390d88763c1b1b0d91163485cdd20078aab0332e177baad2",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\拐杖系統操作教學.pptx": {
+  "mtime": 1781084223.2012973,
+  "size": 2987149,
+  "hash": "b29b86fe2b28a5f3c1a86169225cf37c29d0ac02fc865aac8aac31aed82b1b93",
+  "hash_algo": "sha256",
+  "text": "【第 1 頁】教學 1. 筆電和晶片連線至同一 wifi ( 必須 2.4G) 2.NODE-RED 伺服器啟動 3.Ngrok 啟動 ( 非必要，只影響 line 和 fb 和 dc 功能 ) 拐杖系統運作前提\n【第 2 頁】IP 已知 IP 會隨著使用不同 WIFI 網路變動 ( 在 CMD 命令提示字元上打上指令 “ipconfig”  可進行測試 1.esp32( 拐杖 ) 2.esp32cam( 攝影機 ) 3.node-red mqtt 節點 需更改部分如下 : 攝影機 拐杖\n【第 3 頁】自動抓取 IP 教學 ( 設定後無需再燒錄 arduino ) 指令 你的 電腦名稱 cmd 上輸入 “hostname” ，取代掉你原本的 ip 數字 hostname +  local  =   reqw.local 取代原本的 192.168.0.171 不行就用原本的方法 成功會顯示以連接 注意 !   修改後務必部署 修改\n【第 4 頁】arduino 燒錄教學 - 拐杖篇 選擇開發版\n【第 5 頁】arduino 燒錄教學 - 拐杖篇 選擇連接埠 裝置管理員可以知道選擇幾號的 com\n【第 6 頁】arduino 燒錄教學 - 拐杖篇 案住按鈕 ( 有些晶片版本需要在燒錄時手動按下按鈕 按下箭頭燒錄 (USB 線須有傳輸功能 )\n【第 7 頁】arduino 燒錄教學 - 攝影機篇 按下箭頭燒錄 註 : 開發板底板左右各有按鈕，右邊是 reset 重置鍵，按下可以重新啟動 camera\n【第 8 頁】Arduino 除錯 開啟晶片資訊界面 固定視窗在訊息最後一行 波特率 115200 檢察系統啟動到哪一步\n【第 9 頁】接下來就是額外的 AI 功能了\n【第 10 頁】前提 1. 需要 LINE API KEY 2. 需要  FB API KEY 3.  需要  GPT  API  KEY 4.  需要  DISCORD  WEBHUK 注意 !  以下建立在 ngrok 伺服器啟動中 (GPT 和 DC 設定好後不會變動，其他兩者一段時間後會失效，需替換 ) Discord  api  key 功能 : 拐杖小於一定距離且持續 3 秒後 發送警報訊息到 dc 流程 : Node >  智慧拐杖 - 主控  >  組成  Discord Webhook  格式 ( 雙擊 )\n【第 11 頁】前提 注意 !  以下建立在 ngrok 伺服器啟動中 (GPT 和 DC 設定好後不會變動，其他兩者一段時間後會失效，需替換 ) Discord  api  key 功能 : Camera 啟動後將 ip 為只發送至 dc 流程 : Node >  智慧拐杖 -AI 影像  > > 組  Discord IP  通知（計數）\n【第 12 頁】前提 注意 !  以下建立在 ngrok 伺服器啟動中 (GPT 和 DC 設定好後不會變動，其他兩者一段時間後會失效，需替換 ) Discord  api  key 功能 : 開機時將電腦 ip 送往 dc 流程 : Node >  智慧拐杖 -AI 影像  > > 組成  Discord Webhook  格式\n【第 13 頁】前提 注意 !  以下建立在 ngrok 伺服器啟動中 (GPT 和 DC 設定好後不會變動，其他兩者一段時間後會失效，需替換 ) line or fb key 統一在這裡管理 替換掉雙引號內神秘代碼即可 功能 : 發送指令可觸發 camera 截圖並進行 ai 分析 Line  api  key Fb    api  key\n【第 14 頁】UI 介面 網址輸入 http://127.0.0.1:1880/ui ， 手機連線的話則 http:// { ip }:1880 /ui 注意 ! 連線的裝置必須在同一網域內"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\故人.mp4": {
+  "mtime": 1776236257.0,
+  "size": 31365183,
+  "hash": "7fd5ca3c89da2911c416e4181cfeb527ad23a31883cbc7df42d0dfc3fcab0786",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\暫定論文題目.docx": {
+  "mtime": 1761659180.0,
+  "size": 22878,
+  "hash": "ef920a8c95cf7aae0b1ce3bda209f989bfc9d9aaf7f6d8dcfd1c20cf60721265",
+  "hash_algo": "sha256",
+  "text": "暫定論文題目\n🎓 題目一：\n「基於YOLO與語音回饋的智慧安全帽輔助系統設計」\n💡 研究動機\n工地、機車騎士或外送員常因視野受限而發生事故。若能在安全帽上整合影像辨識與語音警示，可在第一時間提醒使用者避免危險。\n⚙️ 研究方法\n使用 Raspberry Pi 攝影機 + YOLOv8 偵測「來車」、「人員」、「障礙物」。\n將辨識結果透過 MQTT 傳給 ESP32 控制 DFPlayer Mini 播放語音提示（如「左後方有車」）。\n設計可穿戴式原型，並進行延遲與準確度測試。\n🎯 預期成果\n可穿戴智慧安全帽雛形。\n實測 YOLO 模型在移動場景下的準確率與反應時間。\n輕量化 AI 模型在邊緣裝置運行的效能分析。\n🎓 題目二：\n「基於物件偵測與語音提示之智慧防撞行人警示系統」\n💡 研究動機\n城市中手機低頭族與夜間行人事故頻傳。若行人攜帶的裝置能主動偵測前方障礙並語音提醒，可降低碰撞風險。\n⚙️ 研究方法\n使用 YOLOv8 偵測行人、車輛、腳踏車等物體。\nESP32 接收 MQTT 訊息並透過 DFPlayer Mini 語音提醒。\n分析不同距離與光線條件下的辨識效能。\n🎯 預期成果\n建立即時警示系統原型（可手持或穿戴）。\n改進模型的光線適應性與低延遲通訊效能。\n🎓 題目三：\n「結合YOLO與MQTT的智慧停車場監控與語音導引系統」\n💡 研究動機\n停車場常需人工監控與語音指示，若能自動偵測空位與車輛位置並提供語音導引，可提升自動化程度。\n⚙️ 研究方法\n使用 Raspberry Pi 攝影機 + YOLOv8 偵測空車位與車牌位置。\n使用 MQTT 傳送空位資訊至 ESP32 控制端。\n透過 DFPlayer Mini 播放語音引導（如「前方右側有空位」）。\n可選擇整合雲端資料庫（例如 Firebase）記錄即時停車資訊。\n🎯 預期成果\n智慧停車導引系統雛形。\n分析 YOLO 模型於固定監控環境的準確率與即時性。\n🧓 四、長者與弱勢族群照護\n這與導盲概念很接近，但範圍更廣，教授也比較能接受。\n🔹 研究主題建議\n智慧跌倒偵測系統（電腦視覺 / 加速度感測器）\n長者行為追蹤與健康預警 IoT 系統\n智慧拐杖或助行裝置（非導盲）→ 偵測跌倒、提醒用藥、監測心率。\n居家安全監測系統（含瓦斯偵測、異常聲音辨識）\n🎯 一、智慧防護系統主題方向\n主題構想：\n以物聯網與影像辨識為基礎的智慧入侵預警系統（Smart Intrusion Prevention System）\n🧠 可能的技術組合：\n功能\n技術/設備\n說明\n🔍 入侵者偵測\nYOLOv8 + Raspberry Pi\n偵測人形或可疑動作（例如深夜出現人影、破門進入、徘徊等）。\n🧾 行為分析\nOpenCV + Motion Detection\n區分正常家人活動與異常行為（長時間站立、闖入禁止區等）。\n🔈 即時回饋\nESP32 + DFPlayer Mini\n當偵測到入侵，透過語音警報「警告！入侵偵測到！」。\n💡 照明控制\nESP32 控制燈光\n立即開啟室內燈光、嚇阻入侵者。\n📡 遠端通報\nMQTT + Node-RED + Telegram/LINE\n傳送入侵照片與警報訊息給使用者手機。\n📷 錄影取證\nRaspberry Pi Camera\n自動錄影與上傳影像到雲端或本地儲存。\n🧩 可延伸研究議題\n入侵者行為模式辨識\n使用 YOLO 偵測「姿態」、「工具」（如手持刀具）。\n可延伸為「攻擊性行為辨識」。\n智慧門窗感測整合\n加入震動感測器（偵測門窗強行開啟）。\n使用 ESP32 收集訊號並觸發影像分析。\n防搶預警背包 / 攜帶型裝置\n將相同系統縮小，應用在登山、夜跑、單人通勤等場合。\n若偵測到可疑接近行為，立刻發出警示聲與定位資訊。\n📚 參考論文方向（可在 IEEE Xplore 或 Google Scholar 查找）\n類別\n論文範例\n關鍵字建議\n智慧居家安全\n“IoT-Based Smart Home Security System Using Face Recognition”\nsmart home security, IoT, face recognition\n影像入侵偵測\n“Real-time Intruder Detection Using YOLOv5”\nintrusion detection, YOLO, CCTV\n行為辨識\n“Human Activity Recognition for Home Security”\nhuman activity, security surveillance\n緊急通報\n“MQTT-Based IoT Security Alert System”\nMQTT, alert, Raspberry Pi\n💡 若你想聚焦於碩士論文級研究主題：\n可以選擇一個具創新點的核心問題，例如：\n「結合 YOLO 與聲音辨識的雙模態入侵預警系統」\n「基於邊緣運算的低功耗入侵者行為辨識」\n「以 MQTT 為中樞的多裝置協同家庭防護架構」\n是否想讓我幫你篩選幾篇近三年的相關學術論文（IEEE、Springer、ScienceDirect）？我可以幫你找出與「入侵防護」或「家庭安全」有關、並結合 YOLO 或 IoT 的研究方向。\n五、智慧登山輔助系統（擴展你的導盲拐杖構想）\n🎯 題目建議：\n“An Edge-AI-Based Smart Hiking Assistant with Object Detection and Environmental Awareness”\n🧩 研究內容：\n以 YOLO 辨識登山環境中的障礙物、動物或其他登山者。\n加入 GPS 與 MQTT 系統，提供位置／危險區警報。\n探討 AI 模型的運算負載、延遲、電力使用等。\n🚀 可行實作：\nRaspberry Pi 運行 YOLOv8n 偵測；ESP32 控制 DFPlayer Mini 播報語音警示。\n結合 Node-RED 建立 地圖 + 警報 儀表板。\n若想加深學術性，可研究「模型壓縮對偵測延遲與準確率的影響」。\n「基於邊緣AI的登山者行為與危險預測系統」\n內容特點：\n結合 YOLO 偵測＋感測器融合（氣壓、加速度、環境光）\n登山杖內建微型發電模組或跌倒偵測功能\n加入行為分類（姿態辨識、疲勞檢測）\n✅ 優點：創新度高，可發表 IEEE / MDPI Sensors 類期刊⚠️ 缺點：需跨 AI、電路、機構整合三個領域，難度較高\n基於 YOLO 與 MQTT 的智慧居家跌倒監測系統"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\桌面虛擬偶像_AI助手_六大專案比較.md": {
+  "mtime": 1785337233.8157475,
+  "size": 3074,
+  "hash": "57bd6ae9df34d615d288b02968f7b83250caf29a2bf486dcfaf2d40b0ce33c68",
+  "hash_algo": "sha256",
+  "text": "# 桌面虛擬偶像 AI 助手專案比較（2026）\n\n## 1. AIRI\n\n-   GitHub：https://github.com/moeru-ai/airi\n-   定位：開源 AI Companion 平台（Neuro-sama / Grok Companion）\n-   適合：★★★★★\n\n### 優點\n\n-   Live2D、VRM\n-   MCP、Agent、Memory\n-   Web / Desktop\n-   多種 LLM Provider\n-   Plugin 架構\n-   語音聊天、TTS、STT\n-   持續更新、社群最大\n\n### 缺點\n\n-   開發快速，API 與設定偶有變動\n\n------------------------------------------------------------------------\n\n## 2. Open-LLM-VTuber\n\n-   GitHub：https://github.com/Open-LLM-VTuber/Open-LLM-VTuber\n-   定位：Live2D AI VTuber\n\n### 優點\n\n-   桌寵模式\n-   即時語音\n-   Live2D\n-   Vision\n-   Screen Capture\n-   本地模型\n\n### 缺點\n\n-   Plugin 生態不如 AIRI\n\n------------------------------------------------------------------------\n\n## 3. Super Agent Party\nhttps://github.com/heshengtao/super-agent-party\n-   定位：AI Agent 平台\n\n### 優點\n\n-   MCP\n-   Browser Agent\n-   Computer Use\n-   多 Agent 協作\n\n### 缺點\n\n-   偏向 Agent，不以 Live2D 為核心\n\n------------------------------------------------------------------------\n\n## 4. my-neuro\nhttps://github.com/morettt/my-neuro\n-   定位：Neuro-sama 類型專案\n\n### 優點\n\n-   Personality\n-   Memory\n-   Voice\n\n### 缺點\n\n-   UI 與社群規模較小\n\n------------------------------------------------------------------------\n\n## 5. Soul of Waifu\n\n-   GitHub：https://github.com/jofizcd/Soul-of-Waifu?utm_source=chatgpt.com\n\n### 優點\n\n-   AI 桌寵\n-   Live2D / VRM\n-   陪伴互動\n-   語音聊天\n\n### 缺點\n\n-   偏角色陪伴，Agent 能力較少\n\n------------------------------------------------------------------------\n\n## 6. Meux Companion\n\n### 優點\n\n-   Persona\n-   Emotion\n-   Memory 分層設計\n\n### 缺點\n\n-   社群較小\n-   生態仍在發展\n\n------------------------------------------------------------------------\n\n# 綜合比較\n\n  專案                 Live2D   Agent   Memory   MCP   桌寵      推薦\n  ------------------- -------- ------- -------- ----- ------ ------------\n  AIRI                   ✅      ✅       ✅     ✅     ✅    ⭐⭐⭐⭐⭐\n  Open-LLM-VTuber        ✅       ◐       ◐       ◐     ✅    ⭐⭐⭐⭐⭐\n  Super Agent Party      ❌      ✅       ✅     ✅     ❌     ⭐⭐⭐⭐\n  my-neuro               ◐        ◐       ✅     ❌     ◐      ⭐⭐⭐⭐\n  Soul of Waifu          ✅      ❌       ✅     ❌     ✅      ⭐⭐⭐\n  Meux Companion         ◐       ❌       ✅     ❌     ◐       ⭐⭐⭐\n\n------------------------------------------------------------------------\n\n# 建議\n\n若目標是打造可長期擴充的桌面虛擬偶像 AI 助手：\n\n1.  **AIRI**：作為主要開發平台。\n2.  **Open-LLM-VTuber**：參考語音互動與桌寵模式。\n3.  **Super Agent Party**：參考 Agent 與電腦控制。\n4.  **Soul of Waifu**：參考陪伴互動設計。\n5.  **my-neuro**：參考人格與記憶。\n6.  **Meux Companion**：參考 Persona 分層設計 。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\樹梅派環境.docx": {
+  "mtime": 1761399850.0,
+  "size": 53056,
+  "hash": "d59ec534f412a7c66e1bce73a8e3bd3f5b37ef91af6afe62616c2b442db93ae8",
+  "hash_algo": "sha256",
+  "text": "一、在 Raspberry Pi（Linux）安裝 Arduino IDE\n打開終端機（Terminal），輸入以下指令：\nsudo apt install arduino -y\n🪄 二、在 Raspberry Pi 安裝 VS Code\n打開「終端機（Terminal）」並輸入以下指令：\nsudo apt install code -y\n一、圖形介面方式（最像 Word）\nLibreOffice 是 Linux 上最完整的 Office 套件，完全免費，可以直接開啟 .docx、.xlsx、.pptx 等檔案。\n📦 安裝方法：\nsudo apt install libreoffice -y\n安裝後，你可以從選單中找到：\n「Office → LibreOffice Writer」\n它的功能幾乎等同於 Microsoft Word，支援 .doc、.docx、.odt、.rtf 等格式。\n🧩 一、安裝 7-Zip 工具\n打開終端機（Terminal），輸入：\nsudo apt update\nsudo apt install p7zip-full -y\n這會安裝完整版本的 7-Zip，支援 .7z、.zip、.rar、.tar、.gz 等壓縮格式。\n📦 二、壓縮檔案或資料夾\n✅ 壓縮成 .7z 檔案\n7z a output.7z inputfile\n例子：\n7z a project.7z /home/pi/Documents/myproject/\n這會把 myproject 資料夾壓成 project.7z。\n✅ 壓縮成 .zip 檔案\n7z a output.zip inputfile\n例子：\n7z a data.zip *.txt\n這會把目前資料夾裡的所有 .txt 檔打包成 data.zip。\n✅ 壓縮並加密（需要密碼）\n7z a -p123456 secret.7z private_folder/\n這樣解壓時就會要求輸入密碼。\n📂 三、解壓縮\n✅ 解壓 .7z 檔案\n7z x archive.7z\nx 會保持原本的資料夾結構。\n✅ 解壓 .zip 檔案\n7z x archive.zip\n⚙️ 二、安裝 Node-RED\nNode-RED 提供官方安裝腳本，一行指令即可完成所有設定：\nbash <(curl -sL https://raw.githubusercontent.com/node-red/linux-installers/master/deb/update-nodejs-and-nodered)\n這個腳本會自動：\n安裝 / 更新 Node.js\n安裝 Node-RED\n建立系統服務（systemd）\n建立快捷命令 node-red-start、node-red-stop、node-red-restart\n過程大約需要 5–10 分鐘（取決於網速）。\n🚀 三、啟動 Node-RED\n安裝完成後，輸入：\nnode-red-start\n它會啟動 Node-RED 並顯示類似以下訊息：\nStarted flows\nYou can now view the Node-RED editor at:\nhttp://127.0.0.1:1880/\n打開瀏覽器，在 Raspberry Pi 上輸入：\n👉 http://localhost:1880/或用另一台電腦（同一 Wi-Fi 下）輸入：👉 http://<你的樹莓派IP>:1880\n就能看到 Node-RED 的圖形化流程編輯介面了 🎉\n🧩 四、設為開機自動啟動（建議）\n讓 Node-RED 在每次開機時自動啟動：\nsudo systemctl enable nodered.service"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\機器學習海報.ppt": {
+  "mtime": 1768142194.0,
+  "size": 288256,
+  "hash": "a3ccf045a9ff68a706f76e827c3282dcb9b86a2133a60524227dd96f79b3cd18",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\無人機.pdf": {
+  "mtime": 1764052114.0,
+  "size": 1708964,
+  "hash": "7f919324e3f67ba63f726b645b72dece52f66280e69e2183379dd821a3e6058f",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\物聯網安全報告.pptx": {
+  "mtime": 1781229346.0,
+  "size": 28738233,
+  "hash": "05086431b73b10561d13bf5f290e27436ab076b1af0f74f0f3b9a160ee5b2b50",
+  "hash_algo": "sha256",
+  "text": "【第 1 頁】Securing the MQTT Ecosystem: Vulnerabilities and Defense Strategies 作者 ： Shams Ul Arfeen Laghari Wenhao Li Selvakumar Manickam Priyadarsi Nanda Ayman Khallel Al-Ani Shankar Karuppayah 發表期刊 ： IEEE Access (2024 年 ) M11302030 洪之川 MQTT  生態系安全：漏洞、緩解方法與未來發展探討\n【第 2 頁】近年來物聯網 （Internet of Things, IoT） 技術快速發展，已廣泛應用於智慧家庭、智慧醫療、智慧農業及智慧工廠等領域。透過感測器、嵌入式設備及雲端平台的整合，大量裝置能夠即時蒐集、傳輸與分析資料，提升系統自動化與管理效率。 研究背景與動機 在眾多  IoT  通訊協定中， MQTT（Message Queuing Telemetry Transport） 因具有輕量化、低頻寬消耗及低功耗等特性，被廣泛應用於資源受限的物聯網設備 然而，隨著  MQTT  的普及，其相關安全問題也逐漸受到關注。若  MQTT  系統缺乏適當的身份驗證、存取控制或資料加密機制，攻擊者可能透過未授權存取、弱密碼破解、中間人攻擊及阻斷服務攻擊 （DoS） 等方式入侵系統，進而造成資料外洩、設備控制權遭竊取， 癱瘓整個系統 因此，本研究以  MQTT 生態系安全為主題，探討  MQTT  系統中常見的安全威脅、攻擊方式及其可能造成的影響，並整理現有防禦機制與未來研究方向 。\n【第 3 頁】MQTT 介紹 MQTT  是什麼？ 。 MQTT特色 : 輕量化通訊協定  低頻寬需求  低功耗設計  支援即時訊息傳輸  採用  Publish/Subscribe  架構  適用於資源受限設備  易於整合雲端平台與  IoT  系統 其 輕量化 、 低功耗及低頻寬需求等 特性 ， 廣泛 應用在  ESP32 、感測器以及各種  IoT  設備上。隨著智慧家庭與工業物聯網的快速發展， MQTT  已成為設備與雲端平台之間的重要通訊橋樑。 MQTT（Message Queuing Telemetry Transport） 是一種基於  TCP/IP  的輕量級訊息傳輸協定，透過  Broker  作為訊息中介，使發布者 （Publisher） 與訂閱者 （Subscriber） 不需直接連線即可完成資料交換。\n【第 4 頁】02 04 01 03 案例：智慧燈光控制 使用者透過手機  App  發送  MQTT  指令至  Broker，Broker  再將訊息轉發至智慧燈泡，實現遠端開關控制 。 智慧家庭 案例：病患心率監測 穿戴式裝置即時傳送病患心率資訊至醫療平台，當偵測到異常數值時自動通知醫護人員。 智慧醫療 案例：設備溫度監控 工廠感測器持續發布機台溫度資料，當溫度超過安全閾值時，系統立即發送警報通知維護人員。 工業物聯網 案例：水庫水位監測 分布於各地的水位感測器定期發布監測數據至  MQTT Broker ，管理中心可即時掌握水位變化，並於異常時發出警報 。 遠端監控系統 MQTT 主要應用領域 1. 智慧家庭 2. 工業物聯網 3. 智慧醫療 4. 智慧農業 5. 智慧城市 6. 車聯網 7. 能源管理 8. 遠端監控系統 9. 環境監測系統 10. 雲端物聯網平台\n【第 5 頁】MQTT  的快速成長與安全風險 國家 數量 中國 約 31 萬 韓國 約 23 萬 日本 約 2.6 萬 美國 約 2.3 萬 2023年  FOFA  搜尋引擎偵測到的  MQTT  伺服器數量統計 物聯網設備的⽇益普及和 MQTT 協定的廣泛應⽤已引起潛在攻擊者的注意。事實上，物聯網 安全，尤其是在快速發展的⼯業4.0領域，正⽇益被視為網路安全領域⼀個新興的重⼤議題 ，  由於物聯網設備的獨特特性⽽並不適⽤。這種情況增加了確保 MQTT ⽣態系統及其相關設備安 全的複雜性。\n【第 6 頁】MQTT  伺服器成長趨勢 為了全⾯評估 MQTT 安全研究的現狀，我們⾸先使⽤關鍵字 「MQTT Security」 在 Google Scholar 中檢索到 629 篇⽂章，在Web of Science中檢索到19篇，在 Scopus 中檢索到 22 篇，時間 跨度為 2018 年⾄ 2023 年。隨後，我們僅納⼊英⽂撰寫的綜述/調查⽂章，並剔除了重複⽂章 在 Shodan 中偵測到的 MQTT 伺服器分佈 [17]。 考慮到物聯網相關攻擊的⽇益增多，這些⽂章的數 量少得令⼈驚訝。最終納⼊的⽂獻包括4篇期刊⽂章和 4 篇會議論⽂，它們都深⼊探討了與 MQTT  協議相關的攻擊⽅法和防禦措施 。 \n【第 7 頁】MQTT 架構 MQTT 發布／訂閱架構 Broker （訊息代理伺服器） 負責： 接收訊息  管理  Topic  轉發訊息 Broker （訊息代理伺服器） 負責： 接收訊息  管理 Topic  轉發訊息 Subscriber （訂閱者） 負責接收資料 例如： Node-RED  手機  APP  Dashboard\n【第 8 頁】MQTT  安全生態系 1 . 開發者 （Developer） 2. MQTT Broker 3. Gateway 4. IoT Device 5. Cloud Platform 6. User MQTT  安全不是單點問題 任何一個環節被攻破： 都有可能造成： 資料外洩  設備失控  系統癱瘓 MQTT  並非只有  Broker  需要保護。論文指出 一個完整的  MQTT  生態系包含 下列環節 :\n【第 9 頁】MQTT  生態系攻擊分類 不安全設計  權限設定不一致  雲端安全問題 MQTT  協定層攻擊 Broker  軟體攻擊 軟體漏洞  Web  管理介面漏洞 未授權存取  弱密碼攻擊  不安全傳輸  DoS  攻擊 MQTT-PWN MQTTSA 裝置層攻擊 人為因素 攻擊工具 開發者疏失  使用者不當操作 Smart Device  漏洞  Firmware  漏洞  Gateway  攻擊 論文將  MQTT  生態系的安全威脅分為六大類，這些攻擊面向涵蓋從設備、網路、雲端到使用者的整個  MQTT  生態系，因此後續將依序介紹其中最常見的幾種攻擊方式 。 IoT Cloud  平台攻擊\n【第 10 頁】MQTT  協定層攻擊（一） 未授權存取 （Unauthorized Access） 由於 MQTT 預設並不強制啟用： 身分驗證 （Authentication） 存取控制 （Access Control）  若 Broker 未正確設定安全機制，攻擊者只要能連上網路，就可能直接連線至 MQTT Broker。 有安全性漏洞裝置的數量\n【第 11 頁】MQTT 協定層攻擊（二） 許多 MQTT Broker  雖然啟用了帳號密碼驗證機制， 但管理者仍使用： admin/admin root/root test/test mqtt/mqtt 等預設帳號密碼。 攻 擊者可利用自動化工具進行大量嘗試， 進而取得系統存取權限。 常見攻擊方式 1. 暴力破解 2. 字典攻擊 MQTT 協定層攻擊（三） 不安全傳輸 （Insecure Transmission ) ） M QTT  預設使用： TCP Port  1883進行通訊。 若未啟用  TLS/SSL  加密， 傳輸內容將以明文形式在網路中傳送 。 弱密碼\n【第 12 頁】MQTT 協定層攻擊（四） 什麼是  DoS  攻擊？ 阻斷服務攻擊 （Denial of Service, DoS） 是指攻擊者透過大量請求或惡意封包消耗系統資源，使  MQTT Broker  無法正常提供服務 。 1.  TCP SYN Flood 大量建立  TCP  連線請求 2. Payload Flooding 攻擊者持續發布大量訊息 3.  QoS Abuse Attack 攻擊者大量傳送  QoS 2  訊息： PUBLISH PUBREC PUBREL PUBCOMP 持續消耗 Broker 資源。 Broker 層攻擊 ( 五 ） Broker  是  MQTT  系統的核心元件。 負責： 接收訊息  管理 Topic  轉發訊息  管理連線\n【第 13 頁】IoT Cloud  平台攻擊 1. 設計缺陷 （Insecure Design） 系統架構設計不當： 驗證機制不足  權限設計不完整  API 保護不足  2.  權限設定錯誤 （Policy Inconsistency） MQTT Topic  權限與雲端平台權限規則不一致。 例如： MQTT: home/# Cloud: * 可能產生權限繞過問題。 3.  雲端安全問題 雲端服務若設定錯誤： 可能造成： 敏感資料外洩  帳號遭盜用  大量設備暴露於網際網路 Device  層攻擊 1.Smart Device  攻擊 IoT 設備可能存在： 韌體漏洞  預設帳號密碼  不安全設定 2. Gateway  攻擊 封包監聽 中間人攻擊 惡意轉發 建立假的  WiFi AP：\n【第 14 頁】人為因素 （Human Factors ) ） 常見失誤 潛在風險 改善方法 使用預設帳號密碼 容易遭暴力破解 建立強密碼政策 帳號密碼硬編碼於程式中 憑證外洩 使用環境變數或憑證管理機制 未啟用  TLS  加密 資料遭竊聽 啟用  TLS/SSL  加密傳輸 開放匿名登入 未授權存取 關閉  Anonymous Access 存取權限設定錯誤 權限濫用 實施  ACL  與最小權限原則 未定期更新  Broker  或韌體 已知漏洞遭利用 定期更新與漏洞修補\n【第 15 頁】已報告的各種軟體產品的漏洞 . 代理伺服器漏洞類別 主流 MQTT Broker 漏洞數量趨勢 涵蓋 Mosquitto、HiveMQ、RabbitMQ、VerneMQ  與 ActiveMQ 等主流 Broker。  近年來持續發現新的安全漏洞。  顯示 Broker 已成為攻擊者的重要目標。 Broker 常見漏洞類型 主要漏洞包括： 跨網站指令碼攻擊（XSS）  阻斷服務攻擊（DoS）  權限繞過（Bypass）  遠端程式碼執行（Execute Code）  資訊洩漏（Information Leak）\n【第 16 頁】MQTT  安全 防護方法\n【第 17 頁】實際測試\n【第 18 頁】結論 現有問題 MQTT  安全風險遍布協定、 Broker 、 Cloud 、 Device  與人為因素等多個層面，且許多系統仍存在未授權存取、弱密碼及明文傳輸等問題 隨著  IoT  設備數量快速成長，攻擊面持續擴大，使  MQTT  生態系面臨更複雜的安全挑戰。  未來發展趨勢 未來將朝向輕量化身分驗證、零信任架構 （Zero Trust） 及  AI  入侵偵測等方向發展，以提升  IoT  環境下的安全防護能力。  透過結合自動化威脅分析與多層次安全機制，建立更完整且具韌性的  MQTT  安全生態系。 \n【第 19 頁】謝謝聆聽"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\疾病與行為定義.pptx": {
+  "mtime": 1780481600.0,
+  "size": 10608603,
+  "hash": "02ef19c8ff81028dc12d108e92daa63411d8aa320f0f18b6e37dd35420c3aa7d",
+  "hash_algo": "sha256",
+  "text": "【第 1 頁】目錄 1. 關鍵點選擇與註釋\t 2. 疾病定義\t 3. 行為與關鍵點對應\t 4. 資料集分布\t 5. 系統流程 6. 模型測試\n【第 2 頁】關鍵點選擇與註釋 將關鍵點對應於貓咪可觀察之解剖結構與關節位置。透過明確定義各關鍵點的解剖意義，可將姿勢轉換為具有幾何與結構關係的表示方式，進而支援後續之姿勢變化分析與異常姿態判斷。 Keypoint 中文註釋說明 nose 位於鼻鏡（鼻頭）中心位置，作為頭部最前端且穩定的參考點，用於判斷頭部方向與姿態。 left_ear_tip 左耳最上緣可見的尖端位置，若耳朵部分遮蔽，則標註可辨識的最高點。 right_ear_tip 右耳最上緣可見的尖端位置，與左耳對稱，用於判斷頭部傾斜與旋轉。 chest 位於兩前肢之間、胸腔中心的體表投影點，作為前軀姿態與重心參考。 mid_back 位於胸口與臀部之間的背部中段位置，用於描述脊柱彎曲與身體姿態變化。 hip 位於左右後腿股骨連接處的中間位置，代表後軀重心與後肢運動起始位置。 以下是 17 個關鍵點 :\n【第 3 頁】Keypoint 中文註釋說明 left_front_elbow 左前肢肩關節與前爪之間的主要彎折關節位置。 left_front_paw 左前爪與地面接觸的中心位置，用於步態與受力判斷。 right_front_elbow 右前肢肩關節與前爪之間的主要彎折關節位置。 right_front_paw 右前爪與地面接觸的中心位置。 left_hind_knee 左後腿股骨與脛骨之間的關節轉折位置，對後肢屈伸分析十分重要。 left_hind_paw 左後爪與地面接觸的中心位置，對拖行與後肢功能異常特別敏感。 right_hind_knee 右後腿股骨與脛骨之間的關節轉折位置。 right_hind_paw 右後爪與地面接觸的中心位置。 tail_base 尾巴與臀部連接的起始位置，作為尾巴運動的基準點。 tail_mid 尾巴長度的幾何中點，用於描述尾巴彎曲程度。 tail_tip 尾巴最末端位置，用於觀察尾部姿態、平衡與神經反應。 關鍵點選擇與註釋\n【第 4 頁】疾病定義 行為 姿勢敘述 可能的疾病 後腿踢耳朵 / 甩頭 頻繁用後腳搔抓耳朵，或用力甩動頭部，有時會伴隨耳朵下垂。 耳疥蟲感染、外耳炎、過敏、耳道異物或血腫。 母雞蹲 四肢縮在腹部下，背部微拱，肌肉緊繃，頭部低垂且不願與人互動。 慢性腎衰竭、全身性疼痛、發燒、極度精神不濟。 跛行 走路重心偏移，某隻腳不敢著地、縮起，或行走時身體明顯上下晃動。 骨折、關節炎、肉墊受傷（異物刺入）、動脈血栓初期。 拱背 站立或行走時背部明顯隆起，腹部內收，動作緩慢且僵硬。 腹部劇痛（如腸阻塞）、脊椎問題、嚴重的便秘。 祈禱姿勢 前半身（前肢與胸部）貼近地面，但後半身（屁股）仍高高翹起。 急性胰臟炎 、嚴重腹膜炎、腸胃道穿孔或劇烈絞痛。 嘔吐 腹部劇烈收縮（抽動），脖子伸長並發出乾嘔聲，最後排出液體或食物。 腸胃炎、毛球症、食物中毒、肝腎疾病、寄生蟲。\n【第 5 頁】行為類別  ×  關鍵點對應表 1️⃣  後腿搔耳朵／甩頭 主要觀察重點： 頭部擺動＋後肢抬起幅度 使用的關鍵點 nose left_ear_tip right_ear_tip left_hind_knee left_hind_paw right_hind_knee right_hind_paw 2️⃣  母雞蹲（蜷縮、低活動） 主要觀察重點： 整體高度降低＋肢體收縮 使用的關鍵點 chest mid_back hip left_front_paw right_front_paw left_hind_paw right_hind_paw 3️⃣  跛行 主要觀察重點： 左右對稱性破壞、步態不均 使用的關鍵點 left_front_elbow ,  left_front_paw right_front_elbow ,  right_front_paw left_hind_knee ,  left_hind_paw right_hind_knee ,  right_hind_paw hip 4️⃣  拱背 主要觀察重點： 脊柱曲率異常 使用的關鍵點 chest mid_back hip nose 5️⃣  祈禱姿勢（前低後高） 主要觀察重點： 前軀貼地、後軀抬高 使用的關鍵點 chest left_front_paw,right_front_paw Left_hind_knee,Right_hind_knee hip 6️⃣  嘔吐（腹部劇烈收縮） 主要觀察重點： 腹部節律性前後擺動 使用的關鍵點 chest hip mid_back nose\n【第 6 頁】資料集 目前資料集原始 訓練 影像 500 張，做三倍資料加強 TRAIN 1500 張 (93%) VAILD 100 張 (7%) 使用的 預 訓練模型 : yolo-pose.pt 收斂圖 : 資料分布 : 大多為標準側身，少數為正面或背面。\n【第 7 頁】系統流程 將一台攝影機（手機 /USB cam/RPi cam ）放在固定位置 做正規化：以身長/肩胛-髖距離標準化，消除遠近與體型差 YOLO-Pose  輸出： bbox + 17 keypoints + conf 單張：角度、骨段長比例、左右對稱差、背線弧度 proxy 序列：速度、加速度、週期性（走路步態）、關節角度變化曲線 線1：無監督/單類學習 One-Class SVM / Isolation Forest / LOF 線2：序列  matching DTW ：正常步態序列  vs  新序列，距離當異常分數 異常分數（ anomaly score ） 異常片段定位（哪一段開始異常） 異常類型候選（用簡單規則/分類器先做）\n【第 8 頁】實驗設計 我先收集一組「正常行走」的影片，對每一幀用  YOLO-Pose 擷取  17 個關鍵點，再把它轉成正規化後的骨架向量序列，這一條序列就當作「正常姿態的時間樣板 （ baseline ）」。\n【第 9 頁】行走測試"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\看板.vbs": {
+  "mtime": 1768638747.0,
+  "size": 110,
+  "hash": "8d68f86eb645bde5524af224b51d219b08e3e298686cdd07eccdaa32dfa4d13e",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\紫米被反殺.webm": {
+  "mtime": 1738894584.0,
+  "size": 5558280,
+  "hash": "e2b11fe7bb4c75b058e0d6f0216ff60c6d28e9d6b86cdee2bab548c5fe394c54",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\螢幕擷取畫面 2026-04-08 203457.png": {
+  "mtime": 1775651697.0,
+  "size": 323075,
+  "hash": "d8961ecc64d12b6cc6b4875f265d8b983c194fb53828936a4fabe5f4c0c2aef1",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\螢幕擷取畫面 2026-04-08 203715.png": {
+  "mtime": 1775651835.0,
+  "size": 748962,
+  "hash": "abfe027074678c6693aa2261f120709ed0278887477f4c1bbf64010533a2163d",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\螢幕擷取畫面 2026-04-08 203944.png": {
+  "mtime": 1775651984.0,
+  "size": 869342,
+  "hash": "c1f4ead6670ec3e781a3ceabe6549b20630a87648a40d6161e0ecb843527da61",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\螢幕擷取畫面 2026-04-08 204030.png": {
+  "mtime": 1775652030.0,
+  "size": 1939741,
+  "hash": "21168544ff2b96a0df9e9872840d7a8a258a5af19fd0f98dc66ac0bede7f50f5",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\訓練滑動視窗步長（WINDOW_STRIDE）的影響.txt": {
+  "mtime": 1781150115.8605464,
+  "size": 10033,
+  "hash": "45b6cfa9ff6d10acf8330bd2bd9aff8396ea77a2fb8ca95982d71e5a8aebca32",
+  "hash_algo": "sha256",
+  "text": "訓練滑動視窗步長（WINDOW_STRIDE）的影響\r\n以 SEQUENCE_LENGTH=16 為例：\r\n\r\nstride 太小（例如 1–4）\r\n\r\n[0..15] [1..16] [2..17] [3..18] ...\r\n問題：\r\n\r\n樣本高度重疊 → 相鄰兩筆樣本只差 1–4 幀，幾乎是同一段動作\r\n資料洩漏風險 → 雖然做了影片級切分，但同一影片內的訓練樣本相互太像，模型容易過擬合到特定動作片段的「節奏」，而非真正的行為特徵\r\n訓練時間倍增 → 樣本數可能暴增 4–16 倍，但資訊量並未等比增加，只是重複計算梯度\r\nstride 太大（例如 16 = SEQUENCE_LENGTH，無重疊）\r\n\r\n[0..15] [16..31] [32..47] ...\r\n問題：\r\n\r\n樣本數銳減 → 一段 100 幀的動作只能切出 6 筆，資料嚴重不足\r\n行為邊界被截斷 → 若某個動作剛好橫跨兩個視窗邊界（例如甩頭從第 10 幀開始），兩個視窗都只拿到半段，標籤純度低、特徵不完整\r\n對齊敏感 → 推論時的 deque 不會恰好對齊訓練視窗的起點，訓練/推論分布差異增大\r\n建議範圍（文獻常規）\r\nstride\t重疊率\t適合情境\r\nT//4（= 4）\t75%\t資料量稀少、動作短促（例如甩頭 < 0.5s）\r\nT//2（= 8）推薦\t50%\t大多數行為辨識任務的預設值\r\nT（= 16）\t0%\t資料量充足、需快速驗證 pipeline\r\n你目前設定 WINDOW_STRIDE: 8（50% 重疊）是合理的預設值。 若 shake、scratch 這類樣本數偏少，可考慮調到 4 只針對少數類別補樣本，但 0_train_gcn.py 目前是全局統一步長，沒有逐類設定的機制。\r\n\r\n我的訓練最終模型是取best.pt嗎\r\nGrep \"save|best|MODEL_SAVE_PATH|torch\\.save|checkpoint\" (in c:\\ai_project\\paper\\cat_monitoring_system\\0_train_gcn.py)\r\n131 lines of output\r\n是的，儲存的是驗證集最佳表現的權重，不是最後一個 epoch。以下是完整邏輯：\r\n\r\n儲存策略（0_train_gcn.py:987-1065）\r\n判斷標準（L1044）：\r\n\r\n\r\nif val_acc > best_val_acc or (val_acc == best_val_acc and val_loss < best_val_loss):\r\n準確率優先，準確率相同時以 val_loss 較低者勝。\r\n\r\n暫存方式：最佳權重在訓練過程中只存在記憶體（best_state_dict），訓練全部結束後才一次寫檔（L1064），避免每個 epoch 都做磁碟 I/O 拖慢訓練。\r\n\r\nEMA 分支（L1049-1052）：若 USE_EMA_FOR_EVAL: true，儲存的是 EMA 平滑後的權重；否則儲存當前 epoch 的 model 權重。\r\n\r\n儲存路徑\r\nyaml 設定的 MODEL_SAVE_PATH 會自動加上 run 後綴，例如：\r\n\r\n\r\nstgcn_best.pth  →  stgcn_best_20260609_143000.pth\r\n由 L673-674 產生：\r\n\r\n\r\nrun_model_path = model_root.with_name(f\"{model_root.stem}_{run_suffix}{model_root.suffix}\")\r\n所以每次訓練會產生獨立的檔案，不會覆蓋上一次的結果。\r\n\r\n不儲存最後 epoch 的原因\r\n這是標準做法（Early Stopping + Best Model Checkpoint）。最後一個 epoch 不一定是最佳的，尤其在 EARLY_STOP_PATIENCE: 15 設定下，停止時可能已過了最佳點 15 個 epoch。\r\n\r\n要怎麼跟教授解釋st-gcn訓練跟yolo單帧影像不一樣，需要決定對資料集如何切割 以及為何切割，對資料量要求也不同\r\n向教授解釋的框架\r\n一、兩者的根本差異\r\nYOLO（單幀）\r\n\r\n輸入是一張靜態圖片，輸出是「這張圖裡有沒有貓、在哪裡」。\r\n\r\n每張圖片彼此獨立，沒有時間順序的概念。\r\n\r\nST-GCN（時序）\r\n\r\n輸入是連續 16 幀的骨架序列，輸出是「這段時間內貓在做什麼」。\r\n\r\n每筆訓練樣本是一個時間片段，前後幀之間有強烈的相依性。\r\n\r\n二、為什麼不能用 YOLO 的方式切割資料\r\nYOLO 的 train/val/test 是以圖片為單位隨機切分，完全合理。\r\n\r\nST-GCN 若沿用同樣做法，會發生資料洩漏（Data Leakage）：\r\n\r\n\r\n同一段搔抓影片（共 100 幀）\r\n  ↓ 以幀為單位隨機切分\r\n訓練集: 幀 1,3,5,7...（偶數幀組成的視窗）\r\n驗證集: 幀 2,4,6,8...（奇數幀組成的視窗）\r\n這兩個視窗來自同一隻貓、同一個動作、同一個攝影機角度，\r\n\r\n驗證集的動作模式幾乎已經出現在訓練集裡，準確率虛高，\r\n\r\n換一段新影片就會表現大幅下降。\r\n\r\n三、正確的切割方式：影片級切分\r\n\r\n影片A（100幀）→ 訓練集\r\n影片B（80幀）  → 訓練集\r\n影片C（60幀）  → 驗證集   ← 整支影片完全沒有進過訓練\r\n影片D（90幀）  → 測試集\r\n關鍵原則：同一支影片的所有幀只能出現在一個 split 裡。\r\n\r\n這對應你的訓練腳本中 TRAIN_TEST_SPLIT: 0.2 是對影片列表做的切分，而非對幀做的切分。\r\n\r\n四、滑動視窗讓一支影片產生多筆樣本\r\n\r\n影片A 100幀，SEQUENCE_LENGTH=16，WINDOW_STRIDE=8\r\n\r\n視窗1: 幀 0~15   → 1筆訓練樣本\r\n視窗2: 幀 8~23   → 1筆訓練樣本\r\n視窗3: 幀16~31   → 1筆訓練樣本\r\n...共產生 ceil((100-16)/8)+1 = 11 筆\r\n所以資料量的計算方式和 YOLO 完全不同：\r\n\r\nYOLO：1 張圖 = 1 筆資料\r\nST-GCN：1 秒影片（30幀）≈ (30-16)/8 + 1 ≈ 2–3 筆資料\r\n五、對資料量的要求不同\r\nYOLO\tST-GCN\r\n最小單元\t1 張圖\t1 支影片（≥ SEQUENCE_LENGTH 幀）\r\n多樣性來源\t不同圖片\t不同影片（不同個體、不同場景）\r\n資料不足的後果\t漏偵測、位置誤差\t過擬合特定貓的動作節奏\r\n增強方式\t旋轉、裁切、亮度\t時間位移、關節遮蔽、空間旋轉\r\nST-GCN 對影片多樣性的要求遠高於數量：5 隻不同貓各 2 分鐘，遠比同一隻貓 10 分鐘有效。\r\n\r\n六、一句話總結給教授\r\nYOLO 學的是「空間外觀」，樣本可以隨機打散；ST-GCN 學的是「時間動態」，樣本有時間相依性，必須以影片為單位切割，否則驗證集的資料本質上已被訓練集「看過」，評估結果不可信\r\n\r\n\r\n\r\n\r\n圖解：一段 50 幀影片，SEQUENCE_LENGTH=16，STRIDE=8\r\n\r\n幀:   0  1  2 ... 14 15 16 ... 24  25 ... 38 39  40 ... 49\r\n標籤: scratch scratch ... scratch  unannotated ...  scratch scratch\r\n\r\n視窗1 [0~15]   全 scratch         → ✓ 保留\r\n視窗2 [8~23]   含 unannotated 幀  → ✗ 捨棄（strict 模式）\r\n視窗3 [16~31]  大部分 unannotated → ✗ 捨棄\r\n視窗4 [24~39]  scratch 佔比漸高   → 視 LABEL_PURITY_THRESHOLD 決定\r\n視窗5 [32~47]  全 scratch         → ✓ 保留\r\n同一支影片的 視窗1 和 視窗5 都會進入訓練集，只有跨越標籤邊界的中間視窗被過濾掉。\r\n\r\n兩種模式的差異\r\nSTRICT_WINDOW_FILTER=false（預設）\tSTRICT_WINDOW_FILTER=true\r\n捨棄條件\t視窗內完全沒有有標籤的幀\t含任何 unannotated，或純度 < threshold\r\n行為邊界視窗\t保留（以多數標籤為準）\t捨棄\r\n資料量\t較多\t較少但更純\r\n適合情境\t標籤稀疏、資料量本就不足\t標籤完整、希望樣本純度高\r\n你的標籤是否有大量 unannotated 幀？若有，strict 模式會損失不少資料，可以先用 count_sequences.py 分別統計兩種模式的樣本數差異再決定。\r\n\r\nc#13-13\r\nSTRICT_WINDOW_FILTER: false的情況下，LABEL_PURITY_THRESHOLD還有作用嗎，要怎麼搭配\r\nSTRICT_WINDOW_FILTER=false 時，LABEL_PURITY_THRESHOLD 完全不起作用。\r\n\r\n看訓練腳本的分支邏輯（0_train_gcn.py:465-479）：\r\n\r\n\r\nif STRICT_WINDOW_FILTER:\r\n    if 'unannotated' in window_labels:\r\n        continue\r\n    best_label, best_count = Counter(window_labels).most_common(1)[0]\r\n    if best_count / sequence_length < LABEL_PURITY_THRESHOLD:  # ← 只在這裡用\r\n        continue\r\nelse:\r\n    annotated = [l for l in window_labels if l != 'unannotated']\r\n    if not annotated:\r\n        continue\r\n    best_label = Counter(annotated).most_common(1)[0][0]  # ← 完全不看 threshold\r\ncount_sequences.py 也是同樣結構，結論一致。\r\n\r\n四種搭配與實際效果\r\nSTRICT\tPURITY\t行為\t適合情況\r\nfalse\t任意值\t只要有 ≥1 有標籤幀就保留，threshold 無效\t標籤不連續、資料量少\r\ntrue\t1.0\t視窗內全部幀都必須是同一行為\t標籤非常乾淨、幾乎無 unannotated\r\ntrue\t0.8\t主類別佔 80% 以上才保留，允許少量邊界幀\t最常用組合，兼顧純度與資料量\r\ntrue\t0.5\t主類別超過一半即可，容忍行為轉換段\t資料稀少但願意接受較雜的樣本\r\n\r\n\r\n\r\n同一個滑動視窗（16 幀）內，佔最多的那個行為標籤，其幀數比例必須 ≥ 0.8。\r\n\r\n計算方式（0_train_gcn.py:470-472）\r\n\r\nbest_label, best_count = Counter(window_labels).most_common(1)[0]\r\nif best_count / self.sequence_length < LABEL_PURITY_THRESHOLD:\r\n    continue\r\n以 SEQUENCE_LENGTH=16、PURITY=0.8 為例：\r\n\r\n主行為幀數 ÷ 16 ≥ 0.8 → 至少 13 幀必須是同一個行為。\r\n\r\n圖解\r\n\r\n視窗（16幀）:  scratch scratch scratch scratch scratch scratch scratch scratch\r\n              scratch scratch scratch scratch scratch\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\評估 AT-Shift-GCN 實作難易度.docx": {
+  "mtime": 1768529070.0,
+  "size": 20084,
+  "hash": "2a0343960fae8354652eb122b2a9cb100bf8dd215373216b6174819bc990a07a",
+  "hash_algo": "sha256",
+  "text": "評估實作  https://www.mdpi.com/2079-9292/13/18/3737  的難易度\n這篇論文 《Attention-Guided and Topology-Enhanced Shift Graph Convolutional Network for Skeleton-Based Action Recognition》 (AT-Shift-GCN) 發表於 Electronics 2024 (MDPI)。\n若要評估實作此論文的難易度，可從以下幾個維度來分析：\n綜合評估：中等偏易 (Low-Medium Difficulty)\n評分：2.5 / 5（前提是有基礎的 PyTorch 與 GCN 知識）\n如果官方程式碼可用（高機率），難度主要在於資料準備與環境配置。 如果需要從頭復現（無程式碼），難度會提升至 中等 (3.5/5)，因為需要精確理解 Shift-GCN 的修改細節。\n詳細分析\n1. 程式碼可用性 (Code Availability)\n官方程式碼跡象： 根據搜尋結果，該論文極有可能公開了程式碼，Repository 可能位於 https://github.com/julycrow/IST-GCN（需確認是否對應此論文，因為論文縮寫是 AT-Shift-GCN，但有時 Repo 名稱不同）。\n基底模型 (Base Model)： 此論文是基於 Shift-GCN (CVPR 2020) 進行改進。Shift-GCN 的程式碼在 GitHub 上非常完整且流行 (kchengiva/Shift-GCN)。\n有利點： 即使官方 Code 不完全匹配，你也可以直接 fork Shift-GCN 的代碼庫，這已經解決了最繁瑣的資料讀取 (Feeder)、評估 (Evaluation) 和基礎模型架構問題。\n2. 算法複雜度 (Algorithm Complexity)\n論文的核心改進在於兩個模組，實作邏輯相對清晰：\n空間流 (Spatial Stream) - Topology-Enhanced：\n原理： 在 Shift-GCN 的空間卷積中加入拓撲特徵增強。Shift-GCN 原本是透過 “Shift” 操作來移動特徵，這篇論文加入了通道間的資訊聚合（Topological transfer operation）。\n實作難點： 需要修改 Shift 操作的邏輯，可能涉及 Tensor 的維度變換 (permute, view) 和自定義的 Mask/Attention 計算。\n時間流 (Temporal Stream) - Attention-Guided：\n原理： 對不同長度的 temporal shift kernels 應用注意力機制 (Attention)，實現多尺度 (Multi-scale) 的適應性融合。\n實作難點： 需要在時間卷積層 (TCN) 前後加入一個輕量級的 Attention 子網路（通常是 GAP -> FC -> Sigmoid 結構）。\n結論： 這些都是在現有 GCN 架構上的「插件式」修改，不需要重寫整個 Back propagation 或底層 CUDA kernel。\n3. 資料集與計算資源 (Data & Hardware)\n資料集 (Datasets)： 主要使用 NTU RGB+D 60, NTU RGB+D 120, Northwestern-UCLA。\n難點： NTU 資料集非常大（原始資料數百 GB，處理後的 skeleton data 較小但也需要數 GB）。資料預處理（轉成 .npy 或 .pkl）通常是新手最容易卡關的地方。Shift-GCN 的 repo 裡通常有現成的 gendata.py 腳本，可以直接沿用。\n硬體需求：\n訓練： Shift-GCN 系列以輕量化著稱。相比於原始的 ST-GCN 或重型的 DGNN，這類模型訓練速度快，顯存佔用低。一張中階顯卡（如 RTX 3060 或甚至 GTX 1080Ti）應該就能跑得動 Batch Size 32~64 的訓練。\n4. 潛在的 “坑” (Potential Pitfalls)\n超參數調整 (Hyperparameters)： 論文中提到的 Attention 模組可能有特定的  權重或是特定的層數設置，如果沒有官方 Code，自己復現時很難 “猜” 到最佳參數，導致準確率達不到論文宣稱的效果。\n環境相依性： Shift-GCN 原始代碼是幾年前的（基於 PyTorch 0.4 或 1.x），如果直接用最新的 PyTorch 2.x 跑，可能會遇到一些 index_select 或 CUDA extension 的兼容性問題（雖然 Shift-GCN 大多是純 Python 運算，較少涉及自定義 CUDA 編譯）。\n建議實作步驟\n先跑通 Shift-GCN： 下載 kchengiva/Shift-GCN，確保你能成功處理 NTU 資料集並開始訓練。這是最穩固的基石。\n檢查 julycrow/IST-GCN： 確認此 Repo 是否為該論文代碼。如果是，直接 Clone 使用。\n模組化替換： 如果需要手動實作，請專注於修改 model.py 中的 Shift_gcn 類別：\n在 Spatial Shift 後加入通道混合層。\n在 Temporal Shift 處加入 Attention 分支。\n總結來說，這是一個適合碩士生或初階工程師進行復現或改進的項目，門檻不高，且有良好的 Baseline 可供參考。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\論文方向.pptx": {
+  "mtime": 1764650359.0,
+  "size": 21148818,
+  "hash": "999549e8c43d4cae7d91ffcac1b96f0848ae2eaab95367af117d4f7f6cab8829",
+  "hash_algo": "sha256",
+  "text": "【第 1 頁】論文方向 研究類型 : 應用類 目前在研究的技術 : yolo,  raspberry pi , esp32,  MQTT,  node-red 題目 : 基於 yolo 的貓咪異常行為偵測與提前預警系統   近年飼主對寵物健康與行為監控的需求日增，但市面上多以活動量或定位為主，難以精確判斷異常姿態或健康警訊。本研究構想提出一套結合  YOLO  影像偵測與物聯網感測器的貓咪行為監測系統。透過攝影機擷取貓咪影像進行姿態與行為辨識，並整合環境或可穿戴感測數據（如加速度、溫濕度），建立多模態異常偵測模型。當系統偵測到跌倒、抽搐或長時間靜止等異常行為時，可即時發送警示訊息給飼主。 1\n【第 2 頁】動機 現有的寵物監控只能偵測到寵物在動，但無法判斷牠的姿態是否健康。貓咪又很會隱藏病痛，等主人發現時通常為時已晚。 我的做法是，想用 YOLO 這類快速的 AI 模型，不僅偵測貓咪，更進一步去分析牠的關節姿態。透過辨識像是跛行、疼痛蹲姿、或呼吸急促這些異常，來提前發現潛在的健康問題，並即時通知主人。 2\n【第 3 頁】類別 說明 lying 平躺休息 sitting 坐姿休息 standing 站立但未移動 walking 行走中 jumping 跳躍中 grooming 自我清潔（舔毛） eating_ drinking 進食或飲水 playing 活動互動狀態 建立貓咪基本行為辨識模型 （ 8  類正常行為） 單看影像分類，有時  YOLO  很難分清 「 grooming 」 和 「 sleeping 」 。 這時可以結合姿態偵測 （ poseestimation ）。 讓  YOLO 偵測出貓的關鍵點（頭、腳、尾巴、脊椎等 ）， 再觀察 「 頭部與身體其他部位的距離變化 」。 例如： 如果頭部與胸部距離持續變化、且速度快  → 可能在舔毛 （ grooming ） 如果頭部與胸部距離穩定、且幾乎不動  → 可能在睡覺 （ sleeping ） 這樣你就能利用動態特徵強化  YOLO 的靜態分類結果。 二、姿態估計（ Pose Estimation ） 輔助特徵 3\n【第 4 頁】方便檢測的疾病 / 異常行為 YOLOv8  檢測目標 數據收集方式 論文重點 1.  體表皮膚問題 偵測特定區域的 紅腫、脫毛、傷口、或過度舔舐 。 樹莓派攝像頭，對準寵物休息區或特定角度拍攝。 目標檢測： 識別病灶位置（如臉部、腹部、爪子）。 2.  跛行與關節疼痛 偵測寵物 走路 / 跑步的姿態（姿態估計） ；識別特定的 步態異常 或 肢體不著地 的行為。 樹莓派攝像頭，錄製寵物行走影片。 姿態估計：  追蹤關節點，量化步態數據。 3.  嘔吐物與排泄物異常 偵測地面上 嘔吐物或血便 的存在；偵測寵物在 非指定區域排泄 的行為。 樹莓派攝像頭，監測固定區域（如室內地面）。 目標檢測：  識別並計數嘔吐物或排泄物（顏色、形狀異常需人工標註）。 4.  異常活動量 偵測 長時間蜷縮不動 或 持續性踱步 的焦慮行為。 樹莓派攝像頭。 行為識別：  判斷「不動 / 休息」與「持續活動 / 焦慮」的狀態。 5. 皮膚與毛髮 過度舔毛導致局部脫毛、紅腫、皮屑多、有異味。 樹莓派攝像頭。 行為識別：  識別舔舐、啃咬的動作，並進行計數。 yolo 改善問題 4\n【第 5 頁】方便檢測的疾病 / 異常行為 ESP32  檢測目標  ( 感測器 ) 數據傳輸 論文重點 6.  呼吸異常 / 心率 呼吸頻率  ( RR ) 和 心率  ( HR ) 。 ESP32 搭配 雷達波、震動或低功耗  ECG 感測器 （需結合穿戴或非接觸式設計），透過  MQTT 傳輸。 數據分析：  建立異常呼吸或心率的閾值，提早預警心臟或呼吸道疾病。 7.  飲水 / 進食行為異常 飲水機 / 食盆重量或液位 的變化。 ESP32 搭配 重量感測器  ( Load Cell ) 或 液位感測器 ，透過  MQTT 傳輸。 數據分析：  監測每天的進食量和飲水量，異常增減（如多喝多尿）可預警糖尿病或腎臟病。 8.  環境壓力 / 舒適度 環境溫度、濕度、氨氣濃度 （與排泄物氣味有關）。 ESP32  搭配 溫濕度感測器  ( 如  DHT11/22 )  及 氣體感測器 ，透過  MQTT 傳輸。 環境監測：  確保寵物生活環境舒適，間接預防熱衰竭或呼吸道問題。 9.  睡眠時間異常 寵物 睡墊下的重量 / 壓力感測器 。 ESP32 搭配 壓力感測器 ，透過  MQTT 傳輸。 行為分析：  追蹤每日睡眠時長和規律性，長期異常可能指向疼痛或精神問題。 嵌入式系統 5\n【第 6 頁】系統流程 6\n【第 7 頁】樹梅派  pi 4  和  pi 5  的性能比較 pi5 YOLO : 10FPS 7 pi4 YOLO : 3FPS\n【第 8 頁】Node-red 上的 MQTT 通訊 將影像以及感測器的數據傳到 node-red 上進行監控，如檢測到異常行為則發布警報到各通訊軟體 1. 睡眠狀態 2. 活動量 3. 慣用姿態 4. 身體狀況 8\n【第 9 頁】Ear_right （ 右耳 ） Ear_left （ 左耳） Eye_right （ 右眼） Chest （ 胸部） Elbow_right （ 右手肘 ） Wrist_right （ 右手腕） Backpaw _ right （ 右後腳掌） Elbow_left （ 左手肘） Ankle_right （ 右腳踝） Tail_2 （ 尾巴段 2 ） Tail_3 （ 尾巴段 3 ） Tail_4 （ 尾巴末端） Eye_left （ 左眼） Nose （ 鼻子） Mouth （ 嘴巴） Frontpaw _ right （ 右前腳掌） Wrist_ left （ 左手腕 ） Frontpaw _ left （ 左前腳掌） Knee_right （ 右膝） Hip （ 髖部） Tail_1 （ 尾巴基部） Knee_left （ 左膝） Ankle_ left （ 左腳踝） Backpaw _left （ 左後腳掌） 24 個關鍵點 目前不知道要選擇多少個關鍵點 以及時間序列   ( DTW/LSTM/TCN ) 來做動作分類。 太少（8–10 個）無法準確判斷跛行、抽搐這類細緻動作 。 太多（20–30 個）會讓模型抖動、大幅增加資料需求 。 🟣 抽搐 🟡 喝水 🟡 跛行 🟢 一拐 🟤 趴下 🔵 站立 🔵 駝背 🌀 甩頭 想分類的動作 : 抽搐：四肢或頭部相對軀幹的高頻抖動跛行  一拐：左右肢步態不對稱（用 DTW 、 TCN 做分析） 喝水：頭部高度下降並維持、身體穩定 駝背：胸 – 髖 – 尾巴的彎曲角度變大 甩頭：頭部左右高頻擺動而軀幹穩定在模型上我會結合 幾何規則  +  時間序列模型 （ TCN / LSTM / DTW ），先用規則產生粗略標籤，再用深度學習優化動作分類 9\n【第 10 頁】Yolo-pose模型 695 張 (82% ) 49 張 (6%) 108 張 (13%) nose_y ：第  3  號點（鼻子） chest_y ：第  6  號點（胸口） hip_y ：第  11  號點（臀部） tail_y ：第  21  號點（尾巴末端） activity : 活動量 從 24 個關鍵點中挑出 4 個關鍵點 做數據統計和邏輯判斷 以下對  ” 背對   ” 行為做為測試目標 10\n【第 11 頁】如果臉部特徵消失或不在合理位置，並且身體軸線的方向與一般狀態不同，就代表背對鏡頭。 1 .( nose_y  <  chest_y )  → 頭偏上方 2 .( nose_y  === 0)  →  臉消失 3 .( chest_y  <  hip_y )  → 鏡頭看到的是背部線條（胸較高、臀較低 ) 4. chest_y > 0 &  hip_y  > 0  →  身體有偵測到 條件 : 當 “back” 狀態持續判定三秒以上，發送通知到雙平台。 (discord/line) nose_y ：第  3  號點（鼻子） chest_y ：第  6  號點（胸口） hip_y ：第  11  號點（臀部） tail_y ：第  21  號點（尾巴末端） activity : 活動量 11\n【第 12 頁】12 自動化流程 使用 windows 的啟動資料夾 開機後自動啟動 Node-red 啟動後內建的節點可以自動執行 CMD 手機和電腦都可以查看 UI 介面 滿足條件時 自動發送通知\n【第 13 頁】影片 : 13\n【第 14 頁】Webcam 固定攝影角度 每個關鍵點的骨架連線 處理遮蔽  &  亂跳點 用關鍵點提取成「生物力學特徵」 檢查特徵的持續變化 透過「時序條件」來定義異常 輸出結果 14\n【第 15 頁】15 行為類別  ( Category) 靜態異常 動態異常 使用關鍵點  ( Keypoints ) 理由  ( Reasoning) 🟡  跛行 ❌ ✔（動態異常） 左右前腳 / 後腳（膝、踝、爪）共  8  點 步態是「連續動作」，異常來自週期不一致、左右不對稱。 🟣  抽搐 ❌ ✔（動態異常） 頭、胸、臀、四肢末端  6–10  點 抽搐一定是「高速連續震動」，單張看不出來，必須用時序。 🟤  喝水 ✔（初始狀態下降） ✔（維持姿勢） 頭、胸 先是頭部下降（動態），再維持固定高度（接近靜態）。 🔵  駝背 ✔（靜態異常） ❌ 胸、髖、尾巴 背部角度變大是「幀級姿勢異常」，不依賴時間變化。 離群分析與時間序列\n【第 16 頁】16\n【第 17 頁】17\n【第 18 頁】18 ✔ 研究問題  (Research Questions) 例如： 如何利用  YOLO-pose  擷取貓咪步態與關鍵點的穩定特徵？ 如何用時序模型（ TCN/DTW ）準確辨識「跛行」或「抽搐」等異常行為？ 如何透過  IoT （ ESP32 + Node-RED ）在異常行為發生時即時通知飼主？ ✔ 研究貢獻  (Contributions) 提出一套「影像  +  關鍵點  +  時序」的貓異常行為偵測流程 建立自訂  24  點關鍵點的  Pose  資料集 設計簡易可部署的邊緣裝置流程（ Raspberry Pi ） 建立  IoT  即時預警系統 你怎麼知道你的模型成功？ 建議加入以下指標： Accuracy / F1-score （動作分類） DTW distance （步態週期差異） 持續時間判斷（ 3  秒  rule ） 誤報率（ False Alarm Rate ） 延遲（ Latency, Pi 4: 3FPS, Pi 5: 10FPS ）\n【第 19 頁】19\n【第 20 頁】20 1.  發情（ Estrus ） 典型姿勢： 腰部微拱、臀部抬高 尾巴偏向一側 前肢放低、後肢蹲低 屬於姿態類型： 弓背（輕度） 尾巴側偏 臀部抬高 2.  懷孕（ Pregnancy ） 典型姿勢： 行走時步幅變小 腹部下垂、背部變直或微拱 躺姿偏向側躺 屬於姿態類型： 步態變慢  /  小步伐 背微拱 側躺率增加 疾病可能共用姿勢： 關節炎（步幅減少） 腹痛（側躺增加） 心臟病（ Heart Disease  ） 典型姿勢： 前肢分開、胸部抬高、頸部前伸 腹部收縮 不願久站 屬於姿態類型： 呼吸姿勢異常 胸抬高姿勢 疾病共用姿勢： 呼吸問題、氣喘 腹痛（胸口提高，但幅度較小） 關節炎（ Arthritis ） 典型姿勢： 走路僵硬、起步困難 不願跳 步幅縮短 屬於姿態類型： 步態異常 不願跳（疼痛姿勢） 疾病共用姿勢： 懷孕（步幅減少） 糖尿病（後腳沉） 後腿血栓（拖腿） 10.  皮膚病（ Dermatitis / Allergies ） 典型姿勢： 頻繁舔某部位（尤其後肢與腹部） 屁股抬高以舔尾巴根部 偏側彎身搔癢 屬於姿態類型： 舔拭姿勢 側彎身體 尾巴根部抬高 疾病共用姿勢： 1\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪node功能擴充建議.txt": {
+  "mtime": 1781619637.5490272,
+  "size": 2122,
+  "hash": "f23194ad8e14b6d106412bb968b0600d25e822cb477312646124e251cc896c33",
+  "hash_algo": "sha256",
+  "text": "二、需要新增的功能（有明確使用者場景）\r\n1. 貓咪基本資料頁\r\n\r\n名字、品種、出生年月（計算年齡）\r\n年齡會直接影響「什麼是正常」：\r\n\r\n幼貓（<2歲）：行走、玩耍多，靜止少才正常\r\n中年貓（2~10歲）：目前系統的預設門檻\r\n老貓（>10歲）：靜止 65% 都可以是正常的，甩頭門檻應放寬\r\n可以讓系統根據年齡自動推薦門檻，飼主再微調。\r\n\r\n2. 手動事件標記（最實用）\r\n飼主最需要但系統完全沒有的功能：\r\n\r\n\r\n[今天貼標籤]\r\n○ 帶去看醫生\r\n○ 換了貓糧\r\n○ 家裡來了陌生人\r\n○ 貓咪情緒緊張\r\n○ 自訂備註：＿＿＿＿\r\n用途：\r\n\r\n這些天的資料自動排除在基線計算之外（貓緊張那天的行為不代表平常）\r\n日後回看歷史記錄，可以對應「那天分數高是因為來了客人」\r\n3. 通知靈敏度滑桿\r\n飼主不想理解 tScore/dScore，只想選：\r\n\r\n\r\n通知靈敏度\r\n  低（只有高風險才通知）    ●——————\r\n  中（警告以上通知）        ———●———\r\n  高（留意以上就通知）      ——————●\r\n對應到 riskScore 門檻：低=70、中=45、高=20。\r\n\r\n4. 排除特定天的資料\r\n\r\n[歷史記錄] 2026-06-10  風險分 72  [排除此天出基線] ✕\r\n飼主知道那天貓在外面過夜、或剛從醫院回來，資料不正常，應該可以手動排除。\r\n\r\n5. 特定時段監控開關\r\n目前系統四個時段固定監控，但很多飼主：\r\n\r\n白天上班，攝影機只在 18-24 和 00-06 有意義\r\n或者明確知道貓只在某個房間，某時段根本拍不到\r\n\r\n監控時段偏好：\r\n  ☑ 00-06 深夜\r\n  ☐ 06-12 上午（家裡沒人，鏡頭常拍到空畫面）\r\n  ☐ 12-18 下午\r\n  ☑ 18-24 晚上\r\n這影響基線計算的 REQUIRED_PERIODS 和節律偏離的 rScore 判斷。\r\n\r\n三、應考慮但實作複雜\r\n功能\t難點\r\n匯出給獸醫的週報 PDF\t需要 PDF 生成，Node-RED 不易做\r\n多貓支援\t整個架構目前只設計給一隻貓\r\n行為閾值自動學習\t基線穩定後，系統自動建議門檻調整"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪行為生成提示詞.docx": {
+  "mtime": 1784374002.0,
+  "size": 28690,
+  "hash": "6de5be3729f300ab55ffa76a91a962e0ded526c69661a2f6ea47c3e9e179b14c",
+  "hash_algo": "sha256",
+  "text": "真實貓咪搔抓（Scratching）提示詞   //影片\nThe video duration must be exactly 10 seconds.\nThe cat begins in the exact original resting pose and remains naturally still at the beginning of the video.\nAfter a brief still moment, the cat performs a single realistic feline hind-leg scratching behavior directed toward the neck or head area while remaining seated in the same position.\nThe scratching behavior must occur only once during the entire video.\nDo not generate multiple scratching sessions or repeated scratching events later in the video.\nThe scratching motion must resemble authentic real-world cat behavior commonly observed when cats experience itchiness, irritation, or discomfort around the neck or ears.\nThe rear leg repeatedly kicks upward in a fast, rhythmic, continuous scratching motion against the neck/head area.\nThe scratching sequence itself should be one continuous scratching event with no pauses or resets.\nAfter the scratching sequence finishes, the cat naturally stops scratching and remains calm and still for the remainder of the video.\nThe scratching behavior should appear instinctive, biologically accurate, and physically believable rather than animated or scripted.\nDuring scratching:\nthe hind leg moves rapidly in repeated cycles\nthe upper body leans slightly backward naturally\nsubtle body balance adjustments are visible\nthe front paws remain mostly stable for support\nthe tail remains mostly stable with minimal natural movement\nslight fur movement and body inertia are visible\nMaintain realistic feline anatomy, muscle physics, body weight distribution, and natural timing throughout the sequence.\nThe motion must look like genuine real-world footage captured by a normal camera, not AI-generated, not synthetic, and not computer-rendered.\nAvoid any artificial animation feeling, over-smoothed motion, floating limbs, warped anatomy, unrealistic fur behavior, distorted joints, or unnatural temporal interpolation.\nPreserve realistic fur texture, lighting consistency, body proportions, and subtle natural micro-movements.\nThe scratching rhythm should remain naturally fast and continuous like real cats observed in veterinary recordings, home videos, or surveillance footage.\nStatic camera.\nKeep the original framing and environment unchanged.\nFull body visible at all times.\nNo camera movement.\nNo cinematic effects.\nNo slow motion.\nNo exaggerated motion blur.\nNo cartoon-like animation.\nNo stylized rendering.\nNo dramatic acting behavior.\nNo unrealistic body deformation.\n1080p, 30 frames per second.\n真實貓咪甩頭（Head Shaking）提示詞   //影片\nThe video duration must be exactly 10 seconds.\nThe cat performs a highly realistic feline head shaking\nbehavior triggered by sudden ear or skin irritation.\nAt the beginning of the video, the cat maintains the\nexact original standing posture naturally and remains\nstill.\nWithout any exaggerated preparation movement, the cat\nsuddenly initiates an instinctive rapid head shake\ncommonly seen in real cats\nexperiencing itchiness, ear discomfort, or irritation.\nThe head shaking motion must begin naturally and remain\nextremely fast, tight, continuous, and physically\nbelievable, with rapid\nleft-right oscillation driven by neck inertia and\nnatural muscle movement.\nThe actual shaking motion itself must last exactly 1\nseconds only.\nDo not extend the shaking behavior before or after the\n1-second\ninterval.\nDo not generate multiple shaking cycles separated by\npauses.\nThe shaking sequence should resemble authentic\nreal-world feline behavior observed in veterinary\nvideos, home surveillance\nfootage, or natural pet recordings.\nThe movement must look spontaneous, instinctive, and\nbiologically accurate rather than animated or scripted.\nDuring the shake:\nthe head rotates rapidly\nside-to-side in continuous motion\nthe ears naturally follow\ninertia\nslight neck\ncompression and\nrebound are visible\nminimal secondary body movement\nis allowed\nthe torso and legs remain\nmostly stable for balance\nImmediately after the 1-second shaking phase, the cat\nnaturally stops and remains calm in a neutral posture\nfor the remainder of the\n5-second video.\nMaintain realistic feline anatomy, weight balance,\nmuscle physics, and natural motion timing throughout the\nsequence.\nThe video must look like genuine real-world footage\ncaptured by a normal camera, not AI-generated, not\nsynthetic, and not\ncomputer-rendered.\nAvoid any artificial animation feeling, over-smoothed\nmotion, floating body parts, warped anatomy, distorted\nfur, unrealistic\nphysics, or unnatural temporal interpolation.\nPreserve realistic fur texture, body proportions,\nlighting consistency, and natural micro-movements.\nThe motion should contain subtle imperfections naturally\nfound in real camera recordings.\nStatic camera.\nFull body visible at all times.\nNo camera movement.\nNo cinematic effects.\nNo slow motion.\nNo exaggerated motion blur.\nNo cartoon-like animation.\nNo stylized rendering.\nNo dramatic acting behavior.\nNo artificial facial expressions.\nNo unrealistic body deformation.\n1080p\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪資料標籤對照表.docx": {
+  "mtime": 1784886044.3369267,
+  "size": 9953585,
+  "hash": "ad49205eaab76665194d0fb1203473ebb2edd142177f9ea29a1d013b5179e3fb",
+  "hash_algo": "sha256",
+  "text": "lick_white_1\nlick_white_2\nlick_11\nlick_black_white\nlick_right_up_paw\nlick_British_Shorthair3\nlick_black_white\nscratch_orange\nscratch_back_black\nlick_British_Shorthair\ncat_white_lying_lick_back"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪辨識系統 文字說明.docx": {
+  "mtime": 1780474472.0,
+  "size": 19066,
+  "hash": "ebb986e52273fba270a411d5ea74726a45555c0e401c499226bdc7b537e6dff1",
+  "hash_algo": "sha256",
+  "text": "貓咪辨識系統 文字說明\n系統整體描述（完整整理版）\n本研究旨在建立一套基於影像與姿態分析的貓咪行為辨識與健康監測系統，透過電腦視覺與時序分析技術，自動辨識貓咪日常行為，並進一步推估其健康狀態，達成早期預警之目的。\n在系統設計上，首先於AI層採用 YOLO Pose 進行貓咪17點關鍵點偵測，取得骨架資訊後，結合時序模型（如 ST-GCN / LSTM）進行行為分類，將貓咪行為劃分為四大類：行走（walk）、舔舐（lick）、搔抓（scratch）、甩頭（shake）。同時，系統亦整合 LOF（Local Outlier Factor）作為異常偵測機制，用於識別不符合正常行為模式的狀態，提升健康判斷的準確性。\n在資料層中，系統以逐幀時間差（delta time）進行行為時間累積，將整體監測時間劃分為：\n活動時間（active_time）：當辨識為四種行為之一時累積\n休息時間（rest_time）：當未辨識到任何行為（如低信心或無動作）時累積\n並進一步統計各行為的次數與持續時間，形成結構化的行為資料（today_stats），作為後續分析與視覺化依據。\n在雲端／系統整合層中，透過 Python 後端（Flask API）將即時推論結果封裝為 JSON 格式，傳送至 Node-RED 平台。Node-RED 負責資料流整合、邏輯處理與視覺化呈現，包含：\n行為統計（時間／次數）\n活動與休息比例\n健康警示（如過度舔舐、頻繁搔抓、活動力下降等）\n最後，在前端 Dashboard（Node-RED ui_template）中，將上述資訊轉換為直觀的圖形化介面，包含時間分配、行為卡片與警示提示，使使用者能即時掌握貓咪狀態。\n整體系統從**感知（姿態偵測）→ 理解（行為分類）→ 判斷（異常與健康評估）→ 呈現（視覺化介面）**形成完整流程，最終目標為建立一套具備實用性與可解釋性的智慧寵物健康監測系統。\n🎯 一句話版本（你之後快速用）\n本系統透過 YOLO 姿態偵測與時序模型分析貓咪行為，並結合 Node-RED 進行資料整合與視覺化，將行為轉換為健康指標與警示，實現貓咪健康的即時監測與早期預警。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪辨識系統摘要.docx": {
+  "mtime": 1779632455.0,
+  "size": 16025,
+  "hash": "3a65b300875ae8a673ce096d883c450a9a7e673514d23e45e8f67b08fa02a7e6",
+  "hash_algo": "sha256",
+  "text": "系統摘要\n目的: 這是個「貓咪健康/行為監測系統」，用視訊串流與骨架關鍵點推論自動辨識貓咪行為（walk/lick/scratch/shake），並產生即時視覺化、統計、警示與 Node-RED 整合通知。\n主要技術棧: YOLO‑Pose（Ultralytics）做關鍵點偵測、ST‑GCN 做時序行為分類、Flask 提供 MJPEG 串流與 REST API、Node‑RED 做外部整合、CSV 日誌與行為追蹤模組做統計與警示。\n主要執行流程: 啟動點為 main.py → 建立 Flask app (flask_app.py) → 路由在首次請求時透過 _ensure_processor_started() 建立 FrameProcessor (frame_processor.py) → 每幀處理流程：\nKeypointDetector.detect() (keypoint_detector.py) 取得 17 點 keypoints；\n關鍵點做 EMA 平滑與插值 (interpolate_missing，在 stgcn_model.py 中)；\n組成序列後交給 BehaviorClassifier（封裝 CatBehaviorSTGCN）進行 ST‑GCN 推論；\n推論結果送入 ImprovedBehaviorTracker（behavior_tracker.py）做區段統計與警示；\n結果會用 NodeRedClient 推送到 Node‑RED、記錄到 CSV，並由 Visualizer 加 overlay 再由 SharedFrameStreamer（streaming.py）輸出 MJPEG 串流。\n主要檔案與職責（快速對照）:\nconfig.py: 集中設定（模型路徑、閾值、Flask/Node-RED 等）。\nroutes.py: /stream、/status、首頁 UI 與 Node-RED 上線回報端點。\nframe_processor.py: 幀級 pipeline（整合偵測、GCN、異常檢測、推送、日誌、overlay）。\nstgcn_model.py: ST‑GCN 實作與前處理函式（插值/正規化/特徵構建）。\nnodered_client.py: 對 Node‑RED 的 HTTP 推送封裝。\ncsv_logger.py: CSV 日誌（逐幀與區段）。\n還有多個獨立腳本（訓練/匯出/測試）：例如 train_gcn.py、export_keypoint_timeseries.py 等（見 MAIN_CONFIG_SCRIPT_CLASSIFICATION.md）。\n設計要點 / 觀察:\n系統把推論 pipeline 與 web 串流分離：FrameProcessor 做核心邏輯，SharedFrameStreamer 做非阻塞串流；路由會在第一次請求時啟動處理器以節省資源。\nST‑GCN pipeline 含數個影像前處理步驟（插值、翻轉/旋轉正規化、尺度正規化、速度特徵、重要性加權），可維持推論穩定性。\n有明確的 Node‑RED 整合與兩個端點（python_online 與 yolo_result），方便與外部自動化/儀表板串接。\nconfig 與 log 路徑集中管理，且有環境變數覆寫支援，方便部署調整。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓科動物搔癢行為與皮膚疾病之病理關聯性及頻率異常評估指南.txt": {
+  "mtime": 1782286381.0590353,
+  "size": 32703,
+  "hash": "36529652c4d8d049a4e873ccb71ff711d2e77ce868db673634fb1d07dc9b323a",
+  "hash_algo": "sha256",
+  "text": "貓科動物搔癢行為與皮膚疾病之病理關聯性及頻率異常評估指南\r\n貓科動物的理毛行為（Grooming behavior）是其與生俱來的複雜生理本能，在演化上具有極其重要的生存意義。透過舌頭上遍佈的向後倒刺狀絲狀乳突（Filiform papillae），貓咪不僅能夠有效清除體表的寄生蟲、灰塵與廢毛，更能藉由唾液的蒸發來調節體溫，並透過重複性的理毛動作釋放腦內啡，達到緩解心理壓力的效果。然而，當理毛、舔舐或後肢搔抓的行為跨越了正常的生理界線，轉變為強迫性、破壞性的病理狀態時，往往是潛在皮膚疾病或系統性免疫失衡的首要臨床警訊。由於貓咪天性善於隱藏自身的病痛與不適，且其搔癢行為常以過度舔毛的隱蔽形式表現，導致飼主極易將其合理化為單純的愛乾淨，進而錯失了早期診斷與醫療介入的黃金時機。   \r\n\r\n本報告旨在針對貓咪抓癢行為與皮膚病理機制之間的深度關聯進行全面性的剖析，並系統性地建立一套基於時間頻率與行為模式的異常評估標準。透過導入貓專用搔癢視覺模擬量表（VAScat）等量化臨床工具，結合外寄生蟲感染、異位性皮膚病候群（FASS）、微生態與腸膚軸（Gut-Skin Axis）失衡等多維度病因，為獸醫皮膚病學與高階臨床照護提供詳盡、精確且具實證醫學基礎的診斷與處置指南。\r\n\r\n生理與病理理毛之時間邊界與頻率評估\r\n精確區分貓咪的抓癢行為是屬於正常的生理性清潔，抑或是病理性的異常搔癢，首要任務是建立一套量化的基準線（Baseline）。在正常的生理狀態下，一隻健康的貓咪每天會將大約百分之三十至百分之五十的清醒時間投入在理毛與自我清潔上。若將其換算為具體的行為表現，健康的貓咪每日約花費一小時左右進行全身性的理毛，而單純使用後肢進行搔抓（Scratching）的總時間，每日通常不會超過一分鐘。這種正常的理毛行為在空間分佈上呈現均勻的全身性覆蓋，在時間維度上則是零散、分段式地進行，通常發生在進食完畢、睡醒後或玩耍的間隙，整體姿態顯得自然且放鬆，絕不會呈現強迫性的連續動作。   \r\n\r\n當理毛行為跨越了生理界線，進入病理性的「搔癢（Pruritus）」狀態時，其頻率與時間軸的表現會出現顯著的異常。異常的搔癢不再只是單純次數的增加，而是反映在行為的強迫性、中斷日常作息的程度，以及對表皮屏障造成的實質物理性破壞。臨床上，評估頻率與時間異常的核心指標在於觀察貓咪是否會因為難以忍受的癢感，而突然中斷當下正在進行的核心生存活動，例如進食、深層睡眠或是專注的玩耍。若一隻貓咪幾乎每隔數分鐘便停下手邊動作開始瘋狂舔舐或搔抓，且長時間無法停止，這便構成了明顯的異常警訊。此外，異常的搔癢通常不再是全身性的均勻理毛，而是強迫性地反覆針對單一特定解剖區域進行破壞性的舔咬或搔抓，形成「癢感引發搔抓，搔抓破壞表皮屏障，屏障受損引發更嚴重發炎與癢感」的惡性循環。   \r\n\r\n為了協助臨床工作者與飼主更清晰地界定這兩者的差異，以下透過結構化資料呈現生理性與病理性理毛在多個維度上的具體特徵對比。\r\n\r\n評估維度\t正常生理性理毛（Grooming）\t異常病理性搔癢（Pruritus）\t臨床病理意義\r\n時間佔比與頻率\t佔清醒時間 30%∼50%，後肢搔抓每日 <1 分鐘。\t理毛時間顯著增加，搔抓頻繁且連續，每隔數分鐘即發作一次。\t超越正常清潔需求，神經末梢受到持續性的發炎介質刺激。\r\n行為之連續性\t零散、片段式進行，如飯後或睡醒時的短暫清潔。\t具有強迫性，長時間停不下來，陷入反覆搔抓的行為迴圈。\t癢感閾值被突破，大腦持續接收強烈的周邊神經痛癢訊號。\r\n日常作息干擾\t絕對不會為了理毛而中斷睡眠、進食或玩耍。\t經常從睡夢中醒來抓癢，或中斷進食與玩耍進行啃咬。\t嚴重影響生活品質，為中度至重度皮膚疾病之明確指標。\r\n解剖區域分佈\t均勻覆蓋全身，無特定執著點。\t高度集中於特定部位（如腹部、大腿內側、耳根、尾巴根部）。\t提示局部性的病原體感染（如耳疥蟲、跳蚤）或特定過敏反應。\r\n表皮屏障完整性\t毛髮柔順，無脫毛，皮膚表面平整無紅腫。\t出現局部禿毛、斷毛、紅斑、皮屑、結痂或組織滲出液。\t皮膚防禦機制崩潰，極易併發細菌或酵母菌的繼發性感染。\r\n臨床量化評估：貓專用搔癢視覺模擬量表（VAScat）之應用\r\n在傳統的獸醫診療過程中，飼主對於貓咪搔癢程度的描述往往帶有高度的主觀性，這使得臨床醫師難以精確追蹤疾病的嚴重程度與治療成效。為解決此一痛點，國際獸醫皮膚病學術界針對貓咪特殊的行為模式，發展出了具備高度信度與效度的貓專用搔癢視覺模擬量表（Visual Analog Scale for feline pruritus severity scoring，簡稱 VAScat）。   \r\n\r\n與犬隻或人類單一維度的搔癢評估系統不同，貓咪表達皮表不適的方式呈現高度的二元分化特徵。部分貓咪在面對神經刺激時，傾向於頻繁地使用後肢進行「搔抓（Scratching）」；然而，另一大部分的貓咪則傾向於使用粗糙的舌頭進行過度「舔舐（Licking）」，甚至啃咬。由於這兩種行為表徵在臨床表現上截然不同，若採用單一量表將無法完整捕捉貓咪的搔癢輪廓。研究數據顯示，VAS 舔舐分數與 VAS 搔抓分數之間的皮爾森相關係數（Pearson's r）僅為 0.26，這在統計學上強烈證實了兩種量表測量的是搔癢的不同表現形式，支持了雙軌評估系統的絕對必要性。   \r\n\r\n因此，VAScat 創新地採用了「雙視覺模擬量表（Double VAS）」架構，分別針對「舔舐」與「搔抓」兩種行為，給予 0 至 10 分的獨立行為描述評分。在臨床數據整合時，系統會自動提取這兩項評分中的最高數值，作為該病患的總搔癢指數（VAS-max），其數學定義表示為 VAS \r\nmax\r\n​\r\n =max(VAS \r\nlicking\r\n​\r\n ,VAS \r\nscratching\r\n​\r\n )。這種取最大值的邏輯能確保無論貓咪是偏向哪一種行為模式，其最嚴重的不適狀態都能被如實記錄。   \r\n\r\nVAScat 的分數級距搭配了極為具體的行為描述（Behavioural descriptors），使得飼主能客觀地對照貓咪過去二十四小時內的真實狀態。以下為 VAScat 評分系統在臨床上的結構化應用標準：   \r\n\r\n評分級距 (0-10)\t舔舐行為之嚴重度描述 (Licking)\t搔抓行為之嚴重度描述 (Scratching)\t臨床介入與病理意義\r\n0 分\t健康貓咪的正常理毛狀態，舔舐從不導致脫毛。\t健康貓咪的正常搔抓（每日最多 1 分鐘），無皮損。\t生理屏障完整，無需醫療介入。\r\n1 - 2 分 (極輕度)\t理毛頻率略高於以往，偶爾舔毛，但從未導致任何毛髮脫落。\t搔抓頻率略高於以往，屬於輕微且偶發性的搔抓，無皮膚損傷。\t輕微的環境刺激，可透過日常梳理與居家環境除濕進行初步控制。\r\n3 - 4 分 (輕度)\t從不因舔毛而中斷睡眠或進食；偶爾躲藏；舔舐極少導致脫毛。\t從不因搔抓而中斷睡眠或進食；偶爾躲藏；搔抓極少導致皮膚病變。\t神經末梢已開始釋放癢感訊號，需密切監控並排查潛在過敏原。\r\n5 - 6 分 (中度)\t經常躲藏，有時會因想舔毛而從睡眠中醒來，但不中斷進食；常導致局部脫毛。\t經常躲藏，有時會因想抓癢而從睡眠中醒來，但不中斷進食；常導致破皮結痂。\t癢感已顯著干擾生活品質，表皮屏障受損，必須尋求獸醫進行鑑別診斷。\r\n7 - 8 分 (重度)\t經常因舔毛而中斷進食、玩耍或從睡眠中醒來；頻繁躲藏；極頻繁導致大面積脫毛。\t經常因搔抓而中斷進食、玩耍或從睡眠中醒來；頻繁躲藏；極頻繁導致嚴重皮損。\t強烈且持續的發炎反應，極可能伴隨組織潰瘍與繼發性細菌感染。\r\n9 - 10 分 (極重度)\t在看診時仍持續舔毛，近乎不間斷；持續躲藏；不可避免地造成嚴重自殘性脫毛。\t在看診時仍持續搔抓，近乎不間斷；持續躲藏；不可避免地造成嚴重皮膚流血與損傷。\t災難性的神經性與免疫性崩潰，伴隨極大的心理壓力，需立即給予強效藥物阻斷。\r\n在臨床治療的監控過程中，VAScat 分數被廣泛應用於評估藥物療效。若在給藥後四至八週內，病患的 VAS-max 評分下降幅度超過 50%，或者絕對分數降至 2 分（極輕度）以下，在臨床實證上即被定義為達到臨床相關的治療成功閾值。除了 VAScat 之外，獸醫師亦常合併使用 SCORFAD（貓過敏性皮膚炎評分指數）或 CADESI-4（犬貓異位性皮膚炎嚴重度指數）等工具，針對紅斑、苔蘚化、脫毛與表皮剝落等實質病灶進行客觀評分，以達到全方位的病理監控。   \r\n\r\n搔癢行為與潛在皮膚疾病之深層病理關聯\r\n貓咪的過度抓癢並非單一獨立的疾病實體，而是一種由多種複雜、甚至是相互交織的潛在病理機制所引發的臨床症狀。在臨床鑑別診斷上，必須深入探究導致表皮神經末梢活化的根本原因，其主要涵蓋了寄生蟲感染、過敏與免疫失調、微生物繼發感染、內分泌代謝異常，以及心因性神經異常等五大核心領域。   \r\n\r\n寄生蟲感染引發之極度過敏與搔癢\r\n外寄生蟲感染是導致貓咪出現急性、劇烈且難以忍受之搔癢的最常見原發性病因。寄生蟲不僅透過物理性的挖掘與叮咬破壞表皮，其唾液與代謝產物更是極強的抗原，會誘發宿主強烈的免疫風暴。\r\n\r\n跳蚤（Ctenocephalides felis）是引發貓咪皮膚問題的頭號元兇，其叮咬所引發的跳蚤過敏性皮膚炎（Flea Allergy Dermatitis, FAD）是臨床上最棘手的疾病之一。當跳蚤吸血時，會將含有多種致敏蛋白質、酶類與抗凝血物質的唾液注入貓咪體內。對於具有過敏體質的貓咪而言，這會同時觸發第一型（立即型，由 IgE 介導）以及第四型（遲發型，由 T 細胞介導）的超敏反應。其結果是，即便環境中僅有極少數的一兩隻跳蚤，也能在貓咪身上引發猶如星火燎原般的全身性劇烈搔癢，其 VAScat 評分常輕易飆升至八分以上。FAD 的典型病灶分佈於尾巴根部、四肢後方與腹部內側，表現為如同青春痘般密集分佈的粟粒狀丘疹，梳理毛髮時常可發現黑色的跳蚤糞便，遇水即化為血紅色的暈痕。   \r\n\r\n耳疥蟲（Otodectes cynotis）則是另一種極為常見的寄生蟎蟲，主要棲息於貓咪的外耳道深處。耳疥蟲並不深入組織，而是利用其口器刺穿表皮，吸食滲出的淋巴液與組織液維生。其活動與分泌的毒素會引發耳道上皮的嚴重發炎，導致貓咪出現極度頻繁的甩頭與瘋狂抓扒耳部的行為，嚴重者常因微血管破裂而併發耳血腫（Otohematoma）。臨床檢查時，可於耳道內觀察到大量如咖啡渣般深黑色、厚重的結痂與分泌物。此外，貓疥癬蟲（Notoedres cati）雖然盛行率較低，但其傳染性與致病力極高。疥癬蟲會在角質層內挖掘隧道產卵，引發劇烈難耐的搔癢，病變多從耳廓邊緣、面部與頸部開始，引發嚴重的角質增生、發紅與脫毛，貓咪常因無節制地搔抓而導致患部出血化膿。   \r\n\r\n貓異位性皮膚病候群（FASS）與免疫過度活化\r\n當臨床上透過驅蟲治療排除了寄生蟲感染的可能性後，慢性且反覆發作的過敏反應便成為搔癢的核心病因。近年來，國際動物過敏疾病委員會（ICADA）逐漸將由環境與食物抗原所引起的貓咪過敏性皮膚炎，統稱為「貓異位性皮膚病候群（Feline Atopic Skin Syndrome, FASS）」。FASS 具有高度的遺傳背景與個體體質差異，其本質是免疫系統對於環境中無害的物質產生了錯誤且過度放大的攻擊反應。   \r\n\r\n食物過敏（Adverse Food Reaction）是貓咪免疫系統對飲食中特定的大分子蛋白質（如雞肉、牛肉、魚類或乳製品）所產生的異常反應。這種過敏可能在貓咪生命中的任何階段突然發病，但通常需要數週至數個月的持續接觸才會完成致敏過程，因此較少見於一歲以下的幼貓。食物過敏的臨床表現具有一定的特異性，常強烈集中於頭頸部的劇烈搔癢（Head and neck pruritus），且有部分病例會同步伴隨腸胃道症狀，如慢性軟便或嘔吐。   \r\n\r\n環境過敏（Atopic Dermatitis）則是免疫系統對吸入性或接觸性的環境過敏原（如花粉、塵蟎、黴菌孢子或化學清潔劑）產生了由 IgE 抗體介導的過敏\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\資料探勘報告.pptx": {
+  "mtime": 1765126874.0,
+  "size": 1989849,
+  "hash": "3fcb1ccb4fb067ac0ab0f74faf37edaaf158ec27c3a45bfa7530606589e6a8aa",
+  "hash_algo": "sha256",
+  "text": "【第 1 頁】M11302030 洪之川 局部離群因子 (LOF) 1\n【第 2 頁】介紹局部離群因子   一種無監督的異常偵測演算法，它透過比較一個數據點的局部密度與其鄰近點的平均局部密度，來判斷該點是否為異常值。如果一個數據點的密度遠低於其鄰近點的密度，那麼它就有較高的機率是局部異常點，局部離群因子可視為「資料點局部密度偏離程度」的衡量指標，用於評估該點在其鄰域中是否顯著孤立。 1 . 透過比較個別資料點與其鄰居的密度來判定離群程度 2 . 適用於分布不均、具有多個群集的資料 3 . 不依賴事先標記（非監督式） 4 . 輸出分數易於解釋 5 . 計算複雜度較高 6 . 對維度敏感 特性 : 2\n【第 3 頁】問題情境  每天處理 數百萬筆 交易 詐欺交易僅佔 0.1-0.5% 每筆詐欺損失 數千至數萬元 需要 即時 偵測並攔截 真實案例 正常模式： 每週五晚上在特定餐廳消費  $800-1200 異常行為： 凌晨 3 點在國外電商消費  $50,000 → 如何在百萬筆交易中快速找出這筆異常？ 案例 : 信用卡詐欺 3\n【第 4 頁】金融安全  信用卡詐欺偵測  洗錢行為識別  內線交易監控  異常交易模式 網路安全 入侵檢測系統  DDoS 攻擊識別 惡意軟體偵測 異常流量分析 工業製造 設備故障預警 產品瑕疵檢測 品質異常監控 製程參數異常 異常檢測的重要性 4\n【第 5 頁】. 基於距離的方法 （ Distance-based ） 典型方法：  K-Nearest Neighbors (KNN) 計算每點到其他點的距離 距離遠的點視為異常 ❌ 問題： •  無法處理 不同密度 的聚類 •  全局閾值難以設定 •  稀疏區域的正常點被誤判 基於統計的方法 （ Statistical-based ） 典型方法： Z-score 、 IQR 方法 假設數據符合特定分布 偏離平均值的點為異常 ❌ 問題： •  需要 強假設 （常態分布等） •  對複雜數據分布效果差 •  多維度時性能下降 傳統方法的侷限性 5\n【第 6 頁】(1) LOF  所屬方法類別 異常偵測  (Anomaly Detection) 演算法 密度基礎方法 （ Density-based ） 無監督式 （ Unsupervised ） (2)  相關核心概念 k-Nearest Neighbors （ KNN ） 局部密度 （ Local Density ） 可達距離 （ Reachability Distance ） 局部可達密度 （ Local Reachability Density, LRD ） 離群程度 （ Outlier Score ） 方法類別與核心概念 6\n【第 7 頁】方法類別 1.  異常偵測 （ Anomaly Detection ） 方法 LOF  是用於找出資料中不符合大部分行為模式的資料點。 目標：偵測異常值、出乎預期的模式、資料偏離群集現象。 常應用於詐欺偵測、網路入侵、感測器異常等情境。 2.  密度基礎方法 （ Density-based Method ） 利用資料點在其局部鄰域中的「密度差異」判斷離群程度。 若某點的局部密度顯著低於鄰居 → 被視為離群點。 可處理  不同密度、多群集、不規則形狀  的資料分布。 3.  無監督式模型 （ Unsupervised Learning ） 不需標記正常或異常資料。 直接依據資料自身分布推論異常點。 特別適合異常資料稀少或不易標記的領域。 7\n【第 8 頁】Lof 演算法流程 定義：點 p 到第 k 個最近鄰的距離 定義：所有距離≤ k-distance 的點 物理意義：減少統計波動 局部可達密度 （ LRD ） 局部離群因子 （ LOF ） 8\n【第 9 頁】K 距離 p  ：其他資料點 o  ：要分析的目標點：距離 o 點第 k 個鄰近的資料點 若  K = 3 ，則：計算  O  到所有其他點的距離找出第  3  個最近的點 → 其距離就是  d₃(O) 虛線圓圈的半徑  = K-distance = d₃(O) 所有落在虛線圓內（含等於半徑）的點，都屬於  O  的  K-neighborhood （ K  鄰域） 公式 : K  距離  =  資料點  o  與它的「第  k  個最近鄰」的距離 (1)  決定  o 的局部鄰域半徑 (2)  確保  o 至少有  k  個鄰居 (3)  讓後續的密度計算更穩定 用途 9\n【第 10 頁】K- 鄰域 10 紅點  o  是要分析的目標點黑點  p₁ 、 p₂ 、 p₃…  是其他資料點若  K = 3 ：找到  o  的第  3  個最近鄰 → 得到  K-distance 畫出半徑  = K-distance  的虛線圓所有落在圓內（含邊界）的點，就是  K  鄰域中的成員 所有距離小於或等於  k-distance(o)  的資料點，都屬於  o  的  K  鄰域（ K-neighborhood ）。換句話說， K  鄰域是由「 K-distance  所定義的範圍」決定的。 LOF  演算法會利用這個鄰域來計算密度（ LRD ）與離群程度（ LOF ）。 公式 :\n【第 11 頁】為什麼不用原始距離？為什麼要用  max ？ 1 ：避免極端小距離（過度密集）造成密度估計偏高如果某兩點距離非常近 2 ：避免因某點孤立（離群）導致距離過大而影響估計若   o 是一個離群點、或在低密度區域 k-distance(o)  會比較大 若直接使用  d( p,o )  可能太小，不理由  3 ：讓密度的計算與鄰居自身的「局部密度」一致可達距離同步考量 可達距離 可達距離  =  兩者距離取較大者 11 對任意鄰居 𝑝∈𝑁𝑘 ( 𝑜 ) ，可達距離定義為： 可達距離（ reach- dist ）是用來修正距離，使密度計算更穩定的工具。\n【第 12 頁】局部可達密度 如果  o  的密度比鄰居低 →  LOF > 1 →  異常 如果  o  的密度跟鄰居差不多 →  LOF ≈ 1 →  正常 若  o  比鄰居還密 →  LOF < 1 →  超密（ cluster  中心） LRD  是  LOF  分數計算的核心。 LOF  的定義： 12 對目標點 𝑜，其局部可達密度定義為： 分子： o  與所有鄰居的 可達距離之總和 分母：鄰居個數（通常  = k ） 上式計算的是「平均可達距離」 LRD  是它的 倒數，代表密度 LRD  衡量一個點  o  在局部鄰域中的密度 是  LOF  進行離群判斷的關鍵量。\n【第 13 頁】局部離群因子 優點： 1. 能抓到群與群之間的「局部異常」 2. 即使資料有不同密度的群，也能處理 3. 不會像傳統  KNN  或  Z-score  受整體分布影響 13 LOF  用來判斷某個點  O  是否為離群點，基於：比較  O  的局部密度（ LRD ）與其鄰居的平均密度。 公式 : LOF > 1 ： O  的密度比鄰居低 → 是離群點 LOF = 1 ： O  與鄰居密度相近 → 正常點 LOF < 1 ： O  密度比鄰居高 → 密集區中心點     圖片中示例的是  LOF₃(O) > 1 。\n【第 14 頁】資料集介紹 數據集來源 ： Kaggle 工業設備感測器監測資料集 temperature 溫度 pressure 壓力 vibration 振動 humidity 濕度 equipment 設備類型 location 位置 / 地點 faulty 故障標籤  0 =  正常 1 =  異常 正常筆數 :6905 筆 故障筆數 :767 筆 CSV: 14\n【第 15 頁】15\n【第 16 頁】實驗結果 16\n【第 17 頁】實驗結果 LOF 只抓到「 極端離群 」的故障，對於「 群聚性故障 」無能為力 實際故障資料總數 :  767 筆 LOF   :    抓到  382  筆故障  ( 49.8%) Isolation Forest      :    抓到  667 筆故障  ( 87.0%) One-Class SVM     :    抓到  624 筆故障  ( 81.4%) KNN-distance       :    抓到  694  筆故障  ( 90.5%) 與  LOF  的重疊分析: ------------------------------------------------------------- Isolation Forest      :  325 / 382 ( 85.1%)  與 LOF 重疊 One-Class SVM     :  294 / 382 ( 77.0%)  與 LOF 重疊 KNN-distance        :  355 / 382 ( 92.9%)  與 LOF 重疊 LOF 獨特發現分析 只有  LOF  抓到的錯誤筆數  : 23  筆 方法 準確率 精確率 召回率 F1  分數 執行時間 LOF 0.90 0.50 0.50 0.50 0.2s Isolation Forest 0.97 0.87 0.87 0.87 0.2s One-Class SVM 0.96 0.81 0.81 0.81 0.5s KNN-distance 0.98 0.90 0.90 0.90 0.2s 17\n【第 18 頁】在資料探勘中的應用方式 1.  數據品質與預處理：在將數據用於其他機器學習任務之前， 應用： 識別並移除那些由於數據錄入錯誤、傳感器故障或其他系統性偏差造成的極端噪聲點。這些點在多維空間中可能遠離任何正常群集，移除它們能防止後續的統計分析或模型訓練被扭曲。 2 醫療保健與生物信息學： 方法：  分析患者的臨床指標（年齡、血液指標、用藥史）或基因表達數據。 應用：  識別出具有罕見特徵組合的患者樣本。由於疾病通常會形成多個亞型（即多個不同密度的數據群集）， LOF  可以精確地判斷一個患者是否與他所屬的局部疾病亞型密度相符，從而協助發現罕見疾病或新的生物學模式 特徵工程  (Feature Engineering) ：方法： 將計算出的  $\\text{LOF}$  分數作為一個新的數值特徵加入到原始數據集中。應用： 在使用監督式學習（如分類器）進行異常偵測時，新增的  $\\text{LOF}$  分數能提供強力的先驗信息，幫助分類器更有效地分離正常樣本和異常樣本 地理信息系統  (GIS)  與空間數據分析：方法： 將地理坐標和屬性（如人口密度、地價）結合為多維特徵。應用： 偵測與周圍環境的模式密度不一致的空間離群值（例如，在低人口密度地區的一個異常高值商業區，或在犯罪率低區域的單一高頻率事件）。 18\n【第 19 頁】19 比較資料點與  鄰居的密度差異 。 一個點若  比周圍鄰居的密度低很多  ，是離群點。 屬於  局部（ local ）密度式  方法。 使用  隨機切割 方式分割特徵空間。 離群點通常只需  較少的切割次數  即可孤立。 屬於  ensemble tree  方法（大量隨機樹）。： 比起其他點，異常點更快被切割出去，因此很容易被「孤立」 將正常資料映射到高維空間，找出一個「包住正常資料的邊界（超平面）」， 如有資料落在邊界外 → 異常。 屬於  boundary-based  方法。 計算每個點到第  K  個最近鄰居的距離。 若某個點距離第  K  個鄰居特別遠 → 異常。 簡單說：離大家都很遠的點，就是離群點。 KNN-Distance （鄰居距離法）  One-Class SVM LOF( 局部離群因子 ) 優點 ✔ 能偵測  局部離群點 ✔ 非參數：不需要模型假設分佈。 缺點 ✘ 對高維資料效果下降（ curse of dimensionality ）。 ✘  K  的選擇敏感（鄰居數太大或太小會影響結果）。 ✘ 推論成本較高（必須找每個點的鄰居）\n\n…（內容過長，僅預覽開頭部分）"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\資料探勘期末報告.pptx": {
+  "mtime": 1768294589.0,
+  "size": 951632,
+  "hash": "0d780d150203bf97ba8698fd4776e5a96c5ce35bd326aab800666390b1640265",
+  "hash_algo": "sha256",
+  "text": "【第 1 頁】Medical Appointment No Shows M11302030 洪之川\n【第 2 頁】Business / Research Understanding （商業／研究理解 ) 醫療機構面臨的問題是：    病人爽約率高    醫師與設備被閒置    排程效率下降 因此本案例的商業目標是：    找出影響病人是否到診的因素    預測哪些病人有較高爽約風險    協助醫院優化排程與提醒策略 該案例探討在醫療系統中，病人已經預約門診卻未到診的問題， 這種  No-show  會造成醫療資源浪費與排程效率降低。\n【第 3 頁】研究需求定義 本研究的核心需求並非單純提升整體預測正確率， 而是 在實務情境下，盡可能提前找出「可能未到場的病人」 ， 以協助醫療機構減少空診、提升資源使用效率，並且觀察特定年齡層與爽約機率之間的關係。 由於在醫療場域中，「漏掉一位可能爽約的病人」 將直接造成醫師與設備的閒置，並且在資料不平衡的情況下，即使全部預測為「會到場」， Accuracy 仍可達到較高的水準，但完全無法找出爽約病人。 因此本研究將  Recall （召回率）視為主要評估指標 ， 而非僅追求整體  Accuracy 。\n【第 4 頁】Data Understanding （資料理解） 在資料理解階段，我們使用的是 Medical Appointment No Shows  的預約資料集。 資料包含：    病人基本資料（性別、年齡）    預約與看診時間    健康狀況（慢性病）    是否收到簡訊提醒 目標變數為  No-show ，    表示病人是否缺席預約。\n【第 5 頁】Data Understanding （資料理解） 資料筆數  (rows) ： 110,527 欄位數  (columns) ： 14 數值型參數數量 ： 9 類別型參數數量 ： 3 日期型參數數量 ： 2 各欄位缺失值數量 （ Missing Values ） 二元欄位實際取值檢查 （ Binary Attributes ）\n【第 6 頁】數值欄位描述性統計 在資料理解階段，本研究透過檢查缺失值、數值欄位的最大最小值以及日期欄位的時間順序，發現資料集中存在少量不合理年齡值 （ Age = -1 ） 。上述結果顯示資料整體完整性良好，但仍需於後續資料前處理階段進行合理修正。 身心障礙等級 社會福利補助 年齡 是否收到簡訊 高血壓 糖尿病 酒精成癮\n【第 7 頁】中文名稱 參數名稱 類別數量 最多的類別 筆數 病患  ID PatientId 62299 822145925426128 88 預約  ID AppointmentID 110527 5642903 1 年齡 Age 104 0 3,539 社會福利補助 Scholarship 2 0 99,666 高血壓 Hipertension 2 0 88,726 糖尿病 Diabetes 2 0 102,584 酒精中毒 Alcoholism 2 0 107,167 身心障礙 Handcap 5 0 108,286 收到簡訊通知 SMS_received 2 0 75,045 數值欄位描述性統計\n【第 8 頁】年齡層分布\n【第 9 頁】依年齡分組的爽約率探索分析（ EDA ） 這張圖顯示不同年齡區間的病人，其門診「爽約率」 分布情形。\n【第 10 頁】❌  不適合的特徵 特徵名稱 類型 為什麼要小心  /  不適合 PatientId ID 僅為識別碼，無行為意義 AppointmentID ID 每筆唯一，對預測無幫助 Neighbourhood 類別（高維） 類別過多，易造成稀疏與過擬合 ScheduledDay 日期 原始時間點無直觀意義 AppointmentDay 日期 通常所有人相同或資訊有限 特徵篩選\n【第 11 頁】Data Preparation （資料準備／資料前處理） 在資料準備階段，需要將原始資料轉換成模型可使用的形式。 包含以下步驟：    將類別型資料（如性別、是否收到簡訊）進行編碼    處理日期欄位，計算預約與看診之間的等待天數    對數值型資料進行標準化 這些處理可以提升模型訓練的穩定性與效果。 操作項目 說明 影響 刪除識別欄位 PatientId、AppointmentID 不會提供預測價值 日期欄位轉型 ScheduledDay、AppointmentDay  → datetime 用於計算等待天數 年齡異常處理 Age < 0  的資料剔除 避免錯誤資料干擾 類別轉換 Yes/No → 1/0（No-show  標籤建立） 對模型可讀性更高\n【第 12 頁】建模 （ Modeling ） 目標：預測一位患者是否會缺席門診 （ No-show = Yes ）。 →  這是 二元分類的 任務。 1. 類別變數編碼  (Encoding Categorical Variables) 由於機器學習模型只能處理「數字」，因此必須將文字型標籤轉換成數值格式。 標籤編碼  (Label Encoding) ：用於只有兩種選項的變數 （ Binary ）。  例如： No-show 欄位中， Yes 轉為  1 ， No 轉為  0 。 2. 數值變數縮放  (Scaling Numeric Variables) 為了防止數值較大的特徵蓋過數值較小的特徵（如年齡  Age  只有二位數），需要將它們縮放到相同的比例尺： 常用技術：最小最大縮放  (Min-Max Scaling) 或標準化  ( StandardScaler  / Z-score) 。 3. 訓練與測試集分割  (Train-Test Split) 這是驗證模型好壞的標準做法： 分割比例 ：將數據分為  80% 訓練集  (Training) 與  20% 測試集  (Test) 。\n【第 13 頁】任務定義與模型選擇 任務型態 （ Task Definition ） 專案目標 病患是否會未到場 問題類型 Binary Classification （ 二元分類） y（ 標籤） 1 =  未到場  / 0 =  到場 X（ 特徵） 年齡、等待天數、疾病、 SMS 提醒、地區等 評估重點 Recall、F1、AUC 模型 選擇原因 Logistic Regression 可解釋性高、係數方向易理解 Random Forest 表現更強、對非線性關係穩定 gradient Boosting 逐步修正錯誤、擅長不平衡數據 模型選擇理由\n【第 14 頁】特徵重要度分析 WaitingDays 反映病人行為的不確定性，等待時間越長 ，爽約機率越高，這與實務經驗一致。\n【第 15 頁】消融實驗 比較「完整特徵模型」與「簡化特徵模型」 ⚙️   實驗目的 （ Experiment Objective) 驗證模型 表現 是否真的來自於 所選擇的關鍵行為特徵  模型版本 使用特徵 Full Feature Model 所有可用特徵 （ Age、WaitingDays、SMS ) Ablation Model 僅使用  Age +  WaitingDays ⚙️ 實驗設定 （Experimental Setup） 使用相同資料切分方式 （Train/Test） 使用相同模型架構與評估流程 主要評估指標： Recall （召回率） （ Age 、 WaitingDays ）\n【第 16 頁】結果分析 使用全部特徵 : 使用兩個特徵 :\n【第 17 頁】結論 本研究針對醫療門診中「病人預約未到場 （ No-show ）」 所造成的空診與醫療資源浪費問題，提出一個以資料分析與機器學習為基礎的預測方法。 透過比較多種模型後發現， 梯度提升模型 （ Gradient Boosting ） 在找出爽約病人方面具有最高的召回率 ，能夠在實際發生前提前辨識出大多數可能未到場的病人，有效降低漏判風險 。 此外，消融實驗結果顯示，即使只使用「年齡 （ Age ）」 與「等候天數 （ WaitingDays ）」 兩個特徵，模型仍能維持良好的預測效果，代表這兩項因素已能反映大部分爽約行為的關鍵特徵。其中， 11 至  40 歲族群具有較高的爽約機率 ，屬於需要特別關注的高風險族群。 基於上述結果，本研究建議醫院可利用模型預測結果，針對高風險病人提前進行提醒或調整排程策略，以減少空診成本並提升醫療資源使用效率。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\進度彙整.pptx": {
+  "mtime": 1782137039.0,
+  "size": 29979306,
+  "hash": "ebc1da5a683a5a4202a73e34346e726296ee80a572463a0a36b4ab6a73abe5e9",
+  "hash_algo": "sha256",
+  "text": "【第 1 頁】研究背景與動機 現有問題 貓咪疾病不容易早期發現  飼主依賴主觀觀察  長時間監測困難  穿戴式設備容易造成干擾  多數研究偏向犬類或實驗室環境 是否能僅透過普通攝影機，建立一套非侵入式貓咪健康 行為監測系統？」 現代家庭貓咪的健康監測多依賴飼主的主觀觀察，缺乏客觀、連續且非侵入式的量測手段。貓咪不善於表達疼痛，許多行為異常（如過度舔舐、搖頭、活動力驟降）在早期往往被忽略，導致就醫時病情已進展。\n【第 2 頁】研究目標 1. 建立貓咪行為辨識系統 2. 建立動物骨架前處理策略 3. 驗證不同特徵通道對 ST-GCN 的影響 4. 建立即時健康監測架構\n【第 3 頁】挑戰 說明 骨架遮蔽與缺失 貓咪自我理毛、蜷縮等姿態造成關鍵點遮蔽 動作邊界模糊 行為類別間存在過渡動作，無明確切分點 個體差異 不同品種體型、毛色差異影響姿態估測穩定性 即時性需求 系統需在消費級硬體上達到接近即時的推論速度 核心挑戰\n【第 4 頁】核心挑戰 系統建立前提 （System Assumptions） 貓咪的日常行為能透過視覺姿態資訊反映其活動狀態與部分健康狀況。 貓咪特定行為（如舔舐、搔抓、甩頭、活動下降等）在長時間觀察下，可能與健康異常具有相關性。 使用一般 RGB 攝影機即可取得足夠的影像資訊進行骨架姿態估測，無需額外穿戴式感測器。 貓咪骨架關鍵點雖存在遮蔽、缺失與姿態變形問題，但透過時序補點與正規化處理後，仍可保留足夠的行為特徵供 ST-GCN 進行辨識。 貓咪行為具有時序連續性，因此可利用圖卷積與時間卷積學習行為變化模式 6. 不同貓咪之間雖存在品種、體型與毛色差異，但經適當正規化後，其骨架動態特徵仍具可比較性。 . 本研究之目的為「行為異常早期預警」，而非直接進行獸醫疾病診斷 。\n【第 5 頁】本研究透過行為辨識與量化分析，提供可用於觀察貓咪健康狀態變化的客觀數據 關鍵點如何支撐行為判斷 貓 咪無法直接表達疼痛或不適，但這些狀態往往會反映在姿勢與動作的改變上。與其只做行為分類，我們希望能從姿態結構本身出發，定義具有解剖意義的關鍵點，讓姿勢可以被量化、比較，甚至與疾病進行連結 walk：前後肢關鍵點呈現週期性位移。 lick：頭部、胸部、前肢附近關鍵點距離縮短，局部動作集中。 scratch：後肢或前肢關鍵點出現局部快速重複運動。  shake：頭部關鍵點在短時間內高頻左右擺動。  stop：整體關鍵點位移量低。\n【第 6 頁】Keypoint Name (YOLO) 中文註釋說明 nose 位於鼻鏡（鼻頭）中心位置，作為頭部最前端且穩定的參考點，用於判斷頭部方向與姿態 left_ear_tip 左耳最上緣可見的尖端位置，若耳朵部分遮蔽，則標註可辨識的最高點 right_ear_tip 右耳最上緣可見的尖端位置，與左耳對稱，用於判斷頭部傾斜與旋轉 chest 位於兩前肢之間、胸腔中心的體表投影點，作為前軀姿態與重心參考 mid_back 位於胸口與臀部之間的背部中段位置，用於描述脊柱彎曲與身體姿態變化 hip 位於左右後腿股骨連接處的中間位置，代表後軀重心與後肢運動起始位置 頭部與身體關鍵點定義 （Head & Body Keypoints）\n【第 7 頁】Keypoint Name (YOLO) 中文註釋說明 left_front_elbow 左前肢肩關節與前爪之間的主要彎折關節位置 eft_front_paw 左前爪與地面接觸的中心位置，用於步態與受力判斷 right_front_elbow 右前肢肩關節與前爪之間的主要彎折關節位置 right_front_paw 右前爪與地面接觸的中心位置 left_hind_knee 左後腿股骨與脛骨之間的關節轉折位置，對後肢屈伸分析十分重要 left_hind_paw 左後爪與地面接觸的中心位置，對拖行與後肢功能異常特別敏感 right_hind_knee 右後腿股骨與脛骨之間的關節轉折位置 right_hind_paw 右後爪與地面接觸的中心位置 tail_base 尾巴與臀部連接的起始位置，作為尾巴運動的基準點 tail_mid 尾巴長度的幾何中點，用於描述尾巴彎曲程度 tail_tip 尾巴最末端位置，用於觀察尾部姿態、平衡與神經反應 四肢與尾巴關鍵點定義 （Limbs & Tail Keypoints）\n【第 8 頁】貓咪皮膚病行為文獻探討 1. 貓咪皮膚與搔癢問題常以行為形式表現 文獻與獸醫臨床資料指出，貓咪搔癢或皮膚不適可能表現為舔舐、搔抓、咬毛、過度理毛、掉毛等行為；過度理毛也常被視為貓咪皮膚問題或搔癢反應的一種表現 https://veterinarypartner.vin.com/default.aspx?catId=254060&id=11924460&pid=19239&utm_source=chatgpt.com 過 度理毛或掉毛不一定只來自皮膚病，也可能與寄生蟲、過敏、疼痛、壓力或心理性因素相關；甚至有些掉毛情況可能沒有明顯搔癢行為 https://todaysveterinarypractice.com/dermatology/alopecia-diagnosis-cats/?utm_source=chatgpt.com 2.  但相同行為可能來自不同原因 3. 舔舐與搔抓是「症狀」，不是疾病 Merck Veterinary Manual 指出： Pruritus （搔癢）是一種臨床症狀，而不是疾病本身。其背後可能來自寄生蟲、感染、過敏等不同原因。 https://www.merckvetmanual.com/cat-owners/skin-disorders-of-cats/itching-pruritus-in-cats?utm_source=chatgpt.com 4. 疼痛 很多研究指出： 貓咪會反覆舔舐疼痛部位。 https://www.petmd.com/cat/general-health/how-tell-if-your-cat-over-grooming?utm_source=chatgpt.com https://www.petmd.com/cat/behav ior/why-do-cats-lick-themselves?utm_source=chatgpt.com\n【第 9 頁】研究定位與核心概念總結 現有研究與獸醫臨床觀察指出，皮膚病、搔癢相關疾病（pruritic disorders）、壓力或疼痛等因素，常伴隨舔舐、搔抓、過度理毛與活動變化等行為增加。然而， 目前仍缺乏足夠科學依據能直接主張： 「只要特定行為增加，即可直接判定貓咪患有某種疾病。 」 亦即： 行為變化與疾病之間具有「相關性」 但不代表具有絕對「因果關係」 因此，若直接將： 「行為 = 疾病」 作為研究核心，容易面臨： 醫療  ground truth  不足 個體差異過大 疾病定義不明確 缺乏統一診斷門檻 不同行為可能對應多種原因 等學術與臨床上的限制。 基於上述問題，本研究並不將系統定位為疾病診斷工具，而是： 「非侵入式貓咪行為監測與早期異常預警系統」\n【第 10 頁】「以同一隻貓自身的日常行為作為個體化基線 （Individual Baseline）」 因此，本研究之核心目標並非直接診斷疾病，而是透過  YOLO-Pose  與  ST-GCN  建立長期、客觀且非侵入式的行為監測系統，協助飼主及後續專業人員更早發現可能異常之行為趨勢。 作為其個體化正常行為模型。 後續系統再持續監測： 若偏離程度持續增加，則視為： 潛在異常行為 健康狀態可能變化 需進一步觀察之早期警示訊號 系統首先建立同一隻貓的長期正常行為軌跡 包括：\n【第 11 頁】系統架構 影像輸入    ↓ YOLO-Pose  關鍵點擷取    ↓ 骨架前處理    ↓ ST-GCN  行為分類    ↓ 行為統計與健康預警\n【第 12 頁】貓咪關鍵點骨架視覺設計 為何需要進行關鍵點分區？ 不同行為會依賴不同的局部運動區域，因此需透過功能性骨架分區提升 ST-GCN 對局部動作特徵的建模能力 。 行為標籤  (Behavior) 主要依賴部位 核心動作特徵 (PPT 簡報精簡版) Lick (舔舐) 頭部、前肢 由嘴部、頭部與前肢附近的局部動作組成。 Shake  (甩頭) 頭部 伴隨高頻率的頭部左右擺動。 Walk (行走) 前肢、後肢 依賴四肢的週期性步態變化。 Scratch  (搔抓) 後肢 後腿呈現重複性、高頻率的運動。 Stop  (靜止) 軀幹核心 整體骨架位移量極低，維持靜態 關鍵點分區的重要性 1. 提升局部行為特徵辨識能力 2. 降低無關關節造成的干擾 3. 改善圖卷積資訊流 （Graph Message Passing） 4. 提升  Attention  聚焦能力\n【第 13 頁】骨架前處理流程 解決問題 1. 關鍵點遮蔽 2. 左右翻轉 3. 身體朝向不同 4. 體型與位置差異 5. 時空特徵建模\n【第 14 頁】st- gcn 類別 ST-GCN 會將  16 幀骨架視為一段短時間動作片段，從中學習：「動作如何變化」 太短 : 資訊不足 太長 : 雜訊過多，計算量大 多數行為無法僅透過單一姿態辨識 關節隨時間的移動方向 速度變化 肢體協調關係 而需依賴： 增加 stop 類別 : 為了降低其他行為誤判暫時採取的策略\n【第 15 頁】st- gcn 架構 1 . Spatial Graph Convolution 「關節與關節之間的空間關係」 2. Temporal Convolution 「動作如何隨時間改變」 3. Multi-scale Temporal Kernel 功能 k=3 短時間動作 k=5 中時間動作 k=9 長時間動作 4. Joint Attention 「自動聚焦重要關節」 進一步提升模型對不同時間尺度與重要關節區域的辨識能力\n【第 16 頁】消融實驗 本研究將貓咪骨架序列轉換為多種時空特徵 包括： 關節座標 （Joint）  關節速度 （Velocity） 骨段向量 （Bone） 骨段動態 （Bone Motion）  並輸入  ST-GCN  學習不同行為的時空變化模式。 哪些  skeleton feature  對貓咪行為辨識最有效？ 研究透過消融實驗： 驗證不同特徵組合對  ST-GCN  的影響 。\n【第 17 頁】系統整合與即時監測\n【第 18 頁】模組責任劃分\n【第 19 頁】YOLO 資料集分布\n【第 20 頁】yolo 各情境偵測\n【第 21 頁】姿態偵測\n【第 22 頁】Node-red 運作流程 Python  建立串流伺服器         ↓ Python  通知  Node-RED IP         ↓ Node-RED  建立  Dashboard  串流         ↓ Python  執行  YOLO-Pose + ST-GCN         ↓ Python  傳送行為結果         ↓ Node-RED  整理與分發資料         ↓ Dashboard  即時顯示         ↓ GPT  健康分析         ↓ Discord / Messenger  通知\n【第 23 頁】Node-red 即時偵測畫面 手機畫面\n【第 24 頁】Node-red 將接收的資料統計並保存 csv 檔案 貓咪行為姿態統計\n【第 25 頁】按下按鈕送出分析請求 GPT 分析健康報告中 回傳報告結果\n【第 26 頁】指令控制 對聊天機器人發送 : /camera 將當前串流影像截圖並保存在本地 對聊天機器人發送 : / 哈基米  請求 AI 分析貓咪健康報告"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\進階演算法報告.pptx": {
+  "mtime": 1767862505.0,
+  "size": 1510913,
+  "hash": "0f48ac0487bf0f12bd31735eadf2f70c1e520df7d2e33ffd2f6311acb339d86f",
+  "hash_algo": "sha256",
+  "text": "【第 1 頁】時間序列姿態異常偵測中  DTW  與  LSTM  方法之比較 M11302030   洪之川\n【第 2 頁】研究動機與背景 在動物或人體監控場域中（如醫療觀察、跌倒偵測、動物健康行為分析），姿態異常往往不是一張影像即可判斷，而是來自一段時間序列中的行為偏差。單純的  YOLO  或  pose detection  僅能判斷當下姿勢，無法理解：「這個動作是否持續變怪？」因此，本研究聚焦在以下問題：給定一段由姿態估計模型  YOLO Pose  所取得的關鍵點時間序列，判斷當前行為是否偏離正常模式，即是否為異常行為。\n【第 3 頁】與研究方向的關係 面向 研究內容描述 與  DTW  的關係 與  LSTM  的關係 資料型態 貓咪步態為連續時間序列姿態資料（ 17  Keypoints  / frame ） DTW  能處理長度不同、速度不同步的序列比對 LSTM  能記憶長期時間序列特徵與行為趨勢 研究需求 偵測步態異常，判斷是否正常行走 適合判斷「是否偏離正常模式」 適合判斷「與自身模式相比是否退化」 異常類型 可能存在急性動作異常  vs.  慢性退化行為 急性異常（突然腳步歪斜  /  抽動  /  跌倒） 慢性異常（步態節奏變慢  /  平衡下降）\n【第 4 頁】📍 概念說明 DTW  用來衡量兩段時間序列之間的相似度，即使它們的速度、步調、節奏不同，也能進行最佳對齊與比較。 允許序列在時間軸上 不對齊、不等長、不同速 不需要大量資料 →  小樣本即可運作 適合用於 即時異常偵測 與短期動作偏差檢測 📍核心公式（動態規劃  DP ） Dynamic Time Warping (DTW) –  時間序列匹配演算法 時間複雜 度 : DTW: O(nm)\n【第 5 頁】Gate 功能 Forget Gate 決定哪些過去記憶需要丟棄 Input Gate 決定哪些新資訊要寫入記憶 Output Gate 輸出狀態，用於下一時間步的預測 📍概念說明 LSTM 是一種具記憶能力的循環神經網路（RNN），能保留長期時間序列特徵並預測行為趨勢，常用於動作分析、時序偵測與異常預測。 具有「記憶」過去動作的能力 能捕捉長期依賴（long-term dependency） 適合行為退化／模式變異的分析 📍核心結構 (三個 Gate) Long Short-Term Memory (LSTM) — 序列記憶模型 公式可簡化呈現： 時間複雜度 :\n【第 6 頁】面向 DTW (Dynamic Time Warping) LSTM (Long Short-Term Memory) 定位 序列相似度匹配  /  距離比較 序列學習  /  模式記憶與預測 資料需求 低，小樣本即可運作 中高，需要正常資料訓練 核心能力 短期偏差偵測、速度不同步比對 長期行為記憶、趨勢預測與退化分析 優點 •  不需訓練即可使用  •  適合小資料、即時偵測  •  可以對齊不同速度的序列  •  簡單易部署 •  能自動學習動作模式  •  對長期趨勢 / 退化型異常敏感  •  不受速度差異限制（時間依賴記憶） •  可與其他深度模型整合 缺點 •  對雜訊 / 抖動敏感  •  長序列運算成本較高  •  只能比較，不會學習模式  •  無法捕捉長期退化異常 •  訓練成本高、需資料量支撐  •  對資料品質要求高  •  推論速度比  DTW  慢  •  不適合極端即時 / 低資源環境 適合場景 急性異常、短期偏差、 即時監測 慢性異常、行為退化、長期監控 演算法比較\n【第 7 頁】系統流程圖\n【第 8 頁】實驗設計 我先收集一組「正常行走」的影片，對每一幀用  YOLO-Pose  擷取  17  個關鍵點，再把它轉成正規化後的骨架向量序列，這一條序列就當作「正常姿態的時間樣板（ baseline ）」。\n【第 9 頁】結論 在時間序列姿態異常偵測中， DTW  與  LSTM  代表兩種不同的思考方式 ： DTW  透過「相似度匹配」判斷當前行為是否偏離正常行為範本 LSTM  透過「序列記憶與預測」檢測行為是否與過去學習到的規律不一致 ⭐  DTW  看的是：”現在不像正常” ⭐  LSTM  看的是：”現在不像自己” 因此兩者不是互相替代，而是 互補定位 。 選擇哪一種要根據資料量、行為特徵與場景需求。"
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪\\2月18日(1).mp4": {
+  "mtime": 1771417773.0,
+  "size": 48894478,
+  "hash": "822da9c15cc3a515b3bf15e07f7b982a33f3ddd341ab1994ad4011a25bf1a29d",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪\\2月18日.mp4": {
+  "mtime": 1771417669.0,
+  "size": 27855721,
+  "hash": "cdee8d017a44b64c391b89a41b4c18bf34ebd80c082d51da8413ab584e48771d",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪\\3月12日(2).mp4": {
+  "mtime": 1773337029.0,
+  "size": 12328614,
+  "hash": "1d1480f9cd635322a3cfd7c4d0e86bdd9641ff865e4c09400d66098dd975e942",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪\\3月12日(4).mp4": {
+  "mtime": 1773337139.0,
+  "size": 18505138,
+  "hash": "54581951f65adbd800c0e116f534350284099ae7140264b53863d897fb9df242",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪\\3月15日.mp4": {
+  "mtime": 1773585523.0,
+  "size": 28172203,
+  "hash": "8adbbf5dfd2fa93dad5553d6c917d0d127b98695ddc4bce37465ff74acf400c8",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪\\3月26日.mp4": {
+  "mtime": 1774529664.0,
+  "size": 49946313,
+  "hash": "7c353fb2831b5ab96f1fa318c65501115e685f618c4ecabc5a3f96effb3c46a7",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\OneDrive\\圖片\\貓咪\\8461cc92-342a-4140-b5c5-13b27b987b58.mp4": {
+  "mtime": 1773117003.0,
+  "size": 3684602,
+  "hash": "d3c234bb93bef863cfcfa4228c6d232479b12cff1e7c48402df64d21fb07a6c4",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Downloads\\幻覺貓\\Desktop 2026.07.13 - 20.49.26.22.mp4": {
+  "mtime": 1783946971.0928721,
+  "size": 4736657,
+  "hash": "88570882a77107dadfb67047e3764f0efb662e679a81be0a958b965abfdb859a",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Downloads\\幻覺貓\\Desktop 2026.07.13 - 21.01.53.29.mp4": {
+  "mtime": 1783947717.2948313,
+  "size": 3636708,
+  "hash": "15ef0331b641edc430c3065cb81f530be14bf5deb307774e811f0640f8ca9247",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.29.00.31.mp4": {
+  "mtime": 1784352545.027266,
+  "size": 10677053,
+  "hash": "4b2ad73f578aefe9d48d681c8b7e152e4fd27541ccc3b121724b08e7a1d46ec0",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.30.10.32.mp4": {
+  "mtime": 1784352615.0016205,
+  "size": 9564025,
+  "hash": "e127cc0781056ba41e66249b9bad37a5446b0a3b871292b5446358256eb16b77",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.30.27.33.mp4": {
+  "mtime": 1784352632.537507,
+  "size": 11499155,
+  "hash": "343c6fd3d58a700428b1a28aef65d563b8462e62d93003f769b7536942cf780e",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.30.45.34.mp4": {
+  "mtime": 1784352650.1061847,
+  "size": 8412677,
+  "hash": "23d4da174cb3393a27b46fe3794e506838d123c18964e47b175ceeb191da3f45",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.31.06.35.mp4": {
+  "mtime": 1784352676.432767,
+  "size": 21539158,
+  "hash": "4dfd8cc04ea71479cec59cd3f900f8710dd3321c791020c93df76bf2eedc556a",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.31.30.36.mp4": {
+  "mtime": 1784352693.9686968,
+  "size": 5063409,
+  "hash": "11a55e93789f2d4e962be75b235fa02d71ee75dfe61cdd12d0aa7b004c46f68d",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.31.48.37.mp4": {
+  "mtime": 1784352711.476087,
+  "size": 4498005,
+  "hash": "8780b347daba522b01ee3f0fb1cc25634a02837c1be25e646768a6ea3ad859f2",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.32.55.38.mp4": {
+  "mtime": 1784352780.602146,
+  "size": 10245793,
+  "hash": "d18d4ce22b865e5e51d33ddc74e6d11f056fa87eb030d71bc6be62ab3aa435c1",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.33.48.39.mp4": {
+  "mtime": 1784352833.756091,
+  "size": 10040187,
+  "hash": "9005034ffdd3701266e86544617d06156bd6a9f20eee99299fc7401b3fa108eb",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.34.45.40.mp4": {
+  "mtime": 1784352890.9900706,
+  "size": 12633175,
+  "hash": "15877c7665dba87cd6e75121ee62629f7e530f78ae4cf969929c6455430e6623",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.35.25.41.mp4": {
+  "mtime": 1784352930.027996,
+  "size": 9384598,
+  "hash": "826d2106070dd1a78e2300278e9d5bd1eeb16961e209dd930e0a63074ff8c867",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.35.36.42.mp4": {
+  "mtime": 1784352939.8763838,
+  "size": 7558474,
+  "hash": "2a1b256e385f22d7c3561789f2fa67f43a67234cd739f5514926880268895a31",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.36.13.43.mp4": {
+  "mtime": 1784352990.789286,
+  "size": 41705979,
+  "hash": "03f65e1c262f9245a5ea79cbce281a7ed8192badbed43236a2f37a0e76373eca",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.37.58.44.mp4": {
+  "mtime": 1784353083.9007618,
+  "size": 7452357,
+  "hash": "32ca9a7b65609c65197001b35fcd04f845db3ea808dc781e8be9b3a53305640b",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.38.51.45.mp4": {
+  "mtime": 1784353135.003247,
+  "size": 5634099,
+  "hash": "54147608388c31574d7fa08c60bed52c827f00b2bc89f97502f28a4f957e2bc5",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0718_4\\Desktop 2026.07.18 - 13.39.04.46.mp4": {
+  "mtime": 1784353146.7235012,
+  "size": 2942047,
+  "hash": "8127000deef0218d05f96e2b67694a3a2f931c1f948b49da02006a41e213d54a",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0712_2\\Desktop 2026.07.17 - 21.13.51.09.mp4": {
+  "mtime": 1784294035.1756659,
+  "size": 3046591,
+  "hash": "5014cb9daa556908326eedb8119d557fab6db2fd193ac7e77a8ad646e1eba33a",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Downloads\\images.jpg": {
+  "mtime": 1786680646.5215454,
+  "size": 15850,
+  "hash": "191ceeea7e8afae2c770dcb13e12c589a571f1c6f66f194dd63bc4d5e2fba05e",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Downloads\\real_標記區\\1 (2).mp4": {
+  "mtime": 1783947978.2128713,
+  "size": 19817693,
+  "hash": "7a36bf3fc9aabeb1ca1ec5a1824da5d3105f64e68eb1215da0432f5dce1277b8",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Downloads\\real_標記區\\1 (3).mp4": {
+  "mtime": 1783947936.042666,
+  "size": 8553592,
+  "hash": "31a662cb848f49602b5ce86a24505431922d6c1dd5d10e844ebc02308ea1379d",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Downloads\\real_標記區\\1 (1).mp4": {
+  "mtime": 1783949154.9914417,
+  "size": 3525889,
+  "hash": "ca7b6bdf0d48517d066c9f24d56966b85ee86ef5d87e2f2da5eeadce52bea209",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0712_2\\Desktop 2026.07.17 - 21.11.37.03.mp4": {
+  "mtime": 1784293901.4517784,
+  "size": 3846944,
+  "hash": "439922991e85388e40f9c5f0728f3f28bdf505355342e54a0fbc90409ccea678",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0712_2\\Desktop 2026.07.17 - 21.12.00.04.mp4": {
+  "mtime": 1784293925.4323204,
+  "size": 5430591,
+  "hash": "a422e0e58312016f119866807b555fbb175207760ffb4a4e47808eb56916d9dc",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0712_2\\Desktop 2026.07.17 - 21.12.24.05.mp4": {
+  "mtime": 1784293948.7175891,
+  "size": 4304852,
+  "hash": "384c81f9331b40c10a439ae23ea298a1ac1a36238a5b08089673987a87e70bf0",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0712_2\\Desktop 2026.07.17 - 21.12.36.06.mp4": {
+  "mtime": 1784293963.1468468,
+  "size": 6274596,
+  "hash": "6fa848f4f7ef5b6839261e3520c734f5c5c33fb3e8d51914c4db132efcf78758",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\Users\\homec\\Videos\\NVIDIA\\Desktop\\0712_2\\Desktop 2026.07.17 - 21.12.53.07.mp4": {
+  "mtime": 1784293975.345673,
+  "size": 1844884,
+  "hash": "a5f40ca8a7b9fd83ea61f8d1e8e0230f3530eda738ed77fa3e582fd9b01b21e7",
+  "hash_algo": "sha256",
+  "text": ""
+ }
+}

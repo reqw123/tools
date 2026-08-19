@@ -1,0 +1,12 @@
+{
+ "provider": "ollama",
+ "openai": {
+  "api_key": "",
+  "model": "gpt-4o-mini",
+  "base_url": "https://api.openai.com/v1"
+ },
+ "ollama": {
+  "base_url": "http://localhost:11434",
+  "model": "qwen2.5:7b"
+ }
+}
