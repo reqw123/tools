@@ -31,6 +31,7 @@ XL_SHIFT_TO_LEFT = -4159
 XL_PASTE_FORMATS = -4122
 XL_PASTE_ALL = -4104
 XL_INSERT_SHIFT_DOWN = -4121
+XL_SHIFT_UP = -4162
 
 
 def _to_2d(data, n_rows: int, n_cols: int) -> list:
@@ -164,6 +165,14 @@ class ExcelManager:
         self.connect()
         return self._active_sheet_name or self.excel.ActiveSheet.Name
 
+    def get_active_cell(self) -> dict:
+        """讀取使用者目前在 Excel 裡實際選取的儲存格（用來『猜』使用者現在
+        在看哪個客戶/哪張表，屬於體驗優化，呼叫端要自行 try/except——
+        選到圖表/樞紐分析表等情況 ActiveCell 可能不存在或丟例外。"""
+        self.connect()
+        cell = self.excel.ActiveCell
+        return {"sheet": self.excel.ActiveSheet.Name, "row": cell.Row, "col": cell.Column}
+
     # ----------------------------------------------------------------
     # 讀取整張工作表（UsedRange）
     # ----------------------------------------------------------------
@@ -293,6 +302,13 @@ class ExcelManager:
         """
         sheet = self._sheet_obj(sheet_name)
         sheet.Rows(row).Insert(Shift=XL_SHIFT_DOWN)
+
+    def delete_row(self, row: int, sheet_name: Optional[str] = None):
+        """insert_row 的鏡像：整列刪除（含格式），下面所有列自動往上遞補。
+        真的會修改 Excel 內容，只給 CustomerStatementHandler.delete_rows()
+        這種已經過人工二次確認的操作呼叫。"""
+        sheet = self._sheet_obj(sheet_name)
+        sheet.Rows(row).Delete(Shift=XL_SHIFT_UP)
 
     def copy_row_format(self, src_row: int, dst_row: int, col_start: int, col_end: int,
                          sheet_name: Optional[str] = None):

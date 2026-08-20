@@ -22,7 +22,7 @@
     "total": "總計金額"
   },
   "region_signature": {
-    "n_rows": 22,
+    "n_rows": 19,
     "n_cols": 7
   },
   "formula_rules": {
@@ -43,5 +43,5 @@
     "subtotal",
     "total"
   ],
-  "updated_at": "2026-08-19 20:13:20"
+  "updated_at": "2026-08-19 23:24:55"
 }

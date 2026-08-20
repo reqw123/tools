@@ -1,3 +1,4 @@
 pywin32>=306
 openai>=1.30.0
 ollama>=0.3.0
+ttkbootstrap>=2.2.0

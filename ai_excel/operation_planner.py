@@ -614,6 +614,12 @@ def _normalize_import_entries(entries) -> list[dict]:
             except PlanValidationError:
                 pass
 
+        if "return_quantity" in row and row["return_quantity"] is not None:
+            try:
+                norm["return_quantity"] = _coerce_positive_int(row["return_quantity"], "return_quantity", allow_zero=True)
+            except PlanValidationError:
+                pass
+
         if norm.get("item") and norm.get("quantity"):
             result.append(norm)
 

@@ -82,6 +82,41 @@ def extract_region_customer_name(region: Region, grid: SheetGrid, header_row: in
     return name
 
 
+def list_known_dates(structure: StructureInfo, grid: SheetGrid) -> list[str]:
+    """列出這個 Region 已出現過的貨單日期（依出現順序去重），
+    供「半人工輸入」下拉選單使用。找不到日期欄就回傳空 list。"""
+    date_col = find_column(structure.headers, "date")
+    if date_col is None:
+        return []
+    seen, out = set(), []
+    for r in range(structure.data_start_row, structure.data_end_row + 1):
+        cell = grid.get(r, date_col)
+        if cell and not cell.is_empty:
+            text = str(cell.value).strip()
+            if text not in seen:
+                seen.add(text)
+                out.append(text)
+    return out
+
+
+def list_known_items(structure: StructureInfo, grid: SheetGrid) -> list[str]:
+    """列出這個 Region 已出現過的品項名稱（依出現次數由多到少去重），
+    供「半人工輸入」下拉選單使用。找不到品項欄就回傳空 list。"""
+    item_col = find_column(structure.headers, "item")
+    if item_col is None:
+        return []
+    counts: dict[str, int] = {}
+    order: list[str] = []
+    for r in range(structure.data_start_row, structure.data_end_row + 1):
+        cell = grid.get(r, item_col)
+        if cell and not cell.is_empty:
+            text = str(cell.value).strip()
+            if text not in counts:
+                order.append(text)
+            counts[text] = counts.get(text, 0) + 1
+    return sorted(order, key=lambda t: -counts[t])
+
+
 def resolve_customer_region(candidates: list[tuple[Region, SheetGrid, StructureInfo]],
                              customer_name: str):
     """在多個 customer_statement Region 中，找出符合 customer_name 的那一個。
@@ -328,7 +363,7 @@ class CustomerStatementHandler(ReportHandler):
             groups.append(cur)
         return groups
 
-    def _sample_date_text(self) -> str:
+    def sample_date_text(self) -> str:
         for r in range(self.structure.data_start_row, self.structure.data_end_row + 1):
             cell = self.grid.get(r, self.date_col)
             if cell and not cell.is_empty:
@@ -343,7 +378,7 @@ class CustomerStatementHandler(ReportHandler):
         """使用者常常只講『月/日』（例如 7/24）沒講年份，這裡從這個對帳表既有
         的日期（例如 115.6.26）反推目前是民國幾年 / 西元幾年，這樣才補得出
         完整日期，而不是讓『7/24』因為缺年份、對不上任何一組資料而失敗。"""
-        sample = self._sample_date_text()
+        sample = self.sample_date_text()
         iso = normalize_date(sample)
         if isinstance(iso, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", iso):
             return int(iso[:4])
@@ -362,7 +397,7 @@ class CustomerStatementHandler(ReportHandler):
             return self._find_reconcile_matches(parsed)
 
         target_date_norm = self._normalize_user_date(parsed["date"])
-        sheet_style_date = format_date_like(target_date_norm, self._sample_date_text()) \
+        sheet_style_date = format_date_like(target_date_norm, self.sample_date_text()) \
             if target_date_norm else parsed["date"]
 
         groups = self._date_groups()
@@ -564,17 +599,24 @@ class CustomerStatementHandler(ReportHandler):
     # 單價查詢
     # ------------------------------------------------------------
 
-    def _lookup_unit_price(self, item_name: str, all_regions: Optional[list[Region]] = None):
+    def lookup_unit_price(self, item_name: str, all_regions: Optional[list[Region]] = None):
+        price, _source = self.lookup_unit_price_with_source(item_name, all_regions)
+        return price
+
+    def lookup_unit_price_with_source(self, item_name: str, all_regions: Optional[list[Region]] = None):
+        """跟 lookup_unit_price 一樣查單價，但額外回傳『這個數字是怎麼來的』
+        說明文字，給④半人工輸入分頁顯示，讓使用者一眼判斷自動帶出的單價
+        可不可信，不用自己盯著一個數字猜。"""
         # 1) 參考價格表
         if self.structure.reference_region_id and all_regions:
             ref_region = next((r for r in all_regions if r.region_id == self.structure.reference_region_id), None)
             if ref_region:
                 prices = extract_reference_table_prices(ref_region, self.grid)
                 if item_name in prices:
-                    return prices[item_name]
+                    return prices[item_name], "依參考價格表"
                 close = difflib.get_close_matches(item_name, list(prices.keys()), n=1, cutoff=0.6)
                 if close:
-                    return prices[close[0]]
+                    return prices[close[0]], f"依參考價格表（近似『{close[0]}』）"
 
         # 2) 表格內同品項最近一次使用的單價（由後往前找）
         for r in range(self.structure.data_end_row, self.structure.data_start_row - 1, -1):
@@ -582,9 +624,10 @@ class CustomerStatementHandler(ReportHandler):
             if item_cell and not item_cell.is_empty and str(item_cell.value).strip() == item_name:
                 price_cell = self.grid.get(r, self.price_col)
                 if price_cell and isinstance(price_cell.value, (int, float)):
-                    return price_cell.value
+                    date_label = self._row_date_label(r)
+                    return price_cell.value, f"依這張表 {date_label} 的歷史單價"
 
-        return None
+        return None, "查無資料，請手動輸入"
 
     # ------------------------------------------------------------
     # build_operation_plan
@@ -609,7 +652,7 @@ class CustomerStatementHandler(ReportHandler):
         # append_order
         item = parsed["item"]
         qty = parsed["quantity"]
-        unit_price = self._lookup_unit_price(item, all_regions)
+        unit_price = self.lookup_unit_price(item, all_regions)
         if unit_price is None:
             raise HandlerError(
                 f"找不到『{item}』的單價（參考價格表與歷史資料都沒有），"
@@ -625,7 +668,7 @@ class CustomerStatementHandler(ReportHandler):
 
     def _build_append_step(self, item: str, qty: int, unit_price, insert_row: int,
                             is_new_group: bool, sheet_style_date: Optional[str],
-                            description: str) -> OperationStep:
+                            description: str, return_quantity: int = 0) -> OperationStep:
         """建立『在 insert_row 插入一列新資料』的單一 OperationStep，
         append_order（單筆新增）跟 import_from_image（估價單匯入多筆）共用。
         """
@@ -650,7 +693,7 @@ class CustomerStatementHandler(ReportHandler):
         if self.return_col:
             changes.append(CellChange(
                 sheet=self.region.sheet_name, row=insert_row, column=self.return_col,
-                field_label="退貨", old_value=None, new_value=0, is_new_row=True,
+                field_label="退貨", old_value=None, new_value=return_quantity, is_new_row=True,
             ))
 
         subtotal_formula = self._build_subtotal_formula(insert_row)
@@ -685,10 +728,11 @@ class CustomerStatementHandler(ReportHandler):
                 continue
             unit_price = entry.get("unit_price")
             if unit_price is None:
-                unit_price = self._lookup_unit_price(item, all_regions)
+                unit_price = self.lookup_unit_price(item, all_regions)
             if unit_price is None:
                 skipped.append(entry)
                 continue
+            return_quantity = entry.get("return_quantity") or 0
 
             row = insert_row + len(steps)
             description = f"在 {customer} {sheet_style_date} 新增 {item} {qty} 件（估價單匯入 第 {idx + 1} 筆）"
@@ -696,6 +740,7 @@ class CustomerStatementHandler(ReportHandler):
                 item, qty, unit_price, row,
                 is_new_group=(is_new_group and not steps),  # 只有這組第一筆新插的列才寫日期
                 sheet_style_date=sheet_style_date, description=description,
+                return_quantity=return_quantity,
             ))
 
         if not steps:
@@ -908,8 +953,6 @@ class CustomerStatementHandler(ReportHandler):
         採用『重新掃描目前 Excel 實際狀態』的方式重建，而不是對舊公式字串做
         文字手術，確保正確性不依賴 Excel COM 是否有自動調整參照。
         """
-        fresh_grid = self.excel.read_sheet_grid(self.region.sheet_name)
-
         # 重新計算資料區間（因為插入列，原本的 total_row 若在插入點之後會+1）
         old_total_row = self.structure.total_row
         new_total_row = (old_total_row + 1) if (old_total_row and old_total_row >= insert_row_at) else old_total_row
@@ -921,23 +964,8 @@ class CustomerStatementHandler(ReportHandler):
         self.structure.total_row = new_total_row
         self.structure.data_end_row = new_data_end
 
-        # ---- 找出被插入列所屬的那一組（重新掃描分組） ----
-        groups = []
-        cur = None
-        for r in range(self.structure.data_start_row, new_data_end + 1):
-            date_cell = fresh_grid.get(r, self.date_col)
-            item_cell = fresh_grid.get(r, self.item_col)
-            has_item = item_cell is not None and not item_cell.is_empty
-            if date_cell is not None and not date_cell.is_empty:
-                if cur is not None:
-                    groups.append(cur)
-                cur = {"start": r, "end": r, "rows": [r] if has_item else []}
-            elif cur is not None:
-                cur["end"] = r
-                if has_item:
-                    cur["rows"].append(r)
-        if cur is not None:
-            groups.append(cur)
+        fresh_grid = self.excel.read_sheet_grid(self.region.sheet_name)
+        groups = self._scan_row_groups(fresh_grid, new_data_end)
 
         target_group = None
         for g in groups:
@@ -950,37 +978,65 @@ class CustomerStatementHandler(ReportHandler):
                     target_group = g
                     break
 
-        if target_group is not None and target_group["rows"]:
-            subtotal_letter = self._col_letter(self.subtotal_col)
-            formula = "=" + "+".join(f"{subtotal_letter}{r}" for r in target_group["rows"])
-            group_total_row = target_group["rows"][-1]
-            self.excel.write_formula(group_total_row, self.total_col, formula,
-                                      sheet_name=self.region.sheet_name)
-            # 若這組本來就有多列但小計列不是最後一列的殘留舊公式，清掉多餘的
-            for r in target_group["rows"][:-1]:
-                cell = fresh_grid.get(r, self.total_col)
-                if cell and cell.is_formula and r != group_total_row:
-                    self.excel.clear_cell_content_only(r, self.total_col, sheet_name=self.region.sheet_name)
+        if target_group is not None:
+            self._rebuild_group_subtotal(fresh_grid, target_group)
+        self._rebuild_grand_total(groups)
 
-        # ---- 總表總計：確認（或重建）grand total 公式涵蓋所有分組小計 ----
-        if new_total_row:
-            fresh_grid2 = self.excel.read_sheet_grid(self.region.sheet_name)
-            total_letter = self._col_letter(self.total_col)
-            group_rows_with_value = []
-            for g in groups:
-                if g["rows"]:
-                    group_rows_with_value.append(g["rows"][-1])
+    # ------------------------------------------------------------
+    # 分組小計／總表總計 重建（新增、刪除兩條路徑共用）
+    # ------------------------------------------------------------
 
-            grand_cell = fresh_grid2.get(new_total_row, self.total_col)
-            needs_rebuild = True
-            if grand_cell and grand_cell.is_formula and isinstance(grand_cell.formula, str):
-                if all(f"{total_letter}{r}" in grand_cell.formula for r in group_rows_with_value):
-                    needs_rebuild = False
+    def _scan_row_groups(self, grid: SheetGrid, data_end_row: int) -> list[dict]:
+        """由 data_start_row 掃到 data_end_row，依『日期欄是否空白』切分組，
+        回傳 [{"start","end","rows":[有品項的列號,...]}, ...]。"""
+        groups = []
+        cur = None
+        for r in range(self.structure.data_start_row, data_end_row + 1):
+            date_cell = grid.get(r, self.date_col)
+            item_cell = grid.get(r, self.item_col)
+            has_item = item_cell is not None and not item_cell.is_empty
+            if date_cell is not None and not date_cell.is_empty:
+                if cur is not None:
+                    groups.append(cur)
+                cur = {"start": r, "end": r, "rows": [r] if has_item else []}
+            elif cur is not None:
+                cur["end"] = r
+                if has_item:
+                    cur["rows"].append(r)
+        if cur is not None:
+            groups.append(cur)
+        return groups
 
-            if needs_rebuild and group_rows_with_value:
-                new_formula = "=" + "+".join(f"{total_letter}{r}" for r in group_rows_with_value)
-                self.excel.write_formula(new_total_row, self.total_col, new_formula,
-                                          sheet_name=self.region.sheet_name)
+    def _rebuild_group_subtotal(self, grid: SheetGrid, group: dict):
+        """重寫一組的『總計金額』公式（＝這組所有『合計』加總，落在該組最後
+        一列），並清掉這組裡其他列殘留的舊公式（例如本來只有一列、現在多了
+        新列，總計金額落點跟著換到新的最後一列）。"""
+        if not group["rows"]:
+            return
+        subtotal_letter = self._col_letter(self.subtotal_col)
+        formula = "=" + "+".join(f"{subtotal_letter}{r}" for r in group["rows"])
+        group_total_row = group["rows"][-1]
+        self.excel.write_formula(group_total_row, self.total_col, formula,
+                                  sheet_name=self.region.sheet_name)
+        for r in group["rows"][:-1]:
+            cell = grid.get(r, self.total_col)
+            if cell and cell.is_formula and r != group_total_row:
+                self.excel.clear_cell_content_only(r, self.total_col, sheet_name=self.region.sheet_name)
+
+    def _rebuild_grand_total(self, groups: list[dict]):
+        """重寫總表總計公式（＝每一組『總計金額』加總）。一律重寫、不做
+        『已經正確就跳過』的判斷——重寫一次成本很低，正確性優先（尤其是
+        刪除情境下，舊公式很可能引用到剛被刪掉的列，不能只靠字串比對
+        判斷『看起來還對』）。"""
+        if not self.structure.total_row:
+            return
+        group_rows_with_value = [g["rows"][-1] for g in groups if g["rows"]]
+        if not group_rows_with_value:
+            return
+        total_letter = self._col_letter(self.total_col)
+        new_formula = "=" + "+".join(f"{total_letter}{r}" for r in group_rows_with_value)
+        self.excel.write_formula(self.structure.total_row, self.total_col, new_formula,
+                                  sheet_name=self.region.sheet_name)
 
     # ------------------------------------------------------------
     # verify
@@ -1017,3 +1073,118 @@ class CustomerStatementHandler(ReportHandler):
                                   verify_ok=False, verify_details="\n".join(problems))
         return HandlerResult(True, "驗證通過，資料已正確寫入。", steps=steps,
                               verify_ok=True, verify_details="所有欄位皆與預期相符。")
+
+    # ------------------------------------------------------------
+    # 整張表預覽 / 刪除（④半人工輸入分頁專用，人工直接觸發，不經過
+    # OperationPlan／AI 那條管線，settings.ALLOWED_ACTIONS 沒有、也不會有
+    # 對應的刪除 action）
+    # ------------------------------------------------------------
+
+    @staticmethod
+    def _cell_value(grid: SheetGrid, row: int, col: Optional[int]):
+        if col is None:
+            return None
+        cell = grid.get(row, col)
+        return cell.value if (cell and not cell.is_empty) else None
+
+    def list_rows_for_preview(self) -> list[dict]:
+        """列出這張對帳表目前所有『有品項』的資料列（跳過間隔列/總計列），
+        給④半人工輸入分頁的『整張表預覽』顯示用。日期欄回傳推算後的值
+        （同一組後面幾列不會是空白），合計/總計金額回傳公式的計算後數值。"""
+        rows = []
+        for r in range(self.structure.data_start_row, self.structure.data_end_row + 1):
+            item_cell = self.grid.get(r, self.item_col)
+            if not item_cell or item_cell.is_empty:
+                continue
+            rows.append({
+                "row": r,
+                "date": self._row_date_label(r),
+                "item": str(item_cell.value).strip(),
+                "quantity": self._cell_value(self.grid, r, self.qty_col),
+                "unit_price": self._cell_value(self.grid, r, self.price_col),
+                "return_quantity": self._cell_value(self.grid, r, self.return_col),
+                "subtotal": self._cell_value(self.grid, r, self.subtotal_col),
+                "total": self._cell_value(self.grid, r, self.total_col),
+            })
+        return rows
+
+    def _repromote_date_if_needed(self, row: int, date_text):
+        """如果剛被刪掉的那一列原本是它那一組的日期列（第一列），且刪完
+        這組還有剩其他資料列，日期要『補』回新的第一列（現在跟被刪掉的
+        列同一個列號，因為下面的列已經往上遞補），否則這組後面幾列會
+        因為空白日期繼承斷掉而變成孤兒資料。"""
+        fresh_grid = self.excel.read_sheet_grid(self.region.sheet_name)
+        item_cell = fresh_grid.get(row, self.item_col)
+        if not item_cell or item_cell.is_empty:
+            return  # 這組被整組刪光了，沒有東西可以補
+        new_date_cell = fresh_grid.get(row, self.date_col)
+        if new_date_cell and not new_date_cell.is_empty:
+            return  # 這一列本來就有自己的日期（是下一組的開頭），不用動
+        self.excel.write_value(row, self.date_col, date_text, sheet_name=self.region.sheet_name)
+
+    def _rebuild_all_group_and_grand_totals(self):
+        """整張表重新掃描，重寫每一組的小計公式跟總表總計公式（不是只修
+        被刪的那一組）。刪除比新增更容易讓 Excel 原生的公式參照調整出
+        問題（例如被刪的列剛好是某組總計金額公式的落點），所以刪除後選擇
+        『全部重建』，正確性優先於少寫幾次 Excel。"""
+        fresh_grid = self.excel.read_sheet_grid(self.region.sheet_name)
+        groups = self._scan_row_groups(fresh_grid, self.structure.data_end_row)
+        for g in groups:
+            self._rebuild_group_subtotal(fresh_grid, g)
+        self._rebuild_grand_total(groups)
+
+    def delete_rows(self, rows: list[int], progress_callback: Optional[ProgressCallback] = None) -> HandlerResult:
+        """真的從 Excel 永久刪除這幾列資料。呼叫端（GUI）必須已經完成人工
+        二次確認——這裡不再問一次，只負責『確認過了就照做』。
+
+        多選一律由列號大到小依序刪，避免前面尚未處理的列號被已刪除的列
+        打亂；每刪一列之前先記下舊值，寫進 operation_log.json 留痕
+        （不是自動 undo，但至少查得到刪了什麼）。
+        """
+        ordered = sorted(set(rows), reverse=True)
+        if not ordered:
+            return HandlerResult(False, "沒有指定要刪除的資料列。")
+
+        deleted_records = []
+        done = 0
+        try:
+            for row in ordered:
+                fresh_grid = self.excel.read_sheet_grid(self.region.sheet_name)
+                deleted_records.append({
+                    "row": row,
+                    "date": self._row_date_label(row),
+                    "item": self._cell_value(fresh_grid, row, self.item_col),
+                    "quantity": self._cell_value(fresh_grid, row, self.qty_col),
+                    "unit_price": self._cell_value(fresh_grid, row, self.price_col),
+                    "return_quantity": self._cell_value(fresh_grid, row, self.return_col),
+                })
+                date_cell = fresh_grid.get(row, self.date_col)
+                date_text = date_cell.value if (date_cell and not date_cell.is_empty) else None
+
+                self.excel.delete_row(row, sheet_name=self.region.sheet_name)
+
+                if date_text:
+                    self._repromote_date_if_needed(row, date_text)
+
+                if self.structure.total_row and self.structure.total_row > row:
+                    self.structure.total_row -= 1
+                self.structure.data_end_row -= 1
+
+                done += 1
+                if progress_callback:
+                    progress_callback(done, len(ordered), f"刪除第 {row} 列")
+
+            self._rebuild_all_group_and_grand_totals()
+            self.excel.calculate()
+
+            append_operation_log({
+                "report_type": self.report_type,
+                "region_id": self.region.region_id,
+                "action": "delete_rows",
+                "deleted": deleted_records,
+            })
+
+            items_desc = "、".join(str(d["item"]) for d in deleted_records)
+            return HandlerResult(True, f"已刪除 {len(ordered)} 筆資料：{items_desc}")
+        except Exception as e:  # noqa: BLE001 - 需求 #50
+            return HandlerResult(False, f"刪除失敗：{e}")
