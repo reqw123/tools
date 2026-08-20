@@ -307,14 +307,14 @@ class ExcelAIApp(tk.Tk):
         saved = S.load_user_settings()
 
         tk.Label(frame, text="Provider", bg=BG_PANEL).grid(row=0, column=0, padx=8, pady=6, sticky="w")
-        self.provider_var = tk.StringVar(value=saved.get("provider", "Ollama"))
+        self.provider_var = tk.StringVar(value=saved.get("provider") or "Ollama")
         provider_combo = ttk.Combobox(frame, textvariable=self.provider_var,
                                        values=["Ollama", "OpenAI"], state="readonly", width=12)
         provider_combo.grid(row=0, column=1, padx=5, sticky="w")
         provider_combo.bind("<<ComboboxSelected>>", self._on_provider_changed)
 
         tk.Label(frame, text="Model", bg=BG_PANEL).grid(row=0, column=2, padx=(20, 5))
-        self.model_var = tk.StringVar(value=saved.get("model", S.DEFAULT_OLLAMA_MODEL))
+        self.model_var = tk.StringVar(value=saved.get("model") or S.DEFAULT_OLLAMA_MODEL)
         self.model_combo = ttk.Combobox(frame, textvariable=self.model_var, width=22)
         self.model_combo.grid(row=0, column=3, padx=5, sticky="w")
 

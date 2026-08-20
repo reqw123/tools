@@ -20,6 +20,7 @@ from file_search_app.services.index_service import IndexService
 from file_search_app.services.preview_service import PreviewService
 from file_search_app.services.scan_service import ScanService
 from file_search_app.services.search_service import SearchService
+from file_search_app.services.transcription_service import TranscriptionService
 from file_search_app.ui.main_window import MainWindow
 
 
@@ -38,6 +39,7 @@ def build_app() -> MainWindow:
     duplicate_service = DuplicateService(index_repo, cache_repo, cache_service, index_service)
     description_service = DescriptionService(preview_service, index_service)
     ai_description_service = AIDescriptionService(ai_settings_repo, preview_service)
+    transcription_service = TranscriptionService()
 
     return MainWindow(
         index_service=index_service,
@@ -51,6 +53,7 @@ def build_app() -> MainWindow:
         metadata_repo=metadata_repo,
         ai_description_service=ai_description_service,
         ai_settings_repo=ai_settings_repo,
+        transcription_service=transcription_service,
         media_controller_cls=MediaController,
     )
 

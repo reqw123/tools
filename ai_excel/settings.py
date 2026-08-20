@@ -225,13 +225,23 @@ ALLOWED_ACTIONS = {
 # ------------------------------------------------------------------
 
 
+DEFAULT_USER_SETTINGS = {
+    "provider": "",
+    "model": "",
+    "openai_api_key": "",
+    "ollama_host": "",
+}
+
+
 def load_user_settings() -> dict:
     if SETTINGS_FILE.exists():
         try:
             return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
         except Exception:
-            return {}
-    return {}
+            pass
+    else:
+        save_user_settings(dict(DEFAULT_USER_SETTINGS))
+    return dict(DEFAULT_USER_SETTINGS)
 
 
 def save_user_settings(data: dict) -> None:

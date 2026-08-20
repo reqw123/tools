@@ -45,7 +45,7 @@ _LEGACY_OFFICE_TIMEOUT = 30.0
 # 壓縮檔（.zip 除外，見 _read_zip_listing）／執行檔目前沒有對應的內容解析器，
 # 硬當文字讀只會得到亂碼。
 _KNOWN_BINARY_EXTS = IMAGE_EXTS | AUDIO_EXTS | VIDEO_EXTS | {
-    ".rar", ".7z", ".rtf",
+    ".rar", ".rtf",
     ".exe", ".dll", ".msi", ".iso", ".bin", ".dat",
     ".class", ".pyc", ".so", ".o", ".obj", ".db", ".sqlite",
 }
@@ -113,6 +113,27 @@ def _read_zip_listing(p: Path, max_chars: int):
     通常已經夠判斷這是不是要找的東西。"""
     with zipfile.ZipFile(p) as zf:
         names = zf.namelist()
+    if not names:
+        return None
+    listing = "\n".join(names[:300])
+    header = f"（壓縮檔，內含 {len(names)} 個項目，以下為部分檔名列表）\n"
+    return _truncate(header + listing, max_chars)
+
+
+def _read_7z_listing(p: Path, max_chars: int):
+    """跟 `_read_zip_listing()` 同樣的做法（只列檔名、不解開內容）：7z 沒有內建在
+    標準函式庫裡，需要選用套件 py7zr，沒裝就回傳 None 退回一般圖示——這條路徑
+    本身就是「能撐則撐、撐不住就退回一般圖示」的最後防線，不需要另外在啟動時
+    檢查一次。"""
+    try:
+        import py7zr
+    except ImportError:
+        return None
+    try:
+        with py7zr.SevenZipFile(p, mode="r") as zf:
+            names = zf.getnames()
+    except Exception:
+        return None
     if not names:
         return None
     listing = "\n".join(names[:300])
@@ -267,6 +288,8 @@ class PreviewService:
                 return _read_pdf_text(p, max_chars)
             if ext == ".zip":
                 return _read_zip_listing(p, max_chars)
+            if ext == ".7z":
+                return _read_7z_listing(p, max_chars)
             if ext in _LEGACY_OFFICE_EXTS:
                 return _read_legacy_office_text(p, ext, max_chars)
             if ext in _KNOWN_BINARY_EXTS:

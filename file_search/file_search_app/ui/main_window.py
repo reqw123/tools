@@ -47,7 +47,8 @@ class MainWindow(_BaseTk):
     def __init__(
         self, *, index_service, search_service, import_service, scan_service,
         duplicate_service, description_service, cache_service, preview_service,
-        metadata_repo, ai_description_service, ai_settings_repo, media_controller_cls=MediaController,
+        metadata_repo, ai_description_service, ai_settings_repo, transcription_service,
+        media_controller_cls=MediaController,
     ):
         super().__init__()
         self._index = index_service
@@ -61,6 +62,7 @@ class MainWindow(_BaseTk):
         self._metadata = metadata_repo
         self._ai_description = ai_description_service
         self._ai_settings_repo = ai_settings_repo
+        self._transcription = transcription_service
         # MediaController 需要 Tk root 的 after/after_cancel 才能排程，這兩個原語
         # 只有 Tk 實例真正建構完成後才存在，所以晚一步在這裡才建立實例，而不是
         # 跟其他 Service 一樣由 app.py 事先組好傳進來。
@@ -273,6 +275,9 @@ class MainWindow(_BaseTk):
             on_media_entry=self._schedule_load_media,
             on_space_shortcut=self._on_selected_media_space,
             on_seek_shortcut=self._on_media_arrow,
+            transcription_available=self._transcription.available,
+            get_cached_text=self._get_cached_text_for,
+            on_transcribe_request=self._on_transcribe_request,
         )
         self._preview.frame.pack(side="left", fill="y")
 
@@ -522,6 +527,55 @@ class MainWindow(_BaseTk):
             return None
         self._media.seek_by(delta_ms)
         return "break"
+
+    # ── 音訊／影片轉錄 ───────────────────────────────────────────────
+
+    def _get_cached_text_for(self, path_str):
+        """PreviewPanel 判斷某個路徑目前有沒有轉錄文字（決定要不要顯示「查看
+        轉錄文字」按鈕）用；不存在或還沒有文字都回傳 None，不用另外判斷
+        dict 有沒有這個 key。"""
+        return self._entry_cache.get(path_str, {}).get("text") or None
+
+    def _on_transcribe_request(self, entry, on_progress, on_done, cancel_event):
+        """PreviewPanel 按下「🎙️／🔁 轉錄」時呼叫：在背景執行緒跑本地語音辨識
+        （模型載入與解碼都可能要一段時間），主執行緒只負責輪詢 Queue 更新畫面，
+        不會被卡住；cancel_event 由 PreviewPanel 建立並傳入，使用者按下
+        「取消」時會被設置，背景執行緒每處理完一個語音片段就會檢查一次。
+
+        轉錄成功會直接寫入內容快取（覆蓋掉這一筆原有的文字，不彈窗確認——
+        使用者是明確按下按鈕才會觸發這個動作），同步更新 self._entry_cache
+        讓全文搜尋跟「查看轉錄文字」立刻看到最新內容，不需要整個重新載入
+        索引。"""
+        result_queue = queue.Queue()
+
+        def _worker():
+            text, error, cancelled = self._transcription.transcribe(
+                Path(entry.path),
+                progress_cb=lambda fraction: result_queue.put(("progress", fraction)),
+                cancel_check=cancel_event.is_set,
+            )
+            result_queue.put(("done", text, error, cancelled))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+        def _poll():
+            try:
+                while True:
+                    message = result_queue.get_nowait()
+                    if message[0] == "progress":
+                        on_progress(message[1])
+                    elif message[0] == "done":
+                        text, error, cancelled = message[1], message[2], message[3]
+                        if text is not None:
+                            updated_cache = self._cache.write_transcript_text(entry, text)
+                            self._entry_cache[entry.path] = updated_cache[entry.path]
+                        on_done(text, error, cancelled)
+                        return
+            except queue.Empty:
+                pass
+            self.after(100, _poll)
+
+        self.after(100, _poll)
 
     def _on_close(self):
         """關閉視窗前先把播放器停掉、釋放 libvlc 資源，避免留下背景播放中的

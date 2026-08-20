@@ -80,6 +80,34 @@ class CacheService:
         self._cache_repo.save(md_path, cache)
         return cache
 
+    def write_transcript_text(self, entry, text: str) -> dict:
+        """轉錄完成後直接把文字寫進內容快取，不重新驗證雜湊——只在使用者明確
+        按下「轉錄」時呼叫，直接覆蓋掉這一筆原有的文字內容（若有），讓內容
+        全文搜尋與預覽面板的「查看轉錄文字」立刻反映最新結果。轉錄文字不像
+        `refresh_entry()` 擷取的內容受 CACHE_TEXT_CHARS 限制截斷——那個上限是
+        給「一次刷新全部項目」的批次流程設計的，轉錄是使用者針對單一檔案主動
+        觸發的動作，沒有理由把使用者特地等了一段時間產生的內容砍掉一截。
+
+        SHA-256／mtime／size 有既有快取紀錄就沿用，還沒有的話（例如這筆從未
+        被「更新內容快取」處理過）才順便算一次雜湊，讓這筆從此也能被重複偵測
+        比對到。回傳更新後這份索引檔案的完整快取字典。"""
+        cache = self._cache_repo.load(entry.source_index)
+        existing = cache.get(entry.path)
+        if existing:
+            existing["text"] = text
+        else:
+            p = Path(entry.path)
+            stat = p.stat() if p.exists() else None
+            cache[entry.path] = {
+                "mtime": stat.st_mtime if stat else 0,
+                "size": stat.st_size if stat else 0,
+                "hash": self._cache_repo.compute_file_hash(p) if p.exists() else None,
+                "hash_algo": HASH_ALGO,
+                "text": text,
+            }
+        self._cache_repo.save(entry.source_index, cache)
+        return cache
+
     def update_cache_for_indexes(self, files, progress_cb=None) -> None:
         """依序更新多份索引檔案的快取，progress_cb(overall, grand_total, fname, done, total)
         回報跨檔案的整體進度——跟 update_cache_for_index() 的差別是這個會算好
