@@ -7,8 +7,9 @@ from tkinter import font as tkfont, messagebox, ttk
 
 from file_search_app.config import (
     BTN_CYAN_ACTIVE, BTN_CYAN_BG, BTN_DANGER_ACTIVE, BTN_DANGER_BG,
-    BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, COLOR_BG, COLOR_PREVIEW_BG, COLOR_PREVIEW_BORDER,
-    COLOR_STATUS_FG, FONT_FAMILY,
+    BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, BTN_WARN_ACTIVE, BTN_WARN_BG,
+    COLOR_BG, COLOR_MISSING_FG, COLOR_PREVIEW_BG, COLOR_PREVIEW_BORDER, COLOR_STATUS_FG,
+    FONT_FAMILY, MISSING_ICON,
 )
 from file_search_app.ui.styles import bind_wheel_recursive, icon_for, styled_button
 
@@ -29,8 +30,9 @@ class BulkDeleteDialog(tk.Toplevel):
         # 不能只用路徑當識別依據：同一路徑可能在一份或多份索引中重複出現，
         # 靠路徑分組刪除會連帶刪掉使用者沒勾選的那幾筆。改成連 IndexEntry
         # 本身一起記錄（内含 row_index），確認時精確傳回使用者實際勾選的那幾筆。
-        self._row_records = []   # [(entry, var, row_frame, 搜尋用小寫全文), ...]
+        self._row_records = []   # [(entry, var, row_frame, 搜尋用小寫全文, 路徑是否遺失), ...]
         self._on_confirm = on_confirm
+        self._missing_only = False
 
         font_label = tkfont.Font(family=FONT_FAMILY, size=12)
         font_hint = tkfont.Font(family=FONT_FAMILY, size=10)
@@ -67,10 +69,27 @@ class BulkDeleteDialog(tk.Toplevel):
         styled_button(
             select_row, "勾選目前顯示", self._check_visible, BTN_CYAN_BG, BTN_CYAN_ACTIVE, font_hint,
         ).pack(side="right", padx=(0, 8))
+        self._missing_btn = styled_button(
+            select_row, "⚠️ 只看路徑遺失", self._toggle_missing_only, BTN_WARN_BG, BTN_WARN_ACTIVE, font_hint,
+        )
+        self._missing_btn.pack(side="right", padx=(0, 8))
+
+        # 目前是否處於「只看路徑遺失」篩選模式，光靠按鈕文字容易被忽略，另外
+        # 用一條常駐的醒目色塊當狀態列——有沒有這個橫幅，一眼就能分辨目前
+        # 清單是不是被篩選過，不用回頭確認按鈕字樣。
+        self._missing_banner = tk.Frame(
+            pad, bg="#fee2e2", highlightbackground=COLOR_MISSING_FG, highlightthickness=1,
+        )
+        tk.Label(
+            self._missing_banner,
+            text=f"{MISSING_ICON} 目前只顯示「路徑找不到對應檔案」的項目（其餘項目已暫時隱藏）",
+            bg="#fee2e2", fg=COLOR_MISSING_FG, font=font_hint, anchor="w", justify="left",
+        ).pack(fill="x", padx=10, pady=6)
 
         list_outer = tk.Frame(
             pad, bg=COLOR_PREVIEW_BG, highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
         )
+        self._list_outer = list_outer
         list_outer.pack(fill="both", expand=True, pady=(4, 10))
         canvas = tk.Canvas(list_outer, bg=COLOR_PREVIEW_BG, highlightthickness=0)
         scroll = ttk.Scrollbar(list_outer, orient="vertical", command=canvas.yview)
@@ -84,21 +103,24 @@ class BulkDeleteDialog(tk.Toplevel):
 
         for entry in entries:
             var = tk.BooleanVar(value=False)
+            missing = not entry.path_obj.exists()
             row = tk.Frame(inner, bg=COLOR_PREVIEW_BG)
             row.pack(fill="x", pady=1, padx=2)
             tk.Checkbutton(
                 row, variable=var, bg=COLOR_PREVIEW_BG, activebackground=COLOR_PREVIEW_BG,
                 command=self._update_count,
             ).pack(side="left", anchor="n")
+            icon = MISSING_ICON if missing else icon_for(entry.path)
             tk.Label(
-                row, text=f"{entry.serial}.  {icon_for(entry.path)} {entry.name}", bg=COLOR_PREVIEW_BG,
+                row, text=f"{entry.serial}.  {icon} {entry.name}", bg=COLOR_PREVIEW_BG,
+                fg=COLOR_MISSING_FG if missing else "black",
                 font=font_name, anchor="w", justify="left",
             ).pack(side="left", fill="x", expand=True, padx=(4, 0), pady=(4, 6))
             haystack = (
                 f"{entry.serial}\n{entry.name}\n{entry.category}\n{entry.description}\n"
                 f"{entry.path}\n{entry.source_index.name}"
             ).lower()
-            self._row_records.append((entry, var, row, haystack))
+            self._row_records.append((entry, var, row, haystack, missing))
 
         bind_wheel_recursive(inner, lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
         self._apply_filter()
@@ -116,35 +138,54 @@ class BulkDeleteDialog(tk.Toplevel):
         shown = 0
         # 先全部收起再依原始順序重建可見列，既不留下重複路徑的殘影，也不會在
         # 清除搜尋字時把曾隱藏的列全部插到清單尾端。
-        for _entry, _var, row, _haystack in self._row_records:
+        for _entry, _var, row, _haystack, _missing in self._row_records:
             row.pack_forget()
-        for _entry, _var, row, haystack in self._row_records:
-            if not typed or typed in haystack:
+        for _entry, _var, row, haystack, missing in self._row_records:
+            if (not typed or typed in haystack) and (not self._missing_only or missing):
                 row.pack(fill="x", pady=1, padx=2)
                 shown += 1
-        note = f"符合搜尋：{shown} / {len(self._entries)} 筆" if typed else f"共 {len(self._entries)} 筆"
+        if self._missing_only:
+            note = f"路徑遺失且符合搜尋：{shown} 筆" if typed else f"路徑遺失：{shown} 筆"
+        else:
+            note = f"符合搜尋：{shown} / {len(self._entries)} 筆" if typed else f"共 {len(self._entries)} 筆"
         self._match_count_var.set(note)
+
+    def _toggle_missing_only(self):
+        """切換只顯示「路徑找不到對應檔案」的項目——方便先確認範圍，再用
+        「勾選目前顯示」一次勾起這些失效項目，不用在整份清單裡逐筆找。狀態
+        同時反映在三個地方（按鈕文字／按鈕是否呈按下狀態／清單上方的紅色
+        橫幅），避免只改按鈕文字讓人分辨不出目前是不是篩選過的清單。"""
+        self._missing_only = not self._missing_only
+        if self._missing_only:
+            self._missing_btn.config(text="✅ 顯示全部項目", relief="sunken")
+            self._missing_banner.pack(fill="x", before=self._list_outer, pady=(0, 8))
+            self._list_outer.config(highlightbackground=COLOR_MISSING_FG, highlightthickness=2)
+        else:
+            self._missing_btn.config(text="⚠️ 只看路徑遺失", relief="flat")
+            self._missing_banner.pack_forget()
+            self._list_outer.config(highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1)
+        self._apply_filter()
 
     def _check_visible(self):
         """把「目前搜尋結果」全部勾起來——不是全部項目，這樣才能先搜尋縮小範圍
-        再一次勾選一整批，不用逐筆點。"""
+        （或先按「只看路徑遺失」）再一次勾選一整批，不用逐筆點。"""
         typed = self._search_var.get().strip().lower()
-        for _entry, var, _row, haystack in self._row_records:
-            if not typed or typed in haystack:
+        for _entry, var, _row, haystack, missing in self._row_records:
+            if (not typed or typed in haystack) and (not self._missing_only or missing):
                 var.set(True)
         self._update_count()
 
     def _uncheck_all(self):
-        for _entry, var, _row, _haystack in self._row_records:
+        for _entry, var, _row, _haystack, _missing in self._row_records:
             var.set(False)
         self._update_count()
 
     def _update_count(self):
-        n = sum(1 for _e, v, _r, _h in self._row_records if v.get())
+        n = sum(1 for _e, v, _r, _h, _m in self._row_records if v.get())
         self._delete_btn.config(text=f"🗑️ 刪除勾選項目（{n}）" if n else "🗑️ 刪除勾選項目")
 
     def _confirm(self):
-        checked = [entry for entry, v, _row, _haystack in self._row_records if v.get()]
+        checked = [entry for entry, v, _row, _haystack, _missing in self._row_records if v.get()]
         if not checked:
             messagebox.showinfo("批次刪除索引項目", "尚未勾選任何項目。")
             return

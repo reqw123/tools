@@ -6,7 +6,7 @@ title File Search
 rem This tool only uses the Python standard library (tkinter/os/re/subprocess/
 rem pathlib/shutil) -- any Python 3 with tkinter works. Pointing at this specific
 rem interpreter just because it is already confirmed working on this machine.
-set "PY=C:\Users\homec\anaconda3\envs\yolo_new\python.exe"
+set "PY=C:\Users\lynnc\anaconda3\python.exe"
 set "SCRIPT_DIR=%~dp0"
 set "SCRIPT=%SCRIPT_DIR%file_search.py"
 set "PYTHONIOENCODING=utf-8"

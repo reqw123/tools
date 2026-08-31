@@ -10,8 +10,18 @@
 依 UI 的確認結果決定要不要送出（尤其 OpenAI 這種內容會離開本機的雲端
 服務），本身完全不彈 messagebox、不知道 Tkinter，方便在背景執行緒安全呼叫。
 
-圖片走 Provider 的 generate_image_description()（vision）；音訊／影片目前
-沒有對應的轉錄能力，一律當作「沒有可摘要的內容」略過，不會嘗試呼叫 AI。
+圖片走 Provider 的 generate_image_description()（vision）；音訊／影片走
+TranscriptionService（本機 faster-whisper）先轉成文字，再走跟一般文件相同的
+文字摘要流程——轉錄只聽得到「說了什麼」，純音樂／環境音／沒有旁白的畫面
+（螢幕錄影之類）轉出來會是空的，一樣當作「沒有可摘要的內容」略過。轉錄本身
+比讀文件慢很多（本機跑語音辨識，且每個檔案都要重新載入一次模型），呼叫端
+（AISelectDialog）會在勾選畫面先標示這幾筆「需要轉錄、較慢」，不會讓使用者
+毫無心理準備地卡在同一筆。
+
+用量／花費是使用者完全看不到的東西，這裡也負責這部分的輔助資訊（跟便利貼
+「AI 搜尋」共用同一份）：`estimate_prompt_size()` 給呼叫端顯示送出前的粗略
+大小；`record_call()` 在每一次真的呼叫 Provider（不管成功失敗）時累加一次
+持久化的計數器，`get_call_count()` 給呼叫端顯示「目前累計呼叫過幾次」。
 """
 
 from pathlib import Path
@@ -19,14 +29,39 @@ from pathlib import Path
 from file_search_app.ai.base import AIProviderError
 from file_search_app.ai.ollama_provider import OllamaProvider
 from file_search_app.ai.openai_provider import OpenAIProvider
-from file_search_app.config import IMAGE_EXTS
+from file_search_app.config import IMAGE_EXTS, MEDIA_EXTS
 from file_search_app.repositories.cache_repository import CACHE_TEXT_CHARS
 
 
 class AIDescriptionService:
-    def __init__(self, ai_settings_repo, preview_service):
+    def __init__(self, ai_settings_repo, preview_service, transcription_service, usage_repo):
         self._settings_repo = ai_settings_repo
         self._preview_service = preview_service
+        self._transcription_service = transcription_service
+        self._usage_repo = usage_repo
+
+    # ── 用量／花費輔助資訊 ───────────────────────────────────────────
+
+    def get_call_count(self) -> int:
+        return self._usage_repo.load_call_count()
+
+    def record_call(self, by: int = 1) -> int:
+        """每次真的呼叫 Provider（不管成功或失敗，失敗的請求很多服務一樣會
+        計費或消耗額度）就呼叫一次；`by` 給一次呼叫端就知道要處理好幾筆的
+        情況（例如批次補說明一次選了 N 筆，但這裡呼叫端還是逐筆各呼叫一次
+        比較準確，`by` 參數保留給真的需要一次跳過好幾筆記帳的情境）。"""
+        return self._usage_repo.increment_call_count(by)
+
+    @staticmethod
+    def estimate_prompt_size(prompt: str) -> str:
+        """粗略估計要送出的內容大小——刻意不假裝算得出精確的 token 數：
+        不同 Provider／模型的 tokenizer 不一樣（OpenAI 各模型之間都不完全
+        相同，Ollama 又是另外一套本機模型的算法），裝一個真正的 tokenizer
+        沒辦法通用又增加相依套件，這裡改用「字元數」當作老實、可跨 Provider
+        比較的粗略代理指標，清楚標成「約」而不是精確數字，避免使用者誤以為
+        是真的計費依據。"""
+        chars = len(prompt)
+        return f"約 {chars:,} 字元（粗略估計，非精確 token 數，實際費用/額度以 Provider 帳單為準）"
 
     # ── 設定狀態 ─────────────────────────────────────────────────────
 
@@ -111,6 +146,16 @@ class AIDescriptionService:
         except Exception:
             return ""
 
+    def _transcribe_for(self, entry, p: Path) -> str:
+        """音訊／影片專用：沒有現成快取文字時，呼叫本機 faster-whisper 轉錄一次
+        （比讀文件慢很多，見檔案開頭的說明）。沒裝 faster-whisper、轉錄失敗、
+        或轉出來是空的（純音樂、沒有旁白）都回傳空字串，呼叫端當作「沒有可
+        摘要的內容」處理，不當成呼叫失敗。"""
+        if not self._transcription_service.available:
+            return ""
+        text, _error, _cancelled = self._transcription_service.transcribe(p)
+        return text or ""
+
     def _generate_one(self, provider, entry, cache: dict):
         """回傳 (suggestion_or_None, error_or_None)，給 generate_suggestions()
         迴圈裡每一筆共用。"""
@@ -124,15 +169,19 @@ class AIDescriptionService:
             image_bytes, mime_type = image
             try:
                 prompt = self.build_image_prompt(entry)
+                self.record_call()
                 suggestion = provider.generate_image_description(prompt, image_bytes, mime_type)
             except AIProviderError as exc:
                 return None, str(exc)
         else:
             text = self._extract_text_for(entry, cache)
+            if not text and p.suffix.lower() in MEDIA_EXTS:
+                text = self._transcribe_for(entry, p)
             if not text:
                 return None, None
             try:
                 prompt = self.build_prompt(entry, text)
+                self.record_call()
                 suggestion = provider.generate_description(prompt)
             except AIProviderError as exc:
                 return None, str(exc)

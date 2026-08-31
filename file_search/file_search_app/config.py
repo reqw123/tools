@@ -36,6 +36,74 @@ PREVIEW_MIN_WIDTH = 220
 TREE_MIN_WIDTH = 80
 PREVIEW_GRIP_WIDTH = 16
 
+# 便利貼面板（常駐左側、可收合）：寬度行為比照右側預覽區塊——一樣可以拖曳
+# 調整、視窗縮放時夾在最小寬度跟「不擠壓清單」的上限之間；但寬度本身不像
+# 分類/資料夾篩選那樣跨次啟動記住（每次啟動都回到預設寬度），只有「上次是
+# 展開還是收合」這個開關狀態會存檔——收合與否是使用習慣，寬度多半是當下
+# 調整方便瀏覽用的，沒必要跨次保留。
+#
+# 最小寬度必須至少能放得下標題列的「📌 便利貼」文字＋5 顆圖示按鈕（➕／📝／
+# 📤／🗑️／◀）——這排本身（header 這個 Frame）自從改成統一 34px 正方形按鈕
+# （見下面 STICKY_ICON_BUTTON_SIZE）之後，自然寬度是 267px；header 是用
+# padx=8 包在面板 Frame 裡面（左右各吃掉 8px），面板 Frame 自己還有
+# highlightthickness=1 的邊框（左右各 1px），所以真正需要的面板寬度是
+# 267 + 8*2 + 1*2 = 285。360／380 這兩個數字是先前用「文字寬度不一的按鈕」
+# （4 顆、實測 330px）試出來、蓋過 348 這個底線抓的，換成統一尺寸的按鈕、
+# 又多了第 5 顆之後，實際底線降到 285，但兩個常數沒有跟著調降——目前是
+# 「比原本用途需要的還寬裕」，不是擠壓問題，所以先保留現有數值，不用急著
+# 改小；如果之後想讓面板預設更窄一點，285 是新的安全下限可以參考。
+STICKY_PANEL_DEFAULT_WIDTH = 380
+STICKY_PANEL_MIN_WIDTH = 360
+STICKY_GRIP_WIDTH = 16
+STICKY_TOGGLE_SHORTCUT = "Ctrl+Shift+N"
+
+# 標題列 5 顆圖示按鈕（➕／📝／📤／🗑️／◀）固定用這個像素邊長的正方形容器，
+# 圖示置中——不同 emoji 本身的字寬差很多（有些帶 variation selector 佔兩個
+# code point，字寬明顯比單一 code point 的寬），直接用文字寬度決定按鈕大小
+# 會每顆長得不一樣大，所以改成固定尺寸的容器 + 置中文字，不管 emoji 多寬看
+# 起來都一樣大。
+STICKY_ICON_BUTTON_SIZE = 34
+
+# AI 搜尋每次都會把當時篩選範圍內「全部」便利貼的標題/標籤/內容片段送給
+# AI——便利貼數量一多，每次呼叫的內容量／費用會跟著線性增加，使用者又
+# 不會自己算 token，超過這個筆數就在送出前的提示視窗多加一句「便利貼較多，
+# 建議先用標籤篩選縮小範圍」，不是強制擋下來（便利貼本來就沒有像批次說明
+# 那種「使用者逐筆勾選」的介面，硬性砍筆數反而會讓搜尋結果不完整、答非
+# 所問），純粹提高警覺、把選擇權留給使用者。
+STICKY_AI_SEARCH_LARGE_NOTE_COUNT = 30
+
+# 便利貼卡片配色：色相（hue）直接連續取自標籤字串的雜湊值，落在 0~359 度的
+# 色環上（不是從一組固定幾種顏色的色盤裡挑），同一個標籤永遠同一個顏色、
+# 不用使用者手動選色；飽和度/亮度固定成偏淡的粉彩色系，跟便利貼的視覺質感
+# 一致。沒有標籤的便利貼一律用中性灰，跟色環區隔開來，一眼就能看出「這張
+# 沒有分類」。
+STICKY_TAG_SATURATION = 0.55
+STICKY_TAG_LIGHTNESS = 0.82
+STICKY_NEUTRAL_COLOR = "#e5e7eb"
+STICKY_CARD_TEXT_COLOR = "#1f2937"
+
+# 卡片邊框改成直接從卡片底色算深一階（見 ui/styles.py 的 darken()），跟著卡片
+# 本身的色相走，不用固定灰色；滑鼠移上去時邊框再更深一階＋加粗，當作「這裡
+# 可以點」的提示（單擊複製）。折角裝飾用同一色相再更深一階，模擬便利貼被
+# 撕下一小角的視覺，純裝飾不影響點擊範圍（折角本身也綁了同樣的點擊事件）。
+STICKY_CARD_BORDER_DARKEN = 0.12
+STICKY_CARD_HOVER_DARKEN = 0.30
+STICKY_CARD_FOLD_DARKEN = 0.20
+STICKY_CARD_FOLD_SIZE = 14
+
+# 搜尋／標籤篩選這排比照主視窗工具列既有的「篩選條件」視覺語彙（淡藍底＋
+# 藍色邊框），一眼就能認出這是篩選區塊，跟主視窗其他篩選 UI 一致。
+STICKY_FILTER_BOX_BG = "#dbeafe"
+STICKY_FILTER_BOX_BORDER = "#93c5fd"
+STICKY_FILTER_BOX_FG = "#1e3a8a"
+
+# 「已複製」提示做成一個小色塊 toast，只有真的要顯示訊息時才佔位（用
+# pack/pack_forget 動態顯示），跟滑鼠提示框（tooltip）分開一組配色。
+STICKY_TOAST_BG = "#dcfce7"
+STICKY_TOAST_FG = "#166534"
+STICKY_TOOLTIP_BG = "#1f2937"
+STICKY_TOOLTIP_FG = "#ffffff"
+
 # 預覽內容字級：跟 VS Code 的 Ctrl+=/Ctrl+- 縮放同一種邏輯，Ctrl+0 回到預設值。
 PREVIEW_TEXT_DEFAULT_SIZE = 11
 PREVIEW_TEXT_MIN_SIZE = 8

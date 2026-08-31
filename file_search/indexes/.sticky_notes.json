@@ -1,0 +1,105 @@
+{
+ "notes": [
+  {
+   "id": "62f73e82b6814e07b9eb8af0e49fc629",
+   "title": "11",
+   "body": "242",
+   "tag": "11",
+   "created_at": "2026-08-24T18:31:34.177784"
+  },
+  {
+   "id": "426eb68a0719436cb455aaa35b3ff624",
+   "title": "YOUTUBE影片",
+   "body": "https://www.youtube.com/watch?v=trip12345",
+   "tag": "旅遊",
+   "created_at": "2026-08-24T19:14:56.718618"
+  },
+  {
+   "id": "ebe8461cf37344698e4403f36ec1b622",
+   "title": "YOUTUBE影片",
+   "body": "https://www.youtube.com/watch?v=food67890",
+   "tag": "美食",
+   "created_at": "2026-08-24T19:14:56.738771"
+  },
+  {
+   "id": "8174747faff949b2b903a899b3a0bdbd",
+   "title": "YOUTUBE影片",
+   "body": "https://www.youtube.com/watch?v=health54321",
+   "tag": "健康",
+   "created_at": "2026-08-24T19:14:56.751789"
+  },
+  {
+   "id": "0dc34d133d6643d0b7b0dec4ad653203",
+   "title": "指令",
+   "body": "git status\ngit add -A\ngit commit -m \"update\"\ngit push",
+   "tag": "GIT",
+   "created_at": "2026-08-24T19:14:56.770338"
+  },
+  {
+   "id": "21365d135de54850a250bd0166f66aaa",
+   "title": "指令",
+   "body": "pip install requests\npip freeze > requirements.txt\npip uninstall requests",
+   "tag": "PIP",
+   "created_at": "2026-08-24T19:14:56.791480"
+  },
+  {
+   "id": "764f5e3584744d32b54fe39b919b0450",
+   "title": "指令",
+   "body": "conda create -n myenv python=3.11\nconda activate myenv\nconda deactivate",
+   "tag": "CONDA",
+   "created_at": "2026-08-24T19:14:56.810113"
+  },
+  {
+   "id": "4621e1ec87c9416eb0b75e7e155c8f1c",
+   "title": "每日必做",
+   "body": "深蹲 3組 x 15下\n伏地挺身 3組 x 12下\n慢跑 20分鐘",
+   "tag": "健身",
+   "created_at": "2026-08-24T19:14:56.835001"
+  },
+  {
+   "id": "4d4863c737cd4f0eb26d7c536ed03a12",
+   "title": "每日必做",
+   "body": "閱讀 30 分鐘\n寫下 3 個重點\n睡前不滑手機改看書",
+   "tag": "看書",
+   "created_at": "2026-08-24T19:14:56.859027"
+  },
+  {
+   "id": "f0eeb1ec704f4b46a8ac8798148f2459",
+   "title": "每日必做",
+   "body": "靜坐 10 分鐘\n專注呼吸\n寫下 3 件感恩的事",
+   "tag": "冥想",
+   "created_at": "2026-08-24T19:14:56.885858"
+  },
+  {
+   "id": "c528f65cf44d4ae4b40ad0dc62dcc67c",
+   "title": "每日必做",
+   "body": "大魚大肉",
+   "tag": "進食",
+   "created_at": "2026-08-24T19:32:30.042922"
+  },
+  {
+   "id": "c11f3a4f72ed45ff99ccecc6b9711181",
+   "title": "每日必做",
+   "body": "三菜一湯",
+   "tag": "進食",
+   "created_at": "2026-08-24T19:33:19.475834"
+  },
+  {
+   "id": "5b7d0c4175bb45f1862e76937abd0e9a",
+   "title": "元培",
+   "body": "上課",
+   "tag": "教師職責",
+   "created_at": "2026-08-24T19:38:22.310357"
+  },
+  {
+   "id": "373acc39e74b471bba4b9d378881a820",
+   "title": "元培",
+   "body": "改考卷",
+   "tag": "教師職責",
+   "created_at": "2026-08-24T19:38:55.158280"
+  }
+ ],
+ "panel": {
+  "visible": true
+ }
+}

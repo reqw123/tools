@@ -22,12 +22,15 @@ from file_search_app.config import (
     BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG, BTN_PURPLE_ACTIVE, BTN_PURPLE_BG,
     BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, BTN_TEAL_ACTIVE, BTN_TEAL_BG,
     BTN_WARN_ACTIVE, BTN_WARN_BG, COLOR_BG, COLOR_HEADER_BG, COLOR_HEADER_FG,
-    COLOR_HEADER_SUB_FG, COLOR_MISSING_FG, COLOR_STATUS_FG, FONT_FAMILY, INDEXES_DIR,
-    MEDIA_EXTS, PREVIEW_DEFAULT_WIDTH, PREVIEW_GRIP_WIDTH, PREVIEW_MIN_WIDTH, TREE_MIN_WIDTH,
+    COLOR_HEADER_SUB_FG, COLOR_MISSING_FG, COLOR_STATUS_FG, FONT_FAMILY, IMAGE_EXTS,
+    INDEXES_DIR, MEDIA_EXTS, PREVIEW_DEFAULT_WIDTH, PREVIEW_GRIP_WIDTH, PREVIEW_MIN_WIDTH,
+    STICKY_GRIP_WIDTH, STICKY_PANEL_DEFAULT_WIDTH, STICKY_PANEL_MIN_WIDTH, TREE_MIN_WIDTH,
 )
 from file_search_app.media.media_controller import MediaController
 from file_search_app.platform import file_actions
+from file_search_app.repositories.cache_repository import CACHE_TEXT_CHARS
 from file_search_app.ui.dialogs.delete_dialogs import BulkDeleteDialog
+from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
 from file_search_app.ui.dialogs.ai_description_dialog import AISelectDialog
 from file_search_app.ui.dialogs.ai_settings_dialog import AISettingsDialog
 from file_search_app.ui.dialogs.description_dialog import BatchDescribeDialog
@@ -39,6 +42,7 @@ from file_search_app.ui.styles import styled_button
 from file_search_app.ui.widgets.help_bar import HelpBar
 from file_search_app.ui.widgets.index_tree import IndexTree
 from file_search_app.ui.widgets.preview_panel import PreviewPanel
+from file_search_app.ui.widgets.sticky_note_panel import StickyNotePanel
 
 _BaseTk = TkinterDnD.Tk if _HAS_DND else tk.Tk
 
@@ -48,6 +52,7 @@ class MainWindow(_BaseTk):
         self, *, index_service, search_service, import_service, scan_service,
         duplicate_service, description_service, cache_service, preview_service,
         metadata_repo, ai_description_service, ai_settings_repo, transcription_service,
+        sticky_note_service,
         media_controller_cls=MediaController,
     ):
         super().__init__()
@@ -63,6 +68,7 @@ class MainWindow(_BaseTk):
         self._ai_description = ai_description_service
         self._ai_settings_repo = ai_settings_repo
         self._transcription = transcription_service
+        self._sticky_notes = sticky_note_service
         # MediaController 需要 Tk root 的 after/after_cancel 才能排程，這兩個原語
         # 只有 Tk 實例真正建構完成後才存在，所以晚一步在這裡才建立實例，而不是
         # 跟其他 Service 一樣由 app.py 事先組好傳進來。
@@ -81,11 +87,18 @@ class MainWindow(_BaseTk):
         self._font_warning = tkfont.Font(family=FONT_FAMILY, size=11, weight="bold")
 
         self._all_entries = []       # list[IndexEntry]，_reload_index() 填入
+        self._filtered_entries = []  # 目前檢視範圍（分類／資料夾／搜尋文字套用後）：_apply_filter() 填入
         self._entry_cache = {}       # path_str -> {mtime,size,hash,text}，牽涉到的索引集內容快取合併
         self._current_index_path = None  # None 且選單顯示「全部索引」＝聚合模式；None 且選單是空的＝沒有任何索引可用
         self._preview_width = PREVIEW_DEFAULT_WIDTH
         self._preview_drag_start_x = None
         self._preview_drag_start_width = None
+        # 便利貼面板寬度不像分類/資料夾篩選那樣跨次啟動記住——每次啟動都回到
+        # 預設寬度，只有「上次展開還是收合」這個開關狀態會存檔（見 _toggle_sticky_panel）。
+        self._sticky_visible = self._sticky_notes.load_panel_visible()
+        self._sticky_width = STICKY_PANEL_DEFAULT_WIDTH
+        self._sticky_drag_start_x = None
+        self._sticky_drag_start_width = None
 
         # 清單選取變化時，媒體播放器的重新建立會延遲一小段時間才真正執行——快速
         # 用方向鍵連續切換好幾個 mp3/mp4 時，避免每切一格就重建一次 libvlc
@@ -108,6 +121,10 @@ class MainWindow(_BaseTk):
             self.bind_all(seq, self._preview.zoom_out)
         for seq in ("<Control-0>", "<Control-KP_0>"):
             self.bind_all(seq, self._preview.zoom_reset)
+        # 開關便利貼面板：跟 Shift 一起按時 Tk 送出的 keysym 是大寫，兩種都綁
+        # 才不會因為鍵盤/系統差異漏接。
+        for seq in ("<Control-Shift-N>", "<Control-Shift-n>"):
+            self.bind_all(seq, self._toggle_sticky_panel)
 
     # ── 版面 ─────────────────────────────────────────────────────────
 
@@ -244,6 +261,23 @@ class MainWindow(_BaseTk):
         body.pack(fill="both", expand=True, padx=16, pady=(0, 6))
         self._body_frame = body
 
+        self._sticky_panel = StickyNotePanel(
+            body, self._sticky_notes, self._ai_description, self._on_open_ai_settings,
+            self._font_hint, self._sticky_width,
+            on_collapse=self._toggle_sticky_panel,
+        )
+        self._sticky_grip = tk.Frame(body, bg="#c7d3dc", width=STICKY_GRIP_WIDTH, cursor="sb_h_double_arrow")
+        sticky_grip_label = tk.Label(
+            self._sticky_grip, text="↔", bg="#c7d3dc", fg=COLOR_STATUS_FG,
+            font=tkfont.Font(family=FONT_FAMILY, size=10), cursor="sb_h_double_arrow",
+        )
+        sticky_grip_label.place(relx=0.5, rely=0.5, anchor="center")
+        for w in (self._sticky_grip, sticky_grip_label):
+            w.bind("<ButtonPress-1>", self._on_sticky_grip_press)
+            w.bind("<B1-Motion>", self._on_sticky_grip_drag)
+            w.bind("<Enter>", lambda _e: self._sticky_grip.configure(bg="#5d7285"))
+            w.bind("<Leave>", lambda _e: self._sticky_grip.configure(bg="#c7d3dc"))
+
         self._tree = IndexTree(
             body, self._font_label,
             on_select=self._update_preview, on_activate=self._open_selected,
@@ -280,6 +314,11 @@ class MainWindow(_BaseTk):
             on_transcribe_request=self._on_transcribe_request,
         )
         self._preview.frame.pack(side="left", fill="y")
+
+        # 便利貼面板／拉桿要放在 IndexTree 前面（最左邊）；tree/preview 建好
+        # 之後才能用 before=self._tree.frame 精確插入這個位置，不管之後展開/
+        # 收合幾次都能維持在最左邊，不會被 pack 的呼叫順序影響跑到最右邊去。
+        self._set_sticky_pack_state()
 
         # 視窗本身被拉大/縮小時，清單／預覽兩塊的寬度也要跟著重新分配（不然
         # 窗口變寬時多出來的空間會沒人要，變窄時兩塊又可能疊在一起）。
@@ -422,6 +461,7 @@ class MainWindow(_BaseTk):
         wanted_category = self._category_var.get()
         wanted_folder = self._folder_var.get()
         filtered = self._search.filter_entries(self._all_entries, typed, wanted_category, wanted_folder, self._entry_cache)
+        self._filtered_entries = filtered
         self._tree.set_entries(filtered, aggregate_mode=(self._current_index_path is None))
 
         total = len(self._all_entries)
@@ -456,21 +496,67 @@ class MainWindow(_BaseTk):
         self._preview_width = self._preview_drag_start_width - delta
         self._sync_body_layout()
 
+    # ── 便利貼面板（常駐最左側，可收合） ─────────────────────────────
+
+    def _set_sticky_pack_state(self):
+        if self._sticky_visible:
+            self._sticky_panel.frame.pack(side="left", fill="y", before=self._tree.frame)
+            self._sticky_grip.pack(side="left", fill="y", padx=(10, 0), before=self._tree.frame)
+            self._sticky_grip.pack_propagate(False)
+        else:
+            self._sticky_panel.frame.pack_forget()
+            self._sticky_grip.pack_forget()
+
+    def _toggle_sticky_panel(self, event=None):
+        self._sticky_visible = not self._sticky_visible
+        self._sticky_notes.save_panel_visible(self._sticky_visible)
+        self._set_sticky_pack_state()
+        self._sync_body_layout()
+
+    def _on_sticky_grip_press(self, event):
+        self._sticky_drag_start_x = event.x_root
+        self._sticky_drag_start_width = self._sticky_panel.frame.winfo_width()
+
+    def _on_sticky_grip_drag(self, event):
+        if self._sticky_drag_start_width is None:
+            return
+        # 拖桿往右移（滑鼠 x 變大）＝把清單的寬度讓給便利貼面板，所以是加號
+        # （跟預覽區塊那支拉桿方向相反，因為便利貼面板在清單的左邊而不是右邊）。
+        delta = event.x_root - self._sticky_drag_start_x
+        self._sticky_width = self._sticky_drag_start_width + delta
+        self._sync_body_layout()
+
     def _sync_body_layout(self):
-        """統一依「目前視窗實際寬度」重新分配清單／拉桿／預覽區塊的寬度：預覽
-        區塊夾在 [PREVIEW_MIN_WIDTH, 視窗寬度扣掉拉桿跟清單至少要留的寬度] 之間，
-        清單則拿走剩下的全部空間——上限用即時量到的寬度算，所以真的可以一路
-        拉到接近清單只剩最小寬度、預覽區塊貼到視窗左邊界，也能在整個視窗被
-        拉大/縮小時自動重新分配，不會有一塊被擠到看不見或超出視窗。"""
+        """統一依「目前視窗實際寬度」重新分配便利貼／拉桿／清單／拉桿／預覽
+        區塊的寬度：預覽區塊夾在 [PREVIEW_MIN_WIDTH, 視窗寬度扣掉其餘區塊至少
+        要留的寬度] 之間，便利貼面板（展開時）夾在 [STICKY_PANEL_MIN_WIDTH,
+        扣掉預覽跟清單至少寬度後剩下的空間] 之間，清單永遠拿走最後剩下的全部
+        空間——上限都用即時量到的視窗寬度算，整個視窗被拉大/縮小時會自動
+        重新分配，不會有一塊被擠到看不見或超出視窗。便利貼面板收合時完全不
+        佔用寬度，等同兩塊面板版面。"""
         self._body_frame.update_idletasks()
         body_w = self._body_frame.winfo_width()
         if body_w <= 1:
             return  # 視窗還沒真正繪製出來，量到的寬度沒有意義，先跳過
-        max_preview = max(PREVIEW_MIN_WIDTH, body_w - PREVIEW_GRIP_WIDTH - 10 - TREE_MIN_WIDTH)
+        sticky_reserved = (self._sticky_width + STICKY_GRIP_WIDTH + 10) if self._sticky_visible else 0
+
+        max_preview = max(PREVIEW_MIN_WIDTH, body_w - sticky_reserved - PREVIEW_GRIP_WIDTH - 10 - TREE_MIN_WIDTH)
         preview_w = int(max(PREVIEW_MIN_WIDTH, min(self._preview_width, max_preview)))
         self._preview_width = preview_w
         self._preview.resize(preview_w)
-        self._tree.configure_width(max(TREE_MIN_WIDTH, body_w - PREVIEW_GRIP_WIDTH - 10 - preview_w))
+
+        if self._sticky_visible:
+            max_sticky = max(
+                STICKY_PANEL_MIN_WIDTH,
+                body_w - PREVIEW_GRIP_WIDTH - 10 - preview_w - STICKY_GRIP_WIDTH - 10 - TREE_MIN_WIDTH,
+            )
+            sticky_w = int(max(STICKY_PANEL_MIN_WIDTH, min(self._sticky_width, max_sticky)))
+            self._sticky_width = sticky_w
+            self._sticky_panel.resize(sticky_w)
+            sticky_reserved = sticky_w + STICKY_GRIP_WIDTH + 10
+
+        tree_w = body_w - sticky_reserved - PREVIEW_GRIP_WIDTH - 10 - preview_w
+        self._tree.configure_width(max(TREE_MIN_WIDTH, tree_w))
 
     # ── mp3/mp4 播放（防彈跳排程與選取狀態相關的部分留在這裡） ─────────
 
@@ -931,7 +1017,7 @@ class MainWindow(_BaseTk):
         """對目前檢視範圍內「說明是空的」項目，用內容擷取邏輯產生建議說明，
         開審核畫面讓使用者逐筆看過/修改/決定要不要套用，確認後才寫入。"""
         self._reload_index()
-        blanks = self._description.find_blank_entries(self._all_entries)
+        blanks = self._description.find_blank_entries(self._filtered_entries)
         if not blanks:
             messagebox.showinfo("批次補齊說明", "目前檢視範圍內沒有說明是空的項目。")
             return
@@ -1016,7 +1102,7 @@ class MainWindow(_BaseTk):
         後才真的呼叫；跑完的建議另外開一個審核視窗（沿用批次補說明同一套
         審核／編輯／套用畫面）逐筆確認才會寫進索引。"""
         self._reload_index()
-        blanks = self._description.find_blank_entries(self._all_entries)
+        blanks = self._description.find_blank_entries(self._filtered_entries)
         if not blanks:
             messagebox.showinfo("AI 批次說明", "目前檢視範圍內沒有說明是空的項目。")
             return
@@ -1085,17 +1171,41 @@ class MainWindow(_BaseTk):
             return
 
         n = len(entries)
+        # 用量／花費是使用者完全看不到的東西：這裡逐筆呼叫 AI，筆數一多送出
+        # 的內容量／呼叫次數就跟著變大。跟便利貼「AI 搜尋」共用同一顆持久化
+        # 計數器（AIDescriptionService.get_call_count()），讓使用者至少知道
+        # 「這是全部 AI 功能加起來第幾次呼叫」；大小估計用 CACHE_TEXT_CHARS
+        # 這個既有常數當粗略上限，不會為了算精確值而先把每個檔案的內容都讀
+        # 一遍（可能很慢，尤其舊版 Office 格式要透過 COM 自動化，逐一開檔會
+        # 拖慢跳出這個確認視窗的速度）。
+        image_count = sum(1 for e in entries if e.path_obj.suffix.lower() in IMAGE_EXTS)
+        text_like_count = n - image_count
+        size_parts = []
+        if text_like_count:
+            size_parts.append(f"文字/媒體類最多約 {text_like_count} 筆 × {CACHE_TEXT_CHARS:,} 字元（實際通常更短，這是上限）")
+        if image_count:
+            size_parts.append(f"另有 {image_count} 張圖片會用視覺模型分析（計費方式跟文字不同，以 Provider 說明為準）")
+        size_hint = "；".join(size_parts)
+        call_count = self._ai_description.get_call_count()
+        usage_hint = (
+            f"這是全部 AI 功能（AI 搜尋＋AI 批次說明共用）累計第 {call_count + 1}～{call_count + n} 次呼叫"
+            "（僅供參考，實際費用/額度以 Provider 帳單為準）。"
+        )
         if self._ai_description.is_cloud_provider():
-            proceed = messagebox.askyesno(
+            proceed = ask_ai_confirm(
+                self,
                 "確認送出到 OpenAI",
                 f"即將把這 {n} 筆檔案擷取到的內容片段送到 OpenAI 產生說明，"
-                "內容會離開這台電腦，且每筆都會呼叫一次可能計費的 API。\n\n確定要繼續嗎？",
+                f"內容會離開這台電腦，且每筆都會呼叫一次可能計費的 API。\n\n"
+                f"預估內容量：{size_hint}\n{usage_hint}",
             )
         else:
             provider_label = self._ai_description.current_provider_label()
-            proceed = messagebox.askyesno(
+            proceed = ask_ai_confirm(
+                self,
                 "AI 批次產生說明",
-                f"要用 {provider_label} 為這 {n} 筆重新產生建議說明嗎？（逐筆呼叫，數量多時需要一點時間）",
+                f"要用 {provider_label} 為這 {n} 筆重新產生建議說明嗎？（逐筆呼叫，數量多時需要一點時間）\n\n"
+                f"預估內容量：{size_hint}\n{usage_hint}",
             )
         if not proceed:
             on_done(None)

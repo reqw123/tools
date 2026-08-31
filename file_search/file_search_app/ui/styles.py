@@ -33,6 +33,18 @@ def lighten(hex_color: str, factor: float) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def darken(hex_color: str, factor: float) -> str:
+    """把顏色往黑色混合 factor 比例（0~1，越大越深）——跟 lighten() 對稱但反向，
+    便利貼卡片的邊框／滑鼠移過去的強調色需要比卡片底色本身深一階才有層次，
+    而且要跟著卡片底色的色相走（不是固定灰色），這裡直接算就好。"""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    r = int(r * (1 - factor))
+    g = int(g * (1 - factor))
+    b = int(b * (1 - factor))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def bind_wheel_recursive(widget, handler):
     """把滑鼠滾輪事件遞迴綁到 widget 跟它所有子孫元件上——Tk 的 MouseWheel 事件
     只會送給滑鼠指標正下方那一個元件，不會自動往上冒泡，所以清單裡每一列（含

@@ -45,6 +45,20 @@ class IndexEntry:
 
 
 @dataclass
+class StickyNote:
+    """便利貼——跟索引項目無關的獨立小筆記（常用指令、網站、工具等），全域共用、
+    不綁定任何一份索引集。`tag` 可留空（代表沒有分類，卡片顯示中性色）；有填
+    的話限定一個，色卡直接依這個字串配色，不用再另外解決「多標籤該顯示哪個
+    顏色」的問題。"""
+
+    id: str
+    title: str
+    body: str
+    tag: str
+    created_at: datetime
+
+
+@dataclass
 class DuplicateGroup:
     """依檔案大小＋SHA-256 分組出的一組內容完全相同的索引項目。"""
 

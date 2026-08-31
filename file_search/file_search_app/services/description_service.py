@@ -15,7 +15,9 @@ class DescriptionService:
         self._index_service = index_service
 
     def find_blank_entries(self, entries):
-        return [e for e in entries if not e.description.strip()]
+        """說明是空的項目，且排除路徑目前找不到檔案的（失效項目沒有內容可以
+        擷取／送給 AI，列出來也沒有意義，兩個批次補說明入口都共用這裡）。"""
+        return [e for e in entries if not e.description.strip() and e.exists]
 
     def build_suggestion(self, entry, cache: dict):
         """回傳這筆項目的建議說明文字；檔案目前找不到就回傳 None（呼叫端應該

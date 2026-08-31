@@ -8,9 +8,11 @@ MainWindow，由它在 `__init__` 裡用自己的 `after`／`after_cancel` 建�
 
 from file_search_app.media.media_controller import MediaController
 from file_search_app.repositories.ai_settings_repository import AISettingsRepository
+from file_search_app.repositories.ai_usage_repository import AIUsageRepository
 from file_search_app.repositories.cache_repository import CacheRepository
 from file_search_app.repositories.index_repository import IndexRepository
 from file_search_app.repositories.metadata_repository import MetadataRepository
+from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
 from file_search_app.services.ai_description_service import AIDescriptionService
 from file_search_app.services.cache_service import CacheService
 from file_search_app.services.description_service import DescriptionService
@@ -20,6 +22,7 @@ from file_search_app.services.index_service import IndexService
 from file_search_app.services.preview_service import PreviewService
 from file_search_app.services.scan_service import ScanService
 from file_search_app.services.search_service import SearchService
+from file_search_app.services.sticky_note_service import StickyNoteService
 from file_search_app.services.transcription_service import TranscriptionService
 from file_search_app.ui.main_window import MainWindow
 
@@ -29,6 +32,8 @@ def build_app() -> MainWindow:
     cache_repo = CacheRepository()
     metadata_repo = MetadataRepository()
     ai_settings_repo = AISettingsRepository()
+    ai_usage_repo = AIUsageRepository()
+    sticky_note_repo = StickyNoteRepository()
 
     preview_service = PreviewService()
     cache_service = CacheService(index_repo, cache_repo, preview_service)
@@ -38,8 +43,9 @@ def build_app() -> MainWindow:
     import_service = ImportService(index_service)
     duplicate_service = DuplicateService(index_repo, cache_repo, cache_service, index_service)
     description_service = DescriptionService(preview_service, index_service)
-    ai_description_service = AIDescriptionService(ai_settings_repo, preview_service)
     transcription_service = TranscriptionService()
+    ai_description_service = AIDescriptionService(ai_settings_repo, preview_service, transcription_service, ai_usage_repo)
+    sticky_note_service = StickyNoteService(sticky_note_repo)
 
     return MainWindow(
         index_service=index_service,
@@ -54,6 +60,7 @@ def build_app() -> MainWindow:
         ai_description_service=ai_description_service,
         ai_settings_repo=ai_settings_repo,
         transcription_service=transcription_service,
+        sticky_note_service=sticky_note_service,
         media_controller_cls=MediaController,
     )
 

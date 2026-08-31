@@ -12,12 +12,13 @@ Ollama 也要花時間逐筆等回應。這個畫面預設**全部不勾選**，
 不在這裡處理。"""
 
 import tkinter as tk
+from pathlib import Path
 from tkinter import font as tkfont, messagebox, ttk
 
 from file_search_app.config import (
     BTN_INDIGO_ACTIVE, BTN_INDIGO_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG,
     BTN_TEAL_ACTIVE, BTN_TEAL_BG, COLOR_BG, COLOR_HEADER_BG, COLOR_PREVIEW_BG,
-    COLOR_PREVIEW_BORDER, COLOR_STATUS_FG, FONT_FAMILY,
+    COLOR_PREVIEW_BORDER, COLOR_STATUS_FG, FONT_FAMILY, MEDIA_EXTS,
 )
 from file_search_app.ui.styles import bind_wheel_recursive, icon_for, styled_button
 
@@ -129,10 +130,20 @@ class AISelectDialog(tk.Toplevel):
                 row, variable=var, bg=COLOR_PREVIEW_BG, activebackground=COLOR_PREVIEW_BG,
                 command=self._update_submit_state,
             ).pack(side="left", anchor="n")
+            name_col = tk.Frame(row, bg=COLOR_PREVIEW_BG)
+            name_col.pack(side="left", fill="x", expand=True, padx=(4, 0), pady=(4, 6))
             tk.Label(
-                row, text=f"{icon_for(entry.path)} {entry.name}", bg=COLOR_PREVIEW_BG,
+                name_col, text=f"{icon_for(entry.path)} {entry.name}", bg=COLOR_PREVIEW_BG,
                 font=font_name, anchor="w", justify="left",
-            ).pack(side="left", fill="x", expand=True, padx=(4, 0), pady=(4, 6))
+            ).pack(fill="x")
+            # 音訊／影片沒有現成文字，要先在本機跑一次語音辨識才有內容可以送
+            # AI——比讀一般文件慢很多，先標出來，勾選前使用者就有心理準備，
+            # 不會覺得批次跑到一半突然卡住。
+            if Path(entry.path).suffix.lower() in MEDIA_EXTS:
+                tk.Label(
+                    name_col, text="🎙️ 需要先轉錄，較慢", bg=COLOR_PREVIEW_BG, fg=BTN_INDIGO_BG,
+                    font=font_hint, anchor="w",
+                ).pack(fill="x")
             haystack = f"{entry.name}\n{entry.category}\n{entry.path}\n{entry.source_index.name}".lower()
             self._row_records.append((entry, var, row, haystack))
 

@@ -1,0 +1,37 @@
+{
+ "D:\\that girl.mp3": {
+  "mtime": 1787454546.9836874,
+  "size": 303411,
+  "hash": "c2e0d38fdf21e1e7650e878c69238f5e2e15218ecb12f6d30094c90d99550d51",
+  "hash_algo": "sha256",
+  "text": "You don't wanna lose that love\nIt's only gonna hurt too much\nI'm telling ya\nYou don't wanna lose that love\nIt's only gonna hurt too much\nYou don't wanna lose that love\nCause there's no hope for the broken\nBut that girl\nThe one I let get away"
+ },
+ "D:\\24244.mp3": {
+  "mtime": 1787454546.9836874,
+  "size": 303411,
+  "hash": "c2e0d38fdf21e1e7650e878c69238f5e2e15218ecb12f6d30094c90d99550d51",
+  "hash_algo": "sha256",
+  "text": "You don't wanna lose that love\nIt's only gonna hurt too much\nI'm telling ya\nYou don't wanna lose that love\nIt's only gonna hurt too much\nYou don't wanna lose that love\nCause there's no hope for the broken\nBut that girl\nThe one I let get away"
+ },
+ "C:\\projects\\portfolio-itom\\076\\c_7001.moc3": {
+  "mtime": 1786080768.4206104,
+  "size": 157888,
+  "hash": "9bd3be2c8335115dbd8aabd8b1a113938aaff96cac442d9a1a8484eb0e30aa68",
+  "hash_algo": "sha256",
+  "text": ""
+ },
+ "C:\\projects\\portfolio-itom\\076\\c_7001.model3.json": {
+  "mtime": 1786288654.6786358,
+  "size": 527,
+  "hash": "6c9a45ea75c910c5f3c37cfb774b9a3068223c9baabc5dd07b361968bca7917f",
+  "hash_algo": "sha256",
+  "text": "{\r\n  \"Version\": 3,\r\n  \"FileReferences\": {\r\n    \"Moc\": \"c_7001.moc3\",\r\n    \"Textures\": [\r\n      \"textures/texture_01.png\"\r\n    ],\r\n    \"Physics\": \".physics3.json\",\r\n    \"Motions\": {\r\n      \"\": [\r\n        {\r\n          \"File\": \"motions/c_7001.motion3.json\"\r\n        },\r\n        {\r\n          \"File\": \"motions/skill_02.motion3.json\"\r\n        },\r\n        {\r\n          \"File\": \"motions/skill_03.motion3.json\"\r\n        },\r\n        {\r\n          \"File\": \"motions/skill_04.motion3.json\"\r\n        }\r\n      ]\r\n    }\r\n  },\r\n  \"Groups\": []\r\n}"
+ },
+ "C:\\projects\\portfolio-itom\\076\\c_7001_texture00.model3.json": {
+  "mtime": 1786288654.6786358,
+  "size": 529,
+  "hash": "9f12bf4c3101ee736cfaa78d6979b0fd8d3a582d63f1957420393d8fbab5a5b2",
+  "hash_algo": "sha256",
+  "text": "{\r\n  \"Version\": 3,\r\n  \"FileReferences\": {\r\n    \"Moc\": \"c_7001.moc3\",\r\n    \"Textures\": [\r\n      \"textures/texture_00.png\"\r\n    ],\r\n    \"Physics\": \".physics3.json\",\r\n    \"Motions\": {\r\n      \"\": [\r\n        {\r\n          \"File\": \"motions/c_7001.motion3.json\"\r\n        },\r\n        {\r\n          \"File\": \"motions/skill_02.motion3.json\"\r\n        },\r\n        {\r\n          \"File\": \"motions/skill_03.motion3.json\"\r\n        },\r\n        {\r\n          \"File\": \"motions/skill_04.motion3.json\"\r\n        }\r\n      ]\r\n    }\r\n  },\r\n  \"Groups\": []\r\n}"
+ }
+}

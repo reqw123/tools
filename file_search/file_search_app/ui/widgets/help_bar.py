@@ -14,7 +14,7 @@ from file_search_app.config import (
     BTN_PRIMARY_BG, BTN_PURPLE_BG, BTN_SECONDARY_BG, BTN_TEAL_BG, BTN_WARN_BG,
     COLOR_HEADER_BG, COLOR_HELP_BAR_BG, COLOR_HELP_BAR_FG, COLOR_HELP_BAR_HOVER_BG,
     COLOR_PREVIEW_BG, COLOR_PREVIEW_BORDER, COLOR_STATUS_FG, FONT_FAMILY, INDEXES_DIR,
-    SCAN_HARD_LIMIT, SCAN_SOFT_LIMIT,
+    SCAN_HARD_LIMIT, SCAN_SOFT_LIMIT, STICKY_AI_SEARCH_LARGE_NOTE_COUNT, STICKY_TOGGLE_SHORTCUT,
 )
 
 # 一句話摘要 + 分區條列。每個項目 (顏色, 名稱, 說明)——顏色直接沿用該按鈕
@@ -25,6 +25,8 @@ _HELP_SUMMARY = (
     "這是一個以 indexes/ 內 Markdown 表格為核心的檔案索引工具；程式不會在背景自行掃描硬碟，"
     "只有按下匯入、找出未收錄或更新快取時才讀取指定檔案。可跨索引搜尋、分類／資料夾篩選、"
     "預覽影音與文件、管理索引紀錄、記錄加入時間，並使用 SHA-256 找出內容相同的項目。"
+    "\n⚠️ 這支程式的任何刪除／編輯操作，影響範圍都只限於 indexes/ 底下自己的索引紀錄與便利貼"
+    "資料本身，絕對不會刪除或修改硬碟上真正的原始檔案。"
 )
 _HELP_SECTIONS = [
     ("🔍 搜尋與篩選", [
@@ -85,6 +87,29 @@ _HELP_SECTIONS = [
          "直接選取並捲動到目前結果的第一筆或最後一筆；Home／End、Ctrl+Home／Ctrl+End 也可操作。"),
         (BTN_DANGER_BG, "Delete 刪除所選列",
          "選取列會以藍色標記；按 Delete 後需再次確認，只移除索引紀錄，不刪除硬碟上的實體檔案。"),
+    ]),
+    ("📌 便利貼（常駐左側面板，記常用指令／網站／備忘）", [
+        (None, f"開關面板 {STICKY_TOGGLE_SHORTCUT}", "隨時開關左側便利貼面板；面板上也有「◀」按鈕可以收合，收合狀態會跨次啟動記住。"),
+        (BTN_BLUE_BG, "➕ 新增便利貼",
+         "標題、內容（可多行，例如一串指令步驟，超過看得到的範圍可以捲動）、標籤（可留空）；"
+         "標籤相同的便利貼會自動套用同一個顏色，不用手動選色。"),
+        (None, "單擊卡片／右鍵選單",
+         "單擊卡片直接把內容複製到剪貼簿；右鍵選單可以複製、編輯、刪除；空白處右鍵也能新增。"),
+        (None, "搜尋框與標籤篩選",
+         "關鍵字比對標題與內容；標籤下拉選單可只顯示指定標籤，兩者可以疊加使用。"),
+        (BTN_INDIGO_BG, "🤖 AI 搜尋",
+         "在搜尋框打一般語句（例如「每日必做有哪些事項」「youtube 相關的有幾個」"
+         "「目前有哪些分類」），不用打精確關鍵字；會先套用目前的標籤篩選再送出。"
+         f"送出前一律先跳視窗顯示「這次送幾則、粗略大小、這是全部 AI 功能累計第幾次呼叫」"
+         f"（不管雲端或本機 Provider 都會顯示，便利貼超過 {STICKY_AI_SEARCH_LARGE_NOTE_COUNT} 則"
+         "會額外提醒先用標籤篩選縮小範圍）——這是粗略的字元數與次數估計，不是精確 token 數，"
+         "實際費用/額度以你的 AI Provider 帳單為準。"),
+        (BTN_TEAL_BG, "📤 匯出",
+         "把目前篩選出的清單匯出成 Markdown 文件（標題／標籤／內容各自成段，內容保留原始換行）。"),
+        (BTN_DANGER_BG, "🗑️ 批次刪除",
+         "跳出可搜尋、可勾選的清單批次刪除便利貼；預設全部不勾選，需再次確認才會真的刪除。"),
+        (BTN_INDIGO_BG, "📝 編輯便利貼檔案",
+         "用文字編輯器直接開啟底層的 .sticky_notes.json（進階用途，原始格式，手動編輯請留意別打壞 JSON 結構）。"),
     ]),
     ("💡 其他小技巧", [
         (None, "拖曳檔案", "與「新增檔案...」共用相同驗證與逐筆輸入流程；拖入資料夾會提示改用「匯入資料夾...」。"),
