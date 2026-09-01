@@ -25,13 +25,13 @@ faster-whisper 底層的推論引擎）在部分機器上載入模型時會直�
 
 import queue
 import subprocess
-import sys
 import tempfile
 import threading
 from pathlib import Path
 
+from file_search_app.worker_launch import worker_argv
+
 _MODEL_SIZE = "small"
-_WORKER_SCRIPT = Path(__file__).with_name("_transcription_worker.py")
 _POLL_INTERVAL = 0.2
 
 
@@ -64,7 +64,7 @@ class TranscriptionService:
             output_path = Path(tmpdir) / "transcript.txt"
             try:
                 proc = subprocess.Popen(
-                    [sys.executable, str(_WORKER_SCRIPT), str(path), str(output_path)],
+                    worker_argv("transcription", str(path), str(output_path)),
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     text=True, encoding="utf-8", errors="replace",
                 )

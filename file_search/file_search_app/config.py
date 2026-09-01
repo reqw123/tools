@@ -4,9 +4,18 @@
 定義，不搬進這裡；這裡只放真的跨模組共用的東西。
 """
 
+import sys
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent.parent
+# 資料根目錄（indexes/ 跟底下的 .md 索引、.ai_settings.json、.sticky_notes.json
+# 等使用者資料都掛在這裡）。直接跑原始碼時＝專案根目錄（本檔案的上上層），跟
+# 以前完全一樣；被 PyInstaller 打包成 .exe（sys.frozen）時，__file__ 會指向
+# 解壓後的臨時目錄，開機就消失，所以改抓 .exe 自己所在的資料夾，讓使用者資料
+# 留在 exe 旁邊。非打包情境走的還是原本那行，行為不變。
+if getattr(sys, "frozen", False):
+    SCRIPT_DIR = Path(sys.executable).resolve().parent
+else:
+    SCRIPT_DIR = Path(__file__).resolve().parent.parent
 INDEXES_DIR = SCRIPT_DIR / "indexes"
 
 FONT_FAMILY = "Microsoft JhengHei"
@@ -55,6 +64,10 @@ PREVIEW_GRIP_WIDTH = 16
 STICKY_PANEL_DEFAULT_WIDTH = 380
 STICKY_PANEL_MIN_WIDTH = 360
 STICKY_GRIP_WIDTH = 16
+# 便利貼面板收合時，在最左邊界留下的細長「▶」把手寬度——點一下就重新展開。
+# 收合狀態不再是「完全消失、只能靠快捷鍵找回來」，但把手夠窄，實際吃掉的
+# 清單寬度可以忽略（_sync_body_layout 會把這點寬度算進去，不會壓到清單最小寬）。
+STICKY_REVEAL_HANDLE_WIDTH = 16
 STICKY_TOGGLE_SHORTCUT = "Ctrl+Shift+N"
 
 # 標題列 5 顆圖示按鈕（➕／📝／📤／🗑️／◀）固定用這個像素邊長的正方形容器，
@@ -166,6 +179,12 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 AUDIO_EXTS = {".mp3", ".wav", ".flac", ".m4a"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".wmv"}
 MEDIA_EXTS = AUDIO_EXTS | VIDEO_EXTS
+
+# 影片播放時左右方向鍵一次倒退／快轉幾秒——使用者可在播放列的「跳轉 N 秒」
+# 欄位自行調整，存進 indexes/.app_prefs.json 跨次啟動記住（見 AppPrefsRepository）。
+MEDIA_SEEK_SECONDS_DEFAULT = 5
+MEDIA_SEEK_SECONDS_MIN = 1
+MEDIA_SEEK_SECONDS_MAX = 600
 
 # 右側預覽區塊：純文字類型直接讀檔案內容；docx/pptx/xlsx 用 zipfile 挖出裡面的
 # XML 自己解析文字（不需要額外套件）；pdf 則看有沒有裝 pypdf/PyPDF2，沒裝就

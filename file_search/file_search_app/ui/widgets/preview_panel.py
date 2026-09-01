@@ -32,6 +32,7 @@ if HAS_PIL:
 class PreviewPanel:
     def __init__(self, parent, preview_service: PreviewService, media_controller, font_label, font_hint,
                  width, on_media_entry=None, on_space_shortcut=None, on_seek_shortcut=None,
+                 get_seek_seconds=None, on_seek_seconds_change=None,
                  transcription_available=False, get_cached_text=None, on_transcribe_request=None):
         self._preview_service = preview_service
         self._width = width
@@ -83,6 +84,7 @@ class PreviewPanel:
             self.frame, media_controller, font_label, font_hint,
             get_preview_width=lambda: self._width,
             on_space_shortcut=on_space_shortcut, on_seek_shortcut=on_seek_shortcut,
+            get_seek_seconds=get_seek_seconds, on_seek_seconds_change=on_seek_seconds_change,
         )
 
         # 轉錄控制列：只在音訊／影片檔案的 media／transcript 模式下顯示，見

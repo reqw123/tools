@@ -1,0 +1,5 @@
+# PyInstaller 打包產物（見 packaging/README.md）
+/dist/
+/build/
+/packaging/build/
+/packaging/.build-venv/

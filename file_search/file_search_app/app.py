@@ -8,6 +8,7 @@ MainWindow，由它在 `__init__` 裡用自己的 `after`／`after_cancel` 建�
 
 from file_search_app.media.media_controller import MediaController
 from file_search_app.repositories.ai_settings_repository import AISettingsRepository
+from file_search_app.repositories.app_prefs_repository import AppPrefsRepository
 from file_search_app.repositories.ai_usage_repository import AIUsageRepository
 from file_search_app.repositories.cache_repository import CacheRepository
 from file_search_app.repositories.index_repository import IndexRepository
@@ -34,6 +35,7 @@ def build_app() -> MainWindow:
     ai_settings_repo = AISettingsRepository()
     ai_usage_repo = AIUsageRepository()
     sticky_note_repo = StickyNoteRepository()
+    app_prefs_repo = AppPrefsRepository()
 
     preview_service = PreviewService()
     cache_service = CacheService(index_repo, cache_repo, preview_service)
@@ -61,6 +63,7 @@ def build_app() -> MainWindow:
         ai_settings_repo=ai_settings_repo,
         transcription_service=transcription_service,
         sticky_note_service=sticky_note_service,
+        app_prefs_repo=app_prefs_repo,
         media_controller_cls=MediaController,
     )
 

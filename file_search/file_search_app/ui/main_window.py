@@ -23,13 +23,16 @@ from file_search_app.config import (
     BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, BTN_TEAL_ACTIVE, BTN_TEAL_BG,
     BTN_WARN_ACTIVE, BTN_WARN_BG, COLOR_BG, COLOR_HEADER_BG, COLOR_HEADER_FG,
     COLOR_HEADER_SUB_FG, COLOR_MISSING_FG, COLOR_STATUS_FG, FONT_FAMILY, IMAGE_EXTS,
-    INDEXES_DIR, MEDIA_EXTS, PREVIEW_DEFAULT_WIDTH, PREVIEW_GRIP_WIDTH, PREVIEW_MIN_WIDTH,
-    STICKY_GRIP_WIDTH, STICKY_PANEL_DEFAULT_WIDTH, STICKY_PANEL_MIN_WIDTH, TREE_MIN_WIDTH,
+    INDEXES_DIR, MEDIA_EXTS, MEDIA_SEEK_SECONDS_MAX, MEDIA_SEEK_SECONDS_MIN,
+    PREVIEW_DEFAULT_WIDTH, PREVIEW_GRIP_WIDTH, PREVIEW_MIN_WIDTH,
+    STICKY_GRIP_WIDTH, STICKY_PANEL_DEFAULT_WIDTH, STICKY_PANEL_MIN_WIDTH,
+    STICKY_REVEAL_HANDLE_WIDTH, TREE_MIN_WIDTH,
 )
 from file_search_app.media.media_controller import MediaController
 from file_search_app.platform import file_actions
 from file_search_app.repositories.cache_repository import CACHE_TEXT_CHARS
 from file_search_app.ui.dialogs.delete_dialogs import BulkDeleteDialog
+from file_search_app.ui.dialogs.ai_analyze_dialog import AIAnalyzeResultDialog
 from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
 from file_search_app.ui.dialogs.ai_description_dialog import AISelectDialog
 from file_search_app.ui.dialogs.ai_settings_dialog import AISettingsDialog
@@ -52,7 +55,7 @@ class MainWindow(_BaseTk):
         self, *, index_service, search_service, import_service, scan_service,
         duplicate_service, description_service, cache_service, preview_service,
         metadata_repo, ai_description_service, ai_settings_repo, transcription_service,
-        sticky_note_service,
+        sticky_note_service, app_prefs_repo,
         media_controller_cls=MediaController,
     ):
         super().__init__()
@@ -69,6 +72,9 @@ class MainWindow(_BaseTk):
         self._ai_settings_repo = ai_settings_repo
         self._transcription = transcription_service
         self._sticky_notes = sticky_note_service
+        self._app_prefs = app_prefs_repo
+        # 影片方向鍵一次跳轉的秒數，跨次啟動記住；播放列的「跳轉 N 秒」欄位會改它。
+        self._seek_seconds = app_prefs_repo.load_seek_seconds()
         # MediaController 需要 Tk root 的 after/after_cancel 才能排程，這兩個原語
         # 只有 Tk 實例真正建構完成後才存在，所以晚一步在這裡才建立實例，而不是
         # 跟其他 Service 一樣由 app.py 事先組好傳進來。
@@ -191,14 +197,22 @@ class MainWindow(_BaseTk):
 
         folder_box = tk.Frame(filter_box, bg="#dbeafe")
         folder_box.pack(side="left", padx=(6, 10))
-        tk.Label(folder_box, text="資料夾：", bg="#dbeafe", fg="#1e3a8a", font=self._font_label).pack(side="left", padx=(0, 4))
+        folder_row = tk.Frame(folder_box, bg="#dbeafe")
+        folder_row.pack(side="top", anchor="w")
+        tk.Label(folder_row, text="資料夾：", bg="#dbeafe", fg="#1e3a8a", font=self._font_label).pack(side="left", padx=(0, 4))
         self._folder_var = tk.StringVar(value="全部")
         self._folder_combo = ttk.Combobox(
-            folder_box, textvariable=self._folder_var, state="readonly",
+            folder_row, textvariable=self._folder_var, state="readonly",
             font=self._font_label, style="Medium.TCombobox", width=18,
         )
         self._folder_combo.pack(side="left")
         self._folder_combo.bind("<<ComboboxSelected>>", lambda _e: self._apply_filter())
+        # 「選檔案問 AI」：跟索引無關的即席分析——自選任何檔案送目前設定的
+        # Provider，只把回覆顯示出來供查看，不寫回索引。放在資料夾篩選正下方。
+        styled_button(
+            folder_box, "🔬 選檔案問 AI...", self._on_ask_ai_about_file,
+            BTN_PURPLE_BG, BTN_PURPLE_ACTIVE, self._font_hint,
+        ).pack(side="top", anchor="w", pady=(5, 0))
 
         toolbar2 = tk.Frame(self, bg=COLOR_BG)
         toolbar2.pack(fill="x", padx=16, pady=(0, 6))
@@ -278,6 +292,21 @@ class MainWindow(_BaseTk):
             w.bind("<Enter>", lambda _e: self._sticky_grip.configure(bg="#5d7285"))
             w.bind("<Leave>", lambda _e: self._sticky_grip.configure(bg="#c7d3dc"))
 
+        # 面板收合時在最左邊界留下的細長「▶」把手——點一下重新展開便利貼面板。
+        # 只在收合狀態 pack（見 _set_sticky_pack_state），展開時整條收起來不佔寬。
+        self._sticky_reveal = tk.Frame(
+            body, bg="#c7d3dc", width=STICKY_REVEAL_HANDLE_WIDTH, cursor="hand2",
+        )
+        sticky_reveal_label = tk.Label(
+            self._sticky_reveal, text="▶", bg="#c7d3dc", fg=COLOR_STATUS_FG,
+            font=tkfont.Font(family=FONT_FAMILY, size=10), cursor="hand2",
+        )
+        sticky_reveal_label.place(relx=0.5, rely=0.5, anchor="center")
+        for w in (self._sticky_reveal, sticky_reveal_label):
+            w.bind("<Button-1>", self._toggle_sticky_panel)
+            w.bind("<Enter>", lambda _e: self._sticky_reveal.configure(bg="#5d7285"))
+            w.bind("<Leave>", lambda _e: self._sticky_reveal.configure(bg="#c7d3dc"))
+
         self._tree = IndexTree(
             body, self._font_label,
             on_select=self._update_preview, on_activate=self._open_selected,
@@ -309,6 +338,8 @@ class MainWindow(_BaseTk):
             on_media_entry=self._schedule_load_media,
             on_space_shortcut=self._on_selected_media_space,
             on_seek_shortcut=self._on_media_arrow,
+            get_seek_seconds=lambda: self._seek_seconds,
+            on_seek_seconds_change=self._on_seek_seconds_change,
             transcription_available=self._transcription.available,
             get_cached_text=self._get_cached_text_for,
             on_transcribe_request=self._on_transcribe_request,
@@ -500,12 +531,15 @@ class MainWindow(_BaseTk):
 
     def _set_sticky_pack_state(self):
         if self._sticky_visible:
+            self._sticky_reveal.pack_forget()
             self._sticky_panel.frame.pack(side="left", fill="y", before=self._tree.frame)
             self._sticky_grip.pack(side="left", fill="y", padx=(10, 0), before=self._tree.frame)
             self._sticky_grip.pack_propagate(False)
         else:
             self._sticky_panel.frame.pack_forget()
             self._sticky_grip.pack_forget()
+            self._sticky_reveal.pack(side="left", fill="y", before=self._tree.frame)
+            self._sticky_reveal.pack_propagate(False)
 
     def _toggle_sticky_panel(self, event=None):
         self._sticky_visible = not self._sticky_visible
@@ -538,7 +572,10 @@ class MainWindow(_BaseTk):
         body_w = self._body_frame.winfo_width()
         if body_w <= 1:
             return  # 視窗還沒真正繪製出來，量到的寬度沒有意義，先跳過
-        sticky_reserved = (self._sticky_width + STICKY_GRIP_WIDTH + 10) if self._sticky_visible else 0
+        sticky_reserved = (
+            (self._sticky_width + STICKY_GRIP_WIDTH + 10)
+            if self._sticky_visible else STICKY_REVEAL_HANDLE_WIDTH
+        )
 
         max_preview = max(PREVIEW_MIN_WIDTH, body_w - sticky_reserved - PREVIEW_GRIP_WIDTH - 10 - TREE_MIN_WIDTH)
         preview_w = int(max(PREVIEW_MIN_WIDTH, min(self._preview_width, max_preview)))
@@ -607,12 +644,23 @@ class MainWindow(_BaseTk):
         self._preview.media_panel.play_pause()
         return "break"
 
-    def _on_media_arrow(self, _event, delta_ms):
-        """影片播放時左右鍵各倒退／快轉 5 秒；沒有載入影片就保留 Treeview 導覽。"""
+    def _on_media_arrow(self, _event, direction):
+        """影片播放時左右鍵倒退／快轉；`direction` 是 -1（左）或 +1（右），實際
+        秒數由使用者可調的 self._seek_seconds 決定。沒有載入影片就回傳 None，
+        讓左右鍵保留原本的 Treeview 導覽行為。"""
         if not self._media.current_path or not self._media.is_video:
             return None
-        self._media.seek_by(delta_ms)
+        self._media.seek_by(direction * self._seek_seconds * 1000)
         return "break"
+
+    def _on_seek_seconds_change(self, seconds):
+        """播放列「跳轉 N 秒」欄位變動時：夾進合法範圍、更新目前值並存檔。
+        回傳夾過的值，讓 UI 欄位可以校正使用者輸入的超範圍數字。"""
+        seconds = max(MEDIA_SEEK_SECONDS_MIN, min(MEDIA_SEEK_SECONDS_MAX, int(seconds)))
+        if seconds != self._seek_seconds:
+            self._seek_seconds = seconds
+            self._app_prefs.save_seek_seconds(seconds)
+        return seconds
 
     # ── 音訊／影片轉錄 ───────────────────────────────────────────────
 
@@ -1113,6 +1161,79 @@ class MainWindow(_BaseTk):
             on_finished=self._on_ai_batch_finished,
         )
 
+    def _on_ask_ai_about_file(self):
+        """「🔬 選檔案問 AI...」：自選任何一個檔案送目前設定的 Provider 分析，
+        只把回覆顯示出來供查看，不寫回任何索引。確認視窗會把「送去 Ollama
+        還是 OpenAI、哪個模型、內容會不會離開這台電腦」講清楚。"""
+        ok, reason = self._ai_description.is_configured()
+        if not ok:
+            messagebox.showwarning("選檔案問 AI", f"{reason}，請先按「⚙️ AI 設定...」設定好再試一次。")
+            return
+        path = filedialog.askopenfilename(title="選擇要送給 AI 分析的檔案")
+        if not path:
+            return
+
+        target = self._ai_description.current_target_summary()
+        call_count = self._ai_description.get_call_count()
+        name = Path(path).name
+        body = (
+            f"即將把檔案「{name}」擷取到的內容送出分析。\n\n"
+            f"{self._ai_description.target_disclosure_lines()}\n\n"
+            f"這是全部 AI 功能累計第 {call_count + 1} 次呼叫"
+            "（僅供參考，實際費用/額度以 Provider 帳單為準）。\n\n"
+            "分析結果只會顯示出來供你查看，不會寫進任何索引。"
+        )
+        confirm_text = "送到 OpenAI 分析" if target["leaves_machine"] else "送到 Ollama 分析"
+        if not ask_ai_confirm(self, self._ai_description.target_confirm_title(), body, confirm_text=confirm_text):
+            return
+
+        progress = tk.Toplevel(self)
+        progress.title("AI 分析中")
+        progress.configure(bg=COLOR_BG)
+        progress.transient(self)
+        progress.grab_set()
+        progress.resizable(False, False)
+        progress.geometry("460x140")
+        tk.Label(
+            progress, text=f"正在把「{name}」送去 {target['label']} 分析…\n（視檔案大小與模型速度，可能需要數秒到數十秒）",
+            bg=COLOR_BG, font=self._font_hint, anchor="w", justify="left", wraplength=420,
+        ).pack(fill="x", padx=20, pady=(18, 10))
+        bar = ttk.Progressbar(progress, mode="indeterminate")
+        bar.pack(fill="x", padx=20)
+        bar.start(12)
+        progress.protocol("WM_DELETE_WINDOW", lambda: None)  # 分析中不讓關，避免留下孤兒執行緒狀態
+
+        result_queue = queue.Queue()
+
+        def _worker():
+            try:
+                answer, error, info = self._ai_description.analyze_file(path)
+            except Exception as exc:  # 防禦：Service 內任何未預期例外都不該讓輪詢卡住
+                answer, error, info = None, f"分析時發生未預期的錯誤：{exc}", {
+                    "target": target, "kind": None, "sent_desc": ""
+                }
+            result_queue.put((answer, error, info))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+        def _poll():
+            try:
+                answer, error, info = result_queue.get_nowait()
+            except queue.Empty:
+                self.after(120, _poll)
+                return
+            bar.stop()
+            progress.destroy()
+            if error:
+                messagebox.showerror("選檔案問 AI", f"分析失敗：\n\n{error}")
+                return
+            AIAnalyzeResultDialog(
+                self, file_path=path, file_name=name,
+                target=info.get("target", target), kind=info.get("kind"), answer=answer,
+            )
+
+        self.after(120, _poll)
+
     @staticmethod
     def _summarize_ai_errors(failed_items, limit=3):
         """把失敗原因去重、統計次數，最多列出 limit 種——呼叫 AI 失敗時使用者
@@ -1191,22 +1312,14 @@ class MainWindow(_BaseTk):
             f"這是全部 AI 功能（AI 搜尋＋AI 批次說明共用）累計第 {call_count + 1}～{call_count + n} 次呼叫"
             "（僅供參考，實際費用/額度以 Provider 帳單為準）。"
         )
-        if self._ai_description.is_cloud_provider():
-            proceed = ask_ai_confirm(
-                self,
-                "確認送出到 OpenAI",
-                f"即將把這 {n} 筆檔案擷取到的內容片段送到 OpenAI 產生說明，"
-                f"內容會離開這台電腦，且每筆都會呼叫一次可能計費的 API。\n\n"
-                f"預估內容量：{size_hint}\n{usage_hint}",
-            )
-        else:
-            provider_label = self._ai_description.current_provider_label()
-            proceed = ask_ai_confirm(
-                self,
-                "AI 批次產生說明",
-                f"要用 {provider_label} 為這 {n} 筆重新產生建議說明嗎？（逐筆呼叫，數量多時需要一點時間）\n\n"
-                f"預估內容量：{size_hint}\n{usage_hint}",
-            )
+        proceed = ask_ai_confirm(
+            self,
+            self._ai_description.target_confirm_title(),
+            f"即將把這 {n} 筆檔案擷取到的內容片段送出，逐筆呼叫產生建議說明"
+            f"（數量多時需要一點時間）。\n\n"
+            f"{self._ai_description.target_disclosure_lines()}\n\n"
+            f"預估內容量：{size_hint}\n{usage_hint}",
+        )
         if not proceed:
             on_done(None)
             return

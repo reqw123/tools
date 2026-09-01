@@ -8,20 +8,29 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
 
-from file_search_app.config import COLOR_HEADER_BG, COLOR_HEADER_FG, COLOR_PREVIEW_BG, COLOR_STATUS_FG
+from file_search_app.config import (
+    COLOR_HEADER_BG, COLOR_HEADER_FG, COLOR_PREVIEW_BG, COLOR_STATUS_FG,
+    MEDIA_SEEK_SECONDS_DEFAULT, MEDIA_SEEK_SECONDS_MAX, MEDIA_SEEK_SECONDS_MIN,
+)
 from file_search_app.media.media_controller import MediaController, format_ms
 
 
 class MediaPanel:
     def __init__(self, parent, controller: MediaController, font_label, font_hint,
-                 get_preview_width, on_space_shortcut=None, on_seek_shortcut=None):
+                 get_preview_width, on_space_shortcut=None, on_seek_shortcut=None,
+                 get_seek_seconds=None, on_seek_seconds_change=None):
         self._controller = controller
         self._get_preview_width = get_preview_width
         self._font_hint = font_hint
         self._on_space_shortcut = on_space_shortcut
         self._on_seek_shortcut = on_seek_shortcut
+        # 方向鍵跳轉秒數：讀目前值 / 回報使用者改動，都由呼叫端（MainWindow）處理，
+        # 這裡只負責顯示跟收集輸入。沒接這兩個 callback 時就不顯示調整欄位。
+        self._get_seek_seconds = get_seek_seconds
+        self._on_seek_seconds_change = on_seek_seconds_change
         self._seeking = False
         self._large_window = None
+        self._large_hint = None  # 大視窗底部提示列，跳轉秒數變動時要跟著更新文字
 
         self.frame = tk.Frame(parent, bg=COLOR_PREVIEW_BG)
         self._surface = tk.Frame(self.frame, bg="#000000", height=180)
@@ -51,6 +60,29 @@ class MediaPanel:
         tk.Label(
             ctrl_row, textvariable=self._time_var, bg=COLOR_PREVIEW_BG, fg=COLOR_STATUS_FG, font=font_hint,
         ).pack(side="left", padx=(8, 0))
+
+        # 「方向鍵一次跳轉幾秒」調整欄——獨立一小列，不動既有播放鍵／進度列的
+        # 版面。只有 MainWindow 有接上讀取／存檔 callback 時才顯示。
+        self._seek_seconds_var = tk.IntVar(
+            value=get_seek_seconds() if get_seek_seconds else MEDIA_SEEK_SECONDS_DEFAULT
+        )
+        if get_seek_seconds and on_seek_seconds_change:
+            secs_row = tk.Frame(self.frame, bg=COLOR_PREVIEW_BG)
+            secs_row.pack(fill="x", padx=6, pady=(0, 2))
+            tk.Label(
+                secs_row, text="← → 方向鍵跳轉", bg=COLOR_PREVIEW_BG, fg=COLOR_STATUS_FG, font=font_hint,
+            ).pack(side="left")
+            self._seek_seconds_spin = tk.Spinbox(
+                secs_row, from_=MEDIA_SEEK_SECONDS_MIN, to=MEDIA_SEEK_SECONDS_MAX, width=4,
+                textvariable=self._seek_seconds_var, font=font_hint, justify="right",
+                command=self._commit_seek_seconds, relief="solid", bd=1,
+            )
+            self._seek_seconds_spin.pack(side="left", padx=(6, 2))
+            self._seek_seconds_spin.bind("<Return>", lambda _e: self._commit_seek_seconds())
+            self._seek_seconds_spin.bind("<FocusOut>", lambda _e: self._commit_seek_seconds())
+            tk.Label(
+                secs_row, text="秒", bg=COLOR_PREVIEW_BG, fg=COLOR_STATUS_FG, font=font_hint,
+            ).pack(side="left")
 
         self._seek_var = tk.DoubleVar(value=0.0)
         seek_row = tk.Frame(self.frame, bg=COLOR_PREVIEW_BG)
@@ -144,6 +176,26 @@ class MediaPanel:
     def _on_volume_change(self, value):
         self._controller.request_volume_update(float(value))
 
+    def _commit_seek_seconds(self) -> None:
+        """Spinbox 值變動（按鈕／輸入後 Enter 或失焦）：交給 MainWindow 夾進合法
+        範圍並存檔，再把夾過的值寫回欄位，最後刷新大視窗提示列（若開著）。"""
+        try:
+            requested = int(self._seek_seconds_var.get())
+        except (tk.TclError, ValueError):
+            requested = MEDIA_SEEK_SECONDS_DEFAULT
+        applied = self._on_seek_seconds_change(requested)
+        if applied != requested:
+            self._seek_seconds_var.set(applied)
+        if self._large_window is not None and self._large_hint is not None:
+            try:
+                self._large_hint.config(text=self._large_window_hint_text())
+            except Exception:
+                pass
+
+    def _large_window_hint_text(self) -> str:
+        secs = self._seek_seconds_var.get()
+        return f"空白鍵：播放／暫停　←：倒退 {secs} 秒　→：快轉 {secs} 秒　Esc：關閉"
+
     # ── 大視窗 ───────────────────────────────────────────────────────
 
     def open_large_video(self) -> None:
@@ -166,11 +218,12 @@ class MediaPanel:
         surface = tk.Frame(win, bg="#000000")
         surface.pack(fill="both", expand=True)
         hint = tk.Label(
-            win, text="空白鍵：播放／暫停　←：倒退 5 秒　→：快轉 5 秒　Esc：關閉",
+            win, text=self._large_window_hint_text(),
             bg=COLOR_HEADER_BG, fg=COLOR_HEADER_FG, font=self._font_hint, pady=7,
         )
         hint.pack(fill="x")
         self._large_window = win
+        self._large_hint = hint
         win.update_idletasks()
 
         # 播放中直接跨父視窗切換 Win32 HWND，部分顯示卡驅動可能讓 libVLC
@@ -184,8 +237,8 @@ class MediaPanel:
         if self._on_space_shortcut:
             win.bind("<space>", self._on_space_shortcut)
         if self._on_seek_shortcut:
-            win.bind("<Left>", lambda e: self._on_seek_shortcut(e, -5000))
-            win.bind("<Right>", lambda e: self._on_seek_shortcut(e, 5000))
+            win.bind("<Left>", lambda e: self._on_seek_shortcut(e, -1))
+            win.bind("<Right>", lambda e: self._on_seek_shortcut(e, 1))
         win.bind("<Escape>", lambda _e: self.close_large_video())
         win.protocol("WM_DELETE_WINDOW", self.close_large_video)
         win.focus_force()
@@ -202,6 +255,7 @@ class MediaPanel:
             except Exception:
                 pass
         self._large_window = None
+        self._large_hint = None
         self._surface.update_idletasks()
         self._controller.resume_after_surface_change(snapshot, self._surface.winfo_id())
 

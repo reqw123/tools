@@ -363,7 +363,13 @@ class StickyNotePanel:
         file_actions.copy_to_clipboard(self.frame, note.body)
         if self._toast_after_id is not None:
             self.frame.after_cancel(self._toast_after_id)
-        self._toast_label.configure(text="✅ 已複製到剪貼簿")
+        # toast 帶上便利貼標題，讓使用者知道剛剛複製的是哪一張；標題可能為空
+        # （StickyNoteService 允許 title.strip() 後留白），這時退回「(無標題)」，
+        # 過長就截斷避免把 toast 撐爆一整列。
+        label = (note.title or "").strip() or "(無標題)"
+        if len(label) > 20:
+            label = label[:20] + "…"
+        self._toast_label.configure(text=f"✅ 已複製「{label}」到剪貼簿")
         # side="bottom" 決定「貼齊面板最下緣」；before=self._list_outer 決定
         # 「在版面配置的處理順序上排在 list_outer 前面」——list_outer 是
         # expand=True，如果 toast 排在它後面才處理，會被它先吃光剩餘空間，
@@ -514,19 +520,18 @@ class StickyNotePanel:
             "\n\n💡 便利貼數量較多，若不需要搜尋全部，可以先用標籤篩選縮小範圍再送出，減少每次呼叫的內容量。"
             if len(notes) > STICKY_AI_SEARCH_LARGE_NOTE_COUNT else ""
         )
-        cloud_hint = "\n\n內容會離開這台電腦，送到 OpenAI 分析，且每次呼叫可能計費。" if self._ai_description.is_cloud_provider() else ""
-        confirm_title = "確認送出到 OpenAI" if self._ai_description.is_cloud_provider() else "確認送出 AI 搜尋"
         proceed = ask_ai_confirm(
             # 用整個主視窗（不是 self.frame，那只是便利貼這塊窄面板本身）來
             # 置中——不然這個確認視窗會貼著左側窄面板的範圍置中，偏到畫面
             # 左邊，跟「AI 批次說明」那邊用整個視窗置中的觀感不一致。
             self.frame.winfo_toplevel(),
-            confirm_title,
-            f"即將把 {len(notes)} 則便利貼的標題／標籤／內容片段送給 AI 分析。{scope_note}\n"
+            self._ai_description.target_confirm_title(),
+            f"即將把 {len(notes)} 則便利貼的標題／標籤／內容片段送出分析。{scope_note}\n\n"
+            f"{self._ai_description.target_disclosure_lines()}\n\n"
             f"預估大小：{size_estimate}\n"
             f"這是全部 AI 功能（AI 搜尋＋AI 批次說明共用）累計第 {call_count + 1} 次呼叫"
             f"（僅供參考，實際費用/額度以 Provider 帳單為準）。"
-            f"{cloud_hint}{large_batch_hint}",
+            f"{large_batch_hint}",
         )
         if not proceed:
             return

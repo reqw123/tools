@@ -33,7 +33,8 @@ class IndexTree:
     ):
         """on_select()：選取變化。on_activate()：雙擊／Enter。on_delete_key(event)：
         Delete 鍵，回傳值會原樣交回 Tkinter（可以是 "break"）。on_space(event)：
-        空白鍵。on_seek(event, delta_ms)：左右鍵。"""
+        空白鍵。on_seek(event, direction)：左右鍵，direction 為 -1（左）／+1（右），
+        實際跳轉秒數由呼叫端決定。"""
         self.frame = tk.Frame(parent)
         # 欄位加總起來的「自然寬度」本來會變成清單的隱性寬度下限，空間不夠時
         # 反而是預覽區塊被擠縮——關掉 propagate，寬度改由呼叫端（MainWindow 的
@@ -85,8 +86,8 @@ class IndexTree:
         self._tree.bind("<<TreeviewSelect>>", lambda _e: on_select() if on_select else None)
         self._tree.bind("<Delete>", lambda e: on_delete_key(e) if on_delete_key else None)
         self._tree.bind("<space>", lambda e: on_space(e) if on_space else None)
-        self._tree.bind("<Left>", lambda e: on_seek(e, -5000) if on_seek else None)
-        self._tree.bind("<Right>", lambda e: on_seek(e, 5000) if on_seek else None)
+        self._tree.bind("<Left>", lambda e: on_seek(e, -1) if on_seek else None)
+        self._tree.bind("<Right>", lambda e: on_seek(e, 1) if on_seek else None)
         self._tree.bind("<Home>", lambda _e: self.jump_to_edge(False))
         self._tree.bind("<End>", lambda _e: self.jump_to_edge(True))
         self._tree.bind("<Control-Home>", lambda _e: self.jump_to_edge(False))

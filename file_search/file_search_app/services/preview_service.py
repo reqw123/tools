@@ -14,7 +14,6 @@
 import io
 import re
 import subprocess
-import sys
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -22,6 +21,7 @@ from pathlib import Path
 from file_search_app.config import (
     AUDIO_EXTS, IMAGE_EXTS, OOXML_NS, PREVIEW_READ_BYTES, TEXT_EXTS, VIDEO_EXTS,
 )
+from file_search_app.worker_launch import worker_argv, worker_available
 
 try:
     from PIL import Image
@@ -34,7 +34,6 @@ except ImportError:
 # COM 自動化（見 _legacy_office_worker.py）；沒裝 pywin32／沒裝 Office 都會
 # 安靜失敗退回 None，不需要在這裡另外偵測可不可用。
 _LEGACY_OFFICE_EXTS = {".doc", ".ppt", ".xls"}
-_LEGACY_OFFICE_WORKER = Path(__file__).with_name("_legacy_office_worker.py")
 # COM 自動化偶爾會卡在一個沒人會去點的彈出視窗（巨集警告、受保護的檢視…），
 # 逾時就直接放棄這一筆，不要讓「更新內容快取」或「AI 批次說明」整批卡死；
 # 一般檔案開啟通常幾秒內就完成，30 秒已經是相當寬鬆的上限。
@@ -70,14 +69,48 @@ def _looks_like_text(raw: bytes) -> bool:
 
 
 def _decode_text_bytes(raw: bytes) -> str:
-    """依序試幾種常見編碼（含中文 Windows 常用的 cp950/big5），全部失敗才用
-    utf-8 + errors="replace"（可能在截斷處出現一兩個亂碼字元，預覽用途可以
-    接受，不值得為了這個把整份都讀完再判斷）。"""
-    for enc in ("utf-8-sig", "utf-8", "cp950", "big5", "cp936"):
+    """把預覽用的位元組還原成文字。判斷順序：BOM →（無 BOM 的）UTF-16 特徵 →
+    UTF-8 → 中文 Windows 常見的 ANSI 編碼（cp950/big5/cp936）→ 最後才
+    utf-8 + errors="replace"。
+
+    因為只讀了檔案開頭 PREVIEW_READ_BYTES，尾端很可能剛好從一個多位元組字元
+    中間被切斷；這種情況要「砍掉不完整的尾巴、用同一個編碼重解」，不能因為
+    一個字元不完整就整份掉到下一個編碼——那正是先前「utf-8 檔被當成 cp950
+    解出整片亂碼」的主因。"""
+    if not raw:
+        return ""
+
+    # 1) UTF-16 / UTF-32：靠 BOM 判斷（Windows 記事本存的「Unicode」就是這種）。
+    #    這幾種若落到下面的 cp950 迴圈會整片亂碼，必須先攔下來。
+    if raw[:4] in (b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff"):
+        return raw[: len(raw) - len(raw) % 4].decode("utf-32", errors="replace")
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw[: len(raw) - len(raw) % 2].decode("utf-16", errors="replace")
+
+    # 2) 沒有 BOM 但內容像 UTF-16：開頭一段有大量、且位置規律（全在奇數或全在
+    #    偶數 index）的 0x00。少見，但沒攔的話一樣是整片亂碼。
+    head = raw[:2048]
+    nul = head.count(0)
+    if len(head) >= 16 and nul >= len(head) * 0.20:
+        le_nul = sum(1 for i in range(1, len(head), 2) if head[i] == 0)
+        be_nul = sum(1 for i in range(0, len(head), 2) if head[i] == 0)
+        if le_nul >= nul * 0.9:
+            return raw[: len(raw) - len(raw) % 2].decode("utf-16-le", errors="replace")
+        if be_nul >= nul * 0.9:
+            return raw[: len(raw) - len(raw) % 2].decode("utf-16-be", errors="replace")
+
+    # 3) UTF-8 / 中文 Windows 常見 ANSI 編碼，依序試
+    for enc in ("utf-8-sig", "utf-8", "cp950", "big5", "cp936", "cp1252"):
         try:
             return raw.decode(enc)
-        except UnicodeDecodeError:
+        except UnicodeDecodeError as exc:
+            if exc.start >= len(raw) - 6:  # 錯在結尾附近＝多半是被截斷
+                try:
+                    return raw[: exc.start].decode(enc)
+                except UnicodeDecodeError:
+                    pass
             continue
+
     return raw.decode("utf-8", errors="replace")
 
 
@@ -242,11 +275,11 @@ def _read_legacy_office_text(p: Path, ext: str, max_chars: int):
     `_legacy_office_worker.py` 檔頭說明）。沒裝 pywin32、沒裝 Office、逾時、
     或任何其他失敗，一律安靜回傳 None——這條路徑本來就是「能撐則撐、撐不住
     就退回一般圖示」的最後防線，不該讓整支工具因為這個選用功能而卡住或掛掉。"""
-    if not _LEGACY_OFFICE_WORKER.exists():
+    if not worker_available("legacy_office"):
         return None
     try:
         proc = subprocess.run(
-            [sys.executable, str(_LEGACY_OFFICE_WORKER), ext, str(p)],
+            worker_argv("legacy_office", ext, str(p)),
             capture_output=True, timeout=_LEGACY_OFFICE_TIMEOUT,
         )
     except Exception:

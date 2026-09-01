@@ -86,6 +86,46 @@ class AIDescriptionService:
         provider = self._settings_repo.load().get("provider")
         return "OpenAI" if provider == "openai" else "Ollama（本機）"
 
+    def current_target_summary(self) -> dict:
+        """目前 AI 設定會把內容送去哪裡——給「選檔案問 AI」的確認視窗把
+        Provider／模型／是否離開本機講清楚用。"""
+        settings = self._settings_repo.load()
+        provider = settings.get("provider")
+        if provider == "openai":
+            cfg = settings.get("openai", {})
+            return {
+                "provider": "openai",
+                "label": "OpenAI（雲端服務）",
+                "model": cfg.get("model", "") or "(未指定模型)",
+                "endpoint": cfg.get("base_url", "") or "https://api.openai.com/v1",
+                "leaves_machine": True,
+            }
+        cfg = settings.get("ollama", {})
+        return {
+            "provider": "ollama",
+            "label": "Ollama（本機）",
+            "model": cfg.get("model", "") or "(未指定模型)",
+            "endpoint": cfg.get("base_url", "") or "http://localhost:11434",
+            "leaves_machine": False,
+        }
+
+    def target_confirm_title(self) -> str:
+        """AI 送出前確認視窗的標題——不管本機還是雲端，都在標題就講明是哪個
+        Provider（先前只有 OpenAI 會這樣，Ollama 是通用標題）。"""
+        t = self.current_target_summary()
+        return f"確認送出到 {'OpenAI' if t['provider'] == 'openai' else 'Ollama（本機）'}"
+
+    def target_disclosure_lines(self) -> str:
+        """AI 送出前確認視窗共用的「去向」段落——Provider、模型、位址、內容
+        會不會離開這台電腦，本機與雲端都寫清楚，措辭一致。"""
+        t = self.current_target_summary()
+        lines = [f"送往：{t['label']}", f"模型：{t['model']}", f"位址：{t['endpoint']}"]
+        if t["leaves_machine"]:
+            lines.append("⚠️ 這是雲端服務，內容會離開這台電腦，且每次呼叫可能計費。")
+        else:
+            lines.append("這是本機服務，內容不會離開這台電腦。")
+        return "\n".join(lines)
+
     def build_provider(self, settings: dict = None):
         """依設定建立對應的 Provider 客戶端；settings 省略時讀取目前存檔的
         設定，傳入 settings 則用來測試「還沒儲存」的欄位值（AI 設定視窗的
@@ -213,3 +253,65 @@ class AIDescriptionService:
             if progress_cb:
                 progress_cb(done, entry.name)
         return results, False
+
+    # ── 單檔即席分析（純檢視，不寫回任何索引） ───────────────────────
+
+    def analyze_file(self, path):
+        """把使用者自選的單一檔案送給目前設定的 Provider，直接回傳模型的原始
+        回覆內容，不做任何寫入。給主視窗「選檔案問 AI」這個純檢視功能用。
+
+        回傳 (answer_or_None, error_or_None, info)：
+          info 一定有值（就算失敗也有），至少含 target（current_target_summary
+          的內容）與 kind（"image" / "text" / "media-transcribed" / None）、
+          sent_desc（送出內容量的白話描述字串）。
+
+        可在背景執行緒安全呼叫（不碰任何 Tkinter）。
+        """
+        from file_search_app.models import IndexEntry  # 延後匯入避免頂層循環
+
+        p = Path(path)
+        info = {"target": self.current_target_summary(), "kind": None, "sent_desc": ""}
+        if not p.exists():
+            return None, "檔案不存在或已被移動", info
+
+        try:
+            provider = self.build_provider()
+        except AIProviderError as exc:
+            return None, str(exc), info
+
+        entry = IndexEntry(path=str(p), category="", description="", source_index=p, row_index=0)
+        suffix = p.suffix.lower()
+
+        if suffix in IMAGE_EXTS:
+            image = self._preview_service.prepare_image_for_ai(p)
+            if image is None:
+                return None, "無法讀取這張圖片（可能未安裝 Pillow，或圖片格式不支援）", info
+            image_bytes, mime_type = image
+            info["kind"] = "image"
+            info["sent_desc"] = f"1 張縮圖（約 {len(image_bytes):,} bytes，{mime_type}），由視覺模型分析"
+            try:
+                self.record_call()
+                answer = provider.generate_image_description(self.build_image_prompt(entry), image_bytes, mime_type)
+            except AIProviderError as exc:
+                return None, str(exc), info
+        else:
+            try:
+                text = self._preview_service.extract_preview_text(p, max_chars=CACHE_TEXT_CHARS) or ""
+            except Exception:
+                text = ""
+            if not text and suffix in MEDIA_EXTS:
+                info["kind"] = "media-transcribed"
+                text = self._transcribe_for(entry, p)
+            if not text:
+                return None, "這個檔案沒有可以送給 AI 的文字內容（可能是二進位檔、空檔，或缺少對應的解析套件）", info
+            info["kind"] = info["kind"] or "text"
+            prompt = self.build_prompt(entry, text)
+            info["sent_desc"] = f"擷取到的文字約 {len(text):,} 字元（連同提示詞共約 {len(prompt):,} 字元）"
+            try:
+                self.record_call()
+                answer = provider.generate_description(prompt)
+            except AIProviderError as exc:
+                return None, str(exc), info
+
+        answer = (answer or "").strip()
+        return (answer or None), (None if answer else "AI 回應是空的"), info
