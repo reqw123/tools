@@ -49,6 +49,35 @@ from file_search_app.ui.widgets.sticky_note_panel import StickyNotePanel
 
 _BaseTk = TkinterDnD.Tk if _HAS_DND else tk.Tk
 
+# 「AI 設定點這裡」引導泡泡的配色：淡橙＋橙框，帶「先看這裡」的意味，跟工具
+# 列上其他色塊區隔。AI 設定沒有獨立按鈕，是從「🤖 AI 批次說明...」進去的，
+# 第一次用的人不會知道，所以在那顆按鈕旁常駐一個對話框泡泡（含指向按鈕的
+# 小尾巴），外框會緩慢一明一暗地呼吸，餘光就能注意到、又不會刺眼。
+_AI_HINT_BG = "#fff7ed"          # 泡泡底色（收縮相位）
+_AI_HINT_BG_HI = "#fdba74"       # 泡泡底色（脹大相位，明顯偏橙）
+_AI_HINT_BORDER = "#fb923c"      # 泡泡外框（收縮相位）
+_AI_HINT_BORDER_HI = "#ea580c"   # 泡泡外框＋光暈（脹大相位）
+_AI_HINT_FG = "#9a3412"
+_AI_HINT_PERIOD_MS = 1700        # 半個呼吸週期（吸→吐 或 吐→吸）的時間
+_AI_HINT_FPS_MS = 40             # 每幀間隔（約 25fps，動起來夠順）
+_AI_HINT_GLOW_MAX = 9            # 光暈脹大時往外擴的像素
+
+
+def _lerp_color(c1: str, c2: str, t: float) -> str:
+    """在兩個 #rrggbb 之間線性內插，t=0 回 c1、t=1 回 c2。泡泡外框呼吸動畫用。"""
+    t = 0.0 if t < 0 else 1.0 if t > 1 else t
+    a = (int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16))
+    b = (int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16))
+    return "#" + "".join(f"{round(x + (y - x) * t):02x}" for x, y in zip(a, b))
+
+
+def _round_rect_points(x1, y1, x2, y2, r):
+    """給 create_polygon(smooth=True) 用的圓角矩形頂點序列。"""
+    return [
+        x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r, x2, y2 - r, x2, y2,
+        x2 - r, y2, x1 + r, y2, x1, y2, x1, y2 - r, x1, y1 + r, x1, y1,
+    ]
+
 
 class MainWindow(_BaseTk):
     def __init__(
@@ -166,7 +195,7 @@ class MainWindow(_BaseTk):
             BTN_DANGER_BG, BTN_DANGER_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
 
-        HelpBar(self)
+        HelpBar(self, self._app_prefs)
 
         toolbar = tk.Frame(self, bg=COLOR_BG)
         toolbar.pack(fill="x", padx=16, pady=(12, 6))
@@ -254,6 +283,11 @@ class MainWindow(_BaseTk):
         styled_button(
             toolbar3, "🤖 AI 批次說明...", self._on_ai_batch_describe, BTN_INDIGO_BG, BTN_INDIGO_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
+
+        # 「AI 設定」沒有自己的按鈕——要先開「🤖 AI 批次說明...」，視窗裡才有
+        # 「⚙️ AI 設定...」。第一次用的人找不到，所以在這顆按鈕右邊常駐一個
+        # 對話框泡泡（左邊小尾巴指著按鈕），外框緩慢呼吸提醒。
+        self._build_ai_settings_hint(toolbar3).pack(side="left", padx=(2, 0))
 
         # 警告提示不再跟四顆工具按鈕硬塞在同一橫列；獨立成下一列並依可用寬度
         # 自動換行，避免視窗較窄、Windows 顯示縮放較大時右半段被裁掉。
@@ -1141,6 +1175,67 @@ class MainWindow(_BaseTk):
 
     # ── AI 批次說明（獨立入口，跟人工批次補說明完全分開）───────────────
 
+    def _build_ai_settings_hint(self, parent) -> tk.Canvas:
+        """「AI 設定 / 點這裡」對話框泡泡：圓角外框＋左側指向按鈕的小尾巴。
+        外圈有一圈橙色光暈，每 ~1.7 秒像呼吸一樣往外脹大＋淡出、再縮回＋變濃，
+        同時泡泡底色一起深淺變化——餘光就注意得到，又不到刺眼的程度。
+        全程一張 Canvas，動畫只改既有圖元的座標／顏色，不重建圖元。"""
+        w, h = 130, 74
+        cx1, cy1, cx2, cy2, r = 18, 12, w - 10, h - 12, 12
+        self._ai_hint_box = (cx1, cy1, cx2, cy2, r)
+        tail = [cx1 + 2, h // 2 - 9, 4, h // 2, cx1 + 2, h // 2 + 9]
+        cv = tk.Canvas(parent, width=w, height=h, bg=COLOR_BG, highlightthickness=0, cursor="hand2")
+        # 外圈光暈：只有描邊，靠改座標（往外脹）＋改顏色（淡出到工具列底色）做出呼吸感。
+        self._ai_hint_halo = cv.create_polygon(
+            _round_rect_points(cx1 - 1, cy1 - 1, cx2 + 1, cy2 + 1, r + 1),
+            smooth=True, fill="", outline=_AI_HINT_BORDER_HI, width=3,
+        )
+        cv.create_polygon(tail, fill=_AI_HINT_BG, outline=_AI_HINT_BORDER, width=2)
+        self._ai_hint_body = cv.create_polygon(
+            _round_rect_points(cx1, cy1, cx2, cy2, r),
+            smooth=True, fill=_AI_HINT_BG, outline=_AI_HINT_BORDER, width=2,
+        )
+        cv.create_text(
+            (cx1 + cx2) // 2 + 1, (cy1 + cy2) // 2, text="AI 設定\n點這裡",
+            fill=_AI_HINT_FG, font=self._font_warning, justify="center",
+        )
+        cv.tag_bind("all", "<Button-1>", lambda _e: self._on_ai_batch_describe())
+        self._ai_hint_canvas = cv
+        self._ai_hint_phase = 0.0
+        self._ai_hint_dir = 1
+        self._animate_ai_settings_hint()
+        return cv
+
+    def _animate_ai_settings_hint(self):
+        cv = self._ai_hint_canvas
+        if not cv.winfo_exists():
+            return
+        self._ai_hint_phase += self._ai_hint_dir * (_AI_HINT_FPS_MS / _AI_HINT_PERIOD_MS)
+        if self._ai_hint_phase >= 1:
+            self._ai_hint_phase, self._ai_hint_dir = 1.0, -1
+        elif self._ai_hint_phase <= 0:
+            self._ai_hint_phase, self._ai_hint_dir = 0.0, 1
+        # smoothstep：兩端慢、中間快，起伏像呼吸而不是硬閃
+        t = self._ai_hint_phase
+        ease = t * t * (3 - 2 * t)
+        cx1, cy1, cx2, cy2, r = self._ai_hint_box
+        d = 1 + _AI_HINT_GLOW_MAX * ease  # 光暈往外脹的距離
+        cv.coords(
+            self._ai_hint_halo,
+            *_round_rect_points(cx1 - d, cy1 - d, cx2 + d, cy2 + d, r + d),
+        )
+        cv.itemconfigure(
+            self._ai_hint_halo,
+            outline=_lerp_color(_AI_HINT_BORDER_HI, COLOR_BG, ease),  # 脹大時淡出
+            width=max(1, round(4 - 3 * ease)),
+        )
+        cv.itemconfigure(
+            self._ai_hint_body,
+            outline=_lerp_color(_AI_HINT_BORDER, _AI_HINT_BORDER_HI, ease),
+            fill=_lerp_color(_AI_HINT_BG, _AI_HINT_BG_HI, ease),
+        )
+        self.after(_AI_HINT_FPS_MS, self._animate_ai_settings_hint)
+
     def _on_open_ai_settings(self, on_saved=None):
         AISettingsDialog(self, self._ai_settings_repo, self._ai_description, on_saved=on_saved)
 
@@ -1183,7 +1278,7 @@ class MainWindow(_BaseTk):
             "（僅供參考，實際費用/額度以 Provider 帳單為準）。\n\n"
             "分析結果只會顯示出來供你查看，不會寫進任何索引。"
         )
-        confirm_text = "送到 OpenAI 分析" if target["leaves_machine"] else "送到 Ollama 分析"
+        confirm_text = "送到 OpenAI 分析" if target["provider"] == "openai" else "送到 Ollama 分析"
         if not ask_ai_confirm(self, self._ai_description.target_confirm_title(), body, confirm_text=confirm_text):
             return
 

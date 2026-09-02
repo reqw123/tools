@@ -6,7 +6,7 @@
   "base_url": "https://api.openai.com/v1"
  },
  "ollama": {
-  "base_url": "http://localhost:11434",
-  "model": "qwen2.5vl:7b"
+  "base_url": "http://192.168.0.171:11434",
+  "model": "qwen2.5:7b"
  }
 }

@@ -27,14 +27,20 @@ class StickyNoteService:
         return sorted(self._repo.load_notes(), key=lambda n: n.created_at, reverse=True)
 
     def search(self, notes: list, query: str, tag_filter: str) -> list:
-        """query 同時比對標題與內容（不比對標籤，標籤篩選另外用 tag_filter）；
-        tag_filter 為空字串代表不篩選標籤。"""
+        """query 比對標題／內容／標籤——在搜尋框直接打標籤名稱（或一部分）就能
+        找到該標籤的便利貼，不用非得改用下拉選單。`tag_filter`（來自標籤下拉
+        選單）是另一層精確篩選，為空字串代表不額外限定標籤；兩者可疊加。"""
         typed = query.strip().lower()
         result = notes
         if tag_filter:
             result = [n for n in result if n.tag == tag_filter]
         if typed:
-            result = [n for n in result if typed in n.title.lower() or typed in n.body.lower()]
+            result = [
+                n for n in result
+                if typed in n.title.lower()
+                or typed in n.body.lower()
+                or typed in n.tag.lower()
+            ]
         return result
 
     def known_tags(self) -> list:

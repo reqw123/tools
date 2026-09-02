@@ -122,6 +122,13 @@ PREVIEW_TEXT_DEFAULT_SIZE = 11
 PREVIEW_TEXT_MIN_SIZE = 8
 PREVIEW_TEXT_MAX_SIZE = 32
 
+# 功能介紹面板字級：以各段落的基準 size 為 0，Ctrl+=／Ctrl+-／Ctrl+0 調整一個
+# 共用的增減量（delta），縮排與段距會等比例跟著縮放。delta 跨次啟動記住。
+# 基準 size（help_bar._HELP_BASE_SIZE）本身已經調成偏大的舒適值，所以下限放寬到
+# -9，讓想要更精簡版面的人也能縮回接近舊的預設字級。
+HELP_FONT_DELTA_MIN = -9
+HELP_FONT_DELTA_MAX = 16
+
 # 按鈕配色：不同動作類型各配一種飽和色（現代 Tailwind 風），同一排工具列裡
 # 盡量不重複，一眼就能分辨「新增／編輯／刷新／偵測／刪除…」是哪一類動作，
 # 不要求每顆按鈕顏色都獨一無二——同一種語意（例如所有對話框的「取消」、

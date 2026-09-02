@@ -28,9 +28,11 @@ class AIProvider:
         讓伺服器的錯誤訊息說明比較準確。"""
         raise NotImplementedError
 
-    def test_connection(self) -> None:
-        """驗證目前設定是否真的能連上、能用；失敗拋出 AIProviderError，
-        成功就直接 return，不用回傳值。"""
+    def test_connection(self):
+        """驗證目前設定是否真的能連上、能用；連不上／設定錯誤拋出
+        AIProviderError。連得上就回傳 None，或回傳一段警語字串——用在
+        「連線本身成功、但有值得提醒的問題」的情況（例如 Ollama 連得上、
+        但選的模型沒下載或不支援圖片），呼叫端把警語顯示給使用者看。"""
         raise NotImplementedError
 
 

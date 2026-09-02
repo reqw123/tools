@@ -10,7 +10,8 @@ import json
 from pathlib import Path
 
 from file_search_app.config import (
-    INDEXES_DIR, MEDIA_SEEK_SECONDS_DEFAULT, MEDIA_SEEK_SECONDS_MAX, MEDIA_SEEK_SECONDS_MIN,
+    HELP_FONT_DELTA_MAX, HELP_FONT_DELTA_MIN, INDEXES_DIR,
+    MEDIA_SEEK_SECONDS_DEFAULT, MEDIA_SEEK_SECONDS_MAX, MEDIA_SEEK_SECONDS_MIN,
 )
 from file_search_app.repositories.atomic_io import atomic_write_text
 
@@ -32,6 +33,21 @@ class AppPrefsRepository:
         seconds = max(MEDIA_SEEK_SECONDS_MIN, min(MEDIA_SEEK_SECONDS_MAX, int(seconds)))
         data = self._read()
         data.setdefault("media", {})["seek_seconds"] = seconds
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=1))
+
+    def load_help_font_delta(self) -> int:
+        """功能介紹面板的字級增減量。檔案不存在／損毀／值超出範圍都回傳 0
+        （＝預設字級），不拋例外——可有可無的偏好，壞掉不該影響主視窗。"""
+        value = self._read().get("help", {}).get("font_delta")
+        if not isinstance(value, int) or isinstance(value, bool):
+            return 0
+        return max(HELP_FONT_DELTA_MIN, min(HELP_FONT_DELTA_MAX, value))
+
+    def save_help_font_delta(self, delta: int) -> None:
+        delta = max(HELP_FONT_DELTA_MIN, min(HELP_FONT_DELTA_MAX, int(delta)))
+        data = self._read()
+        data.setdefault("help", {})["font_delta"] = delta
         self.path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=1))
 

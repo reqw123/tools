@@ -128,6 +128,98 @@ provider+model pricing tables this app has no source for. Don't imply
 otherwise in UI copy; every string here is deliberately hedged ("僅供參考",
 "以 Provider 帳單為準").
 
+## Ollama — local vs LAN host
+
+Pointing Ollama at another machine on the LAN (`http://192.168.1.50:11434`)
+is a supported config. `.ai_settings.json` still stores a single full
+`base_url` string — the split UI is presentation only. Helpers in
+`ollama_provider.py`:
+
+- `normalize_base_url()` — trims, drops trailing `/`, prepends `http://`
+  when the user typed a bare `host:port`. Used for the advanced (full-URL)
+  input path.
+- `split_standard_url(base_url) -> (host, is_standard)` /
+  `build_standard_url(host) -> "http://<host>:11434"` — the segmented
+  input's parse/rebuild pair. `is_standard` is False for any https / custom
+  port / path / userinfo URL.
+- `is_local_endpoint()` — true only for loopback hosts (`localhost`,
+  `127.0.0.0/8`, `::1`, `0.0.0.0`, empty). Anything else — LAN IP, mDNS
+  name, remote hostname — is treated as "content leaves this machine".
+
+**Settings dialog — "在哪裡執行" radio + segmented address input**
+(`ai_settings_dialog.py`). Layered so a non-technical user never has to know
+what `localhost` means, and can't get stranded after editing the IP:
+
+1. **`_ollama_where_var` radio** ("🖥️ 就在這台電腦" / "🌐 區網裡的另一台電腦")
+   — `_sync_ollama_where()`. "本機" hides the whole address block (label,
+   segmented row, 進階 checkbox, full-URL entry) behind one grey line and
+   `_collect_ollama_base_url()` returns `DEFAULT_BASE_URL` verbatim,
+   ignoring whatever is left in the host box. **This is the "undo" path** —
+   a user who typed a LAN IP and forgot how to go back just clicks "就在這台
+   電腦" again. Initial value is "local" only when
+   `is_local_endpoint(saved) and is_standard`; a local-but-custom-port URL
+   (rare) loads as "lan" + 進階 so it's still visible/editable, never
+   silently normalised away.
+2. **Segmented host box** (shown only under "另一台電腦"): `http://`
+   (readonly, grey) · **host box** (blue focus ring, auto-focused +
+   text-selected via `_focus_ollama_host`, which now no-ops in local mode) ·
+   `:11434` (readonly, grey). `_collect_ollama_base_url()` rebuilds with
+   `build_standard_url()`. Switching local→lan clears a leftover
+   loopback host so "另一台電腦" never points at itself.
+3. **"進階" checkbox** (`_ollama_advanced_var`) swaps in a single full-URL
+   `Entry` for the custom-port / https case; `_sync_ollama_addr_mode()`
+   moves the value across on every toggle so nothing typed is lost.
+
+`.ai_settings.json` still stores a single full `base_url` string — all of
+the above is presentation only.
+
+**Model name — editable dropdown** (`_ollama_model_combo`, a `ttk.Combobox`,
+`state="normal"`). Values are the installed models from that box's
+`/api/tags`, fetched off-thread by `_refresh_ollama_models()` /
+`_poll_ollama_models()` (via `AIDescriptionService.list_ollama_models()` →
+`ollama_provider.list_models()`), and refreshed on the 🔄 button, on opening
+the dialog with Ollama selected, and on switching into the Ollama section
+with an empty list. Stays free-text so an un-`pull`ed model or a pre-tags
+Ollama isn't a dead end; the hint line flags a typed model that isn't in
+the fetched list. `initial=True` fetches fail quietly (user may just not
+have Ollama running yet); the manual button surfaces the error.
+
+**Model readiness checks — `test_connection()` returns a warning string.**
+The old contract was `-> None`, raise on failure. Now it's
+`-> str | None`: still raises on "can't connect", but returns a warning
+string for "connected fine, but the picked model won't actually work". Two
+cases, both real user reports:
+- Model name not in the remote's `/api/tags` list (typo, or not `pull`ed on
+  that box). `_model_installed()` normalises bare names to `:latest` on both
+  sides before comparing.
+- Model is text-only. `_vision_support()` reads `capabilities` from
+  `/api/show` (cached per provider instance — `_show_cache` — so a 50-image
+  batch does one `/api/show`, not 50). Returns `True`/`False`, or `None`
+  when `capabilities` is absent (pre-2024 Ollama) — `None` never blocks.
+`generate_image_description()` hard-raises when `_vision_support() is False`
+*before* sending, because a text-only Ollama model given `images:` often
+doesn't error — it silently ignores the image and hallucinates a
+description from the prompt alone, which is worse than a clean failure.
+Callers: `ai_settings_dialog._test_connection` shows the warning instead of
+the green "✅ 連線成功"; batch/analyze surface the raised error through the
+existing `_summarize_ai_errors` / `messagebox` paths. OpenAI's
+`test_connection` still just returns `None`.
+
+`current_target_summary()` (`ai_description_service.py`) uses that to set
+`leaves_machine` / `lan` and the label ("Ollama（本機）" vs
+"Ollama（區網主機）"). **`leaves_machine` means literally "the bytes left
+this computer"** — it's true for LAN Ollama, and `ai_analyze_dialog.py`
+relies on that原義 ("內容已離開這台電腦"). It is NOT a proxy for "is the
+cloud/OpenAI provider": code that wants *that* distinction must check
+`provider == "openai"` (fixed at `main_window.py:1186` and in
+`target_disclosure_lines()`), otherwise LAN Ollama wrongly gets the
+"雲端、會計費" warning or the "送到 OpenAI 分析" button.
+
+The serving machine still needs `OLLAMA_HOST=0.0.0.0` (Ollama binds
+127.0.0.1 by default) and its firewall opened on 11434 — that's the remote
+box's config, nothing this app can set. The settings dialog hint and
+`ollama_provider.py`'s module docstring both say so; keep them in sync.
+
 ## Gotchas hit while building this (worth not re-discovering)
 
 - **Emoji variation selectors break pixel-centering.** `🗑️` is two code

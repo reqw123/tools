@@ -27,7 +27,11 @@ TranscriptionService（本機 faster-whisper）先轉成文字，再走跟一般
 from pathlib import Path
 
 from file_search_app.ai.base import AIProviderError
-from file_search_app.ai.ollama_provider import OllamaProvider
+from file_search_app.ai.ollama_provider import (
+    OllamaProvider,
+    is_local_endpoint,
+    list_models as ollama_list_models,
+)
 from file_search_app.ai.openai_provider import OpenAIProvider
 from file_search_app.config import IMAGE_EXTS, MEDIA_EXTS
 from file_search_app.repositories.cache_repository import CACHE_TEXT_CHARS
@@ -83,8 +87,11 @@ class AIDescriptionService:
         return self._settings_repo.load().get("provider") == "openai"
 
     def current_provider_label(self) -> str:
-        provider = self._settings_repo.load().get("provider")
-        return "OpenAI" if provider == "openai" else "Ollama（本機）"
+        settings = self._settings_repo.load()
+        if settings.get("provider") == "openai":
+            return "OpenAI"
+        base_url = settings.get("ollama", {}).get("base_url", "")
+        return "Ollama（本機）" if is_local_endpoint(base_url) else "Ollama（區網主機）"
 
     def current_target_summary(self) -> dict:
         """目前 AI 設定會把內容送去哪裡——給「選檔案問 AI」的確認視窗把
@@ -101,27 +108,35 @@ class AIDescriptionService:
                 "leaves_machine": True,
             }
         cfg = settings.get("ollama", {})
+        endpoint = cfg.get("base_url", "") or "http://localhost:11434"
+        local = is_local_endpoint(endpoint)
         return {
             "provider": "ollama",
-            "label": "Ollama（本機）",
+            "label": "Ollama（本機）" if local else "Ollama（區網主機）",
             "model": cfg.get("model", "") or "(未指定模型)",
-            "endpoint": cfg.get("base_url", "") or "http://localhost:11434",
-            "leaves_machine": False,
+            "endpoint": endpoint,
+            # 指到區網另一台電腦時，內容確實會離開這台機器（只是不上網際網路、
+            # 不計費）——沿用 leaves_machine 的原義（內容有沒有離開本機），
+            # 送出前確認視窗與分析結果視窗的措辭都靠這個旗標。
+            "leaves_machine": not local,
+            "lan": not local,
         }
 
     def target_confirm_title(self) -> str:
         """AI 送出前確認視窗的標題——不管本機還是雲端，都在標題就講明是哪個
         Provider（先前只有 OpenAI 會這樣，Ollama 是通用標題）。"""
         t = self.current_target_summary()
-        return f"確認送出到 {'OpenAI' if t['provider'] == 'openai' else 'Ollama（本機）'}"
+        return f"確認送出到 {t['label']}"
 
     def target_disclosure_lines(self) -> str:
         """AI 送出前確認視窗共用的「去向」段落——Provider、模型、位址、內容
         會不會離開這台電腦，本機與雲端都寫清楚，措辭一致。"""
         t = self.current_target_summary()
         lines = [f"送往：{t['label']}", f"模型：{t['model']}", f"位址：{t['endpoint']}"]
-        if t["leaves_machine"]:
+        if t["provider"] == "openai":
             lines.append("⚠️ 這是雲端服務，內容會離開這台電腦，且每次呼叫可能計費。")
+        elif t.get("lan"):
+            lines.append("這是區網內另一台電腦上的 Ollama，內容會透過區域網路傳到那台電腦，但不會上網際網路、也不會計費。")
         else:
             lines.append("這是本機服務，內容不會離開這台電腦。")
         return "\n".join(lines)
@@ -142,8 +157,19 @@ class AIDescriptionService:
             return OllamaProvider(base_url=cfg.get("base_url", ""), model=cfg.get("model", ""))
         raise AIProviderError("尚未選擇 AI Provider")
 
-    def test_connection(self, settings: dict = None) -> None:
-        self.build_provider(settings).test_connection()
+    def test_connection(self, settings: dict = None):
+        """連不上／設定錯誤拋 AIProviderError；連得上回傳 None 或一段警語
+        字串（連線成功但模型有問題，見 AIProvider.test_connection）。"""
+        return self.build_provider(settings).test_connection()
+
+    def list_ollama_models(self, settings: dict = None) -> list:
+        """那台 Ollama（依存檔設定，或傳入還沒儲存的 settings）目前已安裝的
+        模型名稱清單，給「AI 設定」的模型下拉選單用。連不上會拋 AIProviderError。
+        只對 Ollama 有意義，OpenAI 沒有這種「列出可用模型」的對等概念（其
+        /models 端點回的是整個帳號可用的幾百個模型，不適合塞進下拉）。"""
+        settings = settings if settings is not None else self._settings_repo.load()
+        base_url = settings.get("ollama", {}).get("base_url", "")
+        return ollama_list_models(base_url)
 
     # ── 產生建議 ─────────────────────────────────────────────────────
 
