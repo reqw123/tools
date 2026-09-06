@@ -56,6 +56,49 @@ def test_bulk_delete_missing_only_filter(tk_root, tmp_path):
     d.destroy()
 
 
+# ── BatchRecategorizeDialog ──────────────────────────────────────────
+
+def test_batch_recategorize_applies_to_checked_only(tk_root, monkeypatch):
+    from file_search_app.ui.dialogs.batch_recategorize_dialog import BatchRecategorizeDialog
+    import file_search_app.ui.dialogs.batch_recategorize_dialog as mod
+
+    monkeypatch.setattr(mod.messagebox, "askyesno", lambda *_a, **_kw: True)
+    entries = [
+        entry(path="C:/x/a.txt", category="old", serial=1, row_index=0),
+        entry(path="C:/x/b.txt", category="old", serial=2, row_index=1),
+    ]
+    captured = {}
+    d = BatchRecategorizeDialog(
+        tk_root, entries, existing_categories=["old"],
+        on_confirm=lambda checked, category: captured.update(checked=checked, category=category),
+    )
+    tk_root.update()
+    assert len(d._list.row_widgets) == 2
+
+    # 只勾第一筆——records 是 (item, var, haystack)，同 BulkDeleteDialog 的用法。
+    _item, var, _haystack = d._list.records[0]
+    var.set(True)
+    d.category_var.set("new")
+    d._confirm()
+
+    assert captured["category"] == "new"
+    assert [e.path for e in captured["checked"]] == ["C:/x/a.txt"]
+
+
+def test_batch_recategorize_no_selection_shows_info(tk_root, monkeypatch):
+    from file_search_app.ui.dialogs.batch_recategorize_dialog import BatchRecategorizeDialog
+    import file_search_app.ui.dialogs.batch_recategorize_dialog as mod
+
+    shown = {}
+    monkeypatch.setattr(mod.messagebox, "showinfo", lambda title, msg: shown.update(title=title, msg=msg))
+    entries = [entry(path="C:/x/a.txt", serial=1, row_index=0)]
+    d = BatchRecategorizeDialog(tk_root, entries, [], on_confirm=lambda *_a: None)
+    tk_root.update()
+    d._confirm()
+    assert "尚未勾選" in shown.get("msg", "")
+    d.destroy()
+
+
 # ── AISelectDialog ────────────────────────────────────────────────
 
 def test_ai_select_cancel_wiring(tk_root, tmp_path):
@@ -163,6 +206,172 @@ def test_sticky_panel_debounce_and_ai_invalidate(tk_root, data_dir):
     _pump(tk_root, 0.4)
     assert panel._refresh_after_id is None
     assert panel._last_shown and panel._last_shown[0].title == "Docker"
+
+
+def test_sticky_trash_dialog_restore(tk_root, data_dir):
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.dialogs.sticky_note_trash_dialog import StickyNoteTrashDialog
+
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    a = svc.add_note("Trashed", "body", "work")
+    svc.delete_note(a.id)
+    assert svc.list_trash()
+
+    changed = {"n": 0}
+    dlg = StickyNoteTrashDialog(
+        tk_root, svc, svc.color_for_tag, on_change=lambda: changed.__setitem__("n", changed["n"] + 1),
+    )
+    tk_root.update()
+    assert len(dlg._row_records) == 1
+
+    dlg._on_restore(a.id)
+    assert svc.list_trash() == []
+    assert [n.title for n in svc.list_notes()] == ["Trashed"]
+    assert changed["n"] == 1
+    dlg.destroy()
+
+
+def test_sticky_batch_recategorize_applies_to_checked_only(tk_root, data_dir, monkeypatch):
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.dialogs.sticky_note_batch_recategorize_dialog import (
+        StickyNoteBatchRecategorizeDialog,
+    )
+    import file_search_app.ui.dialogs.sticky_note_batch_recategorize_dialog as mod
+
+    monkeypatch.setattr(mod.messagebox, "askyesno", lambda *_a, **_kw: True)
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    a = svc.add_note("A", "", "old")
+    svc.add_note("B", "", "old")
+    notes = svc.list_notes()
+
+    dlg = StickyNoteBatchRecategorizeDialog(
+        tk_root, notes, svc.known_tags(notes), svc.color_for_tag,
+        on_confirm=lambda note_ids, tag: svc.update_tags(note_ids, tag),
+    )
+    tk_root.update()
+    assert len(dlg._row_records) == 2
+
+    target_note, var, _row, _haystack = next(r for r in dlg._row_records if r[0].id == a.id)
+    var.set(True)
+    dlg.tag_var.set("new")
+    dlg._confirm()
+
+    by_id = {n.id: n for n in svc.list_notes()}
+    assert by_id[a.id].tag == "new"
+    assert by_id[target_note.id].tag == "new"
+    other = next(n for n in svc.list_notes() if n.id != a.id)
+    assert other.tag == "old"  # 沒勾的那則不受影響
+
+
+def test_sticky_batch_recategorize_check_by_tag(tk_root, data_dir):
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.dialogs.sticky_note_batch_recategorize_dialog import (
+        StickyNoteBatchRecategorizeDialog,
+    )
+
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    a = svc.add_note("A", "", "work")
+    b = svc.add_note("B", "", "work")
+    c = svc.add_note("C", "", "life")
+    d = svc.add_note("D", "", "")  # 無標籤
+    notes = svc.list_notes()
+
+    dlg = StickyNoteBatchRecategorizeDialog(
+        tk_root, notes, svc.known_tags(notes), svc.color_for_tag, on_confirm=lambda *_a: None,
+    )
+    tk_root.update()
+
+    # 選「work」一鍵勾選底下兩則，不影響其他標籤。
+    dlg._by_tag_var.set("work")
+    dlg._check_by_tag()
+    checked_ids = {note.id for note, v, _row, _h in dlg._row_records if v.get()}
+    assert checked_ids == {a.id, b.id}
+
+    dlg._uncheck_all()
+    # 選「（無標籤）」只勾到沒有標籤的那一則。
+    dlg._by_tag_var.set("（無標籤）")
+    dlg._check_by_tag()
+    checked_ids = {note.id for note, v, _row, _h in dlg._row_records if v.get()}
+    assert checked_ids == {d.id}
+    assert c.id not in checked_ids
+    dlg.destroy()
+
+
+def test_sticky_batch_recategorize_check_by_tag_scrolls_to_it(tk_root, data_dir, monkeypatch):
+    import file_search_app.services.sticky_note_service as mod
+    from datetime import datetime, timedelta
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.dialogs.sticky_note_batch_recategorize_dialog import (
+        StickyNoteBatchRecategorizeDialog,
+    )
+
+    # 固定時間戳，確保排序（最新在上）是決定性的：target 最早建立，會被
+    # 排到清單最後面，符合「需要捲動才看得到」的情境，不受機器時鐘解析度影響。
+    base = datetime(2026, 1, 1)
+    clock = iter(base + timedelta(seconds=i) for i in range(41))
+
+    class Clock:
+        @staticmethod
+        def now():
+            return next(clock)
+
+    monkeypatch.setattr(mod, "datetime", Clock)
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    target = svc.add_note("Target", "", "work")
+    for i in range(40):
+        svc.add_note(f"filler{i}", "", "other")
+    notes = svc.list_notes()  # 最新在上：filler 們比 target 晚建立，排在它前面，
+                              # target 因此落在清單底部，符合「需要捲動才看得到」的情境。
+
+    dlg = StickyNoteBatchRecategorizeDialog(
+        tk_root, notes, svc.known_tags(notes), svc.color_for_tag, on_confirm=lambda *_a: None,
+    )
+    tk_root.update()
+    before = dlg._canvas.yview()[0]
+    assert before == 0.0  # 一開始在最上面
+
+    # 先搜尋一個不相關的關鍵字，模擬「使用者剛用過搜尋框」的情境——
+    # _check_by_tag 應該要自己清掉這個殘留的搜尋條件，不然目標列可能被濾掉。
+    dlg._search_var.set("filler")
+    tk_root.update()
+
+    dlg._by_tag_var.set("work")
+    dlg._check_by_tag()
+    tk_root.update()
+
+    assert dlg._search_var.get() == ""  # 搜尋框被清空了
+    checked_ids = {note.id for note, v, _row, _h in dlg._row_records if v.get()}
+    assert checked_ids == {target.id}
+    after = dlg._canvas.yview()[0]
+    assert after > before  # 真的捲動過去了，不是還停在最上面
+    dlg.destroy()
+
+
+def test_sticky_batch_recategorize_no_selection_shows_info(tk_root, data_dir, monkeypatch):
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.dialogs.sticky_note_batch_recategorize_dialog import (
+        StickyNoteBatchRecategorizeDialog,
+    )
+    import file_search_app.ui.dialogs.sticky_note_batch_recategorize_dialog as mod
+
+    shown = {}
+    monkeypatch.setattr(mod.messagebox, "showinfo", lambda title, msg: shown.update(title=title, msg=msg))
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    svc.add_note("A", "", "")
+    notes = svc.list_notes()
+
+    dlg = StickyNoteBatchRecategorizeDialog(
+        tk_root, notes, svc.known_tags(notes), svc.color_for_tag, on_confirm=lambda *_a: None,
+    )
+    tk_root.update()
+    dlg._confirm()
+    assert "尚未勾選" in shown.get("msg", "")
+    dlg.destroy()
 
 
 # ── 預覽面板背景擷取 ──────────────────────────────────────────────

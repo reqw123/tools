@@ -1,9 +1,11 @@
 """左側常駐便利貼面板——顯示彩色小卡片清單（依標籤自動配色），提供關鍵字＋
 標籤篩選、AI 自然語言搜尋、單擊複製、右鍵選單編輯／刪除，頂端「➕新增」
-「📤匯出」「📥匯入資料」「💾匯出資料」「🗑️批次刪除」按鈕跟空白處右鍵
-「新增便利貼」。「📤匯出」是給人看的 Markdown 文件；「💾匯出資料」／
-「📥匯入資料」是給程式讀回去用的 JSON，給搬家／備份用（見 _on_export_json／
-_on_import_json）。面板本身只管畫面與
+「♻垃圾桶」「📤匯出」「📥匯入資料」「💾匯出資料」「🗑️批次刪除」按鈕跟
+空白處右鍵「新增便利貼」。「📤匯出」是給人看的 Markdown 文件；「💾匯出
+資料」／「📥匯入資料」是給程式讀回去用的 JSON，給搬家／備份用（見
+_on_export_json／_on_import_json）。「刪除」（單筆或批次）現在只是移到
+垃圾桶，不是真的消失——「♻垃圾桶」按鈕可以復原或永久刪除（見
+_on_trash／StickyNoteTrashDialog）。面板本身只管畫面與
 使用者互動，資料的存取／篩選／配色規則都委派給建構子注入的
 StickyNoteService，不在這裡碰 JSON 或檔案路徑；呼叫 AI 的設定/連線邏輯則
 委派給建構子注入的 AIDescriptionService（跟「AI 批次說明」共用同一套設定，
@@ -26,18 +28,23 @@ from file_search_app.config import (
     COLOR_PREVIEW_BG, COLOR_PREVIEW_BORDER, COLOR_STATUS_FG, FONT_FAMILY,
     STICKY_AI_SEARCH_LARGE_NOTE_COUNT, STICKY_CARD_BORDER_DARKEN, STICKY_CARD_FOLD_DARKEN,
     STICKY_CARD_FOLD_SIZE, STICKY_CARD_HOVER_DARKEN, STICKY_CARD_META_COLOR,
-    STICKY_CARD_TEXT_COLOR, STICKY_FILTER_BOX_BG, STICKY_FILTER_BOX_BORDER, STICKY_FILTER_BOX_FG,
+    STICKY_CARD_TEXT_COLOR, STICKY_DUE_OVERDUE_BG, STICKY_DUE_OVERDUE_FG, STICKY_DUE_SOON_BG,
+    STICKY_DUE_SOON_FG, STICKY_FILTER_BOX_BG, STICKY_FILTER_BOX_BORDER, STICKY_FILTER_BOX_FG,
     STICKY_ICON_BUTTON_SIZE, STICKY_TOAST_BG, STICKY_TOAST_FG, STICKY_TOGGLE_SHORTCUT,
     STICKY_TOOLTIP_BG, STICKY_TOOLTIP_FG,
 )
 from file_search_app.models import format_added_at
 from file_search_app.platform import file_actions
-from file_search_app.services.sticky_note_service import preview_text
+from file_search_app.services.sticky_note_service import due_status, format_due_date, preview_text
 from file_search_app.ui.async_task import poll_queue, start_worker
 from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
 from file_search_app.ui.dialogs.scrollable_message_dialog import show_scrollable_message
+from file_search_app.ui.dialogs.sticky_note_batch_recategorize_dialog import (
+    StickyNoteBatchRecategorizeDialog,
+)
 from file_search_app.ui.dialogs.sticky_note_bulk_delete_dialog import StickyNoteBulkDeleteDialog
 from file_search_app.ui.dialogs.sticky_note_dialog import StickyNoteDialog
+from file_search_app.ui.dialogs.sticky_note_trash_dialog import StickyNoteTrashDialog
 from file_search_app.ui.styles import bind_wheel_recursive, darken, styled_button
 
 _ALL_TAGS_LABEL = "全部標籤"
@@ -161,6 +168,17 @@ class StickyNotePanel:
         )
         bulk_delete_btn.pack(side="right", padx=(0, 4))
         _Tooltip(bulk_delete_btn, "批次刪除便利貼", font_hint)
+        batch_recat_btn = _icon_button(
+            header, "🏷", self._on_batch_recategorize, BTN_EDIT_BG, BTN_EDIT_ACTIVE, self._font_icon,
+        )
+        batch_recat_btn.pack(side="right", padx=(0, 4))
+        _Tooltip(batch_recat_btn, "批次改標籤（勾選便利貼統一改成同一個標籤）", font_hint)
+        trash_btn = _icon_button(
+            # 跟上面同一個理由，用不帶 variation selector 的裸符號「♻」（U+267B）。
+            header, "♻", self._on_trash, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_icon,
+        )
+        trash_btn.pack(side="right", padx=(0, 4))
+        _Tooltip(trash_btn, "垃圾桶（刪除的便利貼可以在這裡復原）", font_hint)
         export_btn = _icon_button(header, "📤", self._on_export, BTN_IMPORT_BG, BTN_IMPORT_ACTIVE, self._font_icon)
         export_btn.pack(side="right", padx=(0, 4))
         _Tooltip(export_btn, "匯出成 Markdown 文件（目前篩選出的清單）", font_hint)
@@ -358,6 +376,18 @@ class StickyNotePanel:
         # 底部一排：左邊「# 分類」（沒有分類就不放），右邊建立時間。時間因為
         # 「編輯視同重新建立」（見 StickyNoteService.update_note），實際上是
         # 「最後動過的時間」，剛編輯的便利貼會排到最上面。
+        status = due_status(note.due_at)
+        if status:
+            badge_bg = STICKY_DUE_OVERDUE_BG if status == "overdue" else STICKY_DUE_SOON_BG
+            badge_fg = STICKY_DUE_OVERDUE_FG if status == "overdue" else STICKY_DUE_SOON_FG
+            badge_text = f"{'⏰ 已逾期' if status == 'overdue' else '⏳ 即將到期'}　{format_due_date(note.due_at)}"
+            due_badge = tk.Label(
+                card, text=badge_text, bg=badge_bg, fg=badge_fg, font=self._font_hint,
+                anchor="w", cursor="hand2",
+            )
+            due_badge.pack(fill="x", padx=8, pady=(0, 4))
+            labels_to_wrap.append(due_badge)
+
         footer = tk.Frame(card, bg=color)
         footer.pack(fill="x", padx=8, pady=(0, 8))
         footer_widgets = [footer]
@@ -446,32 +476,39 @@ class StickyNotePanel:
         self._ai_result_ids = None
         self._ai_query_snapshot = None
 
-    def _confirm_add(self, title, body, tag):
-        self._service.add_note(title, body, tag)
+    def _confirm_add(self, title, body, tag, due_at):
+        self._service.add_note(title, body, tag, due_at)
         self._invalidate_ai_results()
         self._refresh()
 
     def _on_edit(self, note):
         StickyNoteDialog(
             self.frame, self._service.known_tags(),
-            lambda title, body, tag: self._confirm_edit(note.id, title, body, tag),
+            lambda title, body, tag, due_at: self._confirm_edit(note.id, title, body, tag, due_at),
             self._ai_description, self._service,
             title="編輯便利貼", confirm_text="儲存",
             initial_title=note.title, initial_body=note.body, initial_tag=note.tag,
+            initial_due_at=note.due_at,
         )
 
-    def _confirm_edit(self, note_id, title, body, tag):
-        if not self._service.update_note(note_id, title, body, tag):
+    def _confirm_edit(self, note_id, title, body, tag, due_at):
+        if not self._service.update_note(note_id, title, body, tag, due_at):
             messagebox.showinfo("編輯便利貼", "這則便利貼已經不存在了（可能在其他視窗被刪除），沒有任何變更。")
         self._invalidate_ai_results()
         self._refresh()
 
     def _on_delete(self, note):
-        if not messagebox.askyesno("刪除便利貼", f"確定要刪除「{note.title}」嗎？此動作無法復原。"):
+        if not messagebox.askyesno("刪除便利貼", f"確定要刪除「{note.title}」嗎？會先移到垃圾桶，之後還能復原。"):
             return
         self._service.delete_note(note.id)
         self._invalidate_ai_results()
         self._refresh()
+
+    def _on_trash(self):
+        StickyNoteTrashDialog(
+            self.frame, self._service, self._service.color_for_tag,
+            on_change=lambda: (self._invalidate_ai_results(), self._refresh()),
+        )
 
     def _on_bulk_delete(self):
         notes = self._service.list_notes()
@@ -484,6 +521,21 @@ class StickyNotePanel:
 
     def _confirm_bulk_delete(self, note_ids):
         self._service.delete_notes(note_ids)
+        self._invalidate_ai_results()
+        self._refresh()
+
+    def _on_batch_recategorize(self):
+        notes = self._service.list_notes()
+        if not notes:
+            messagebox.showinfo("批次改分類", "目前沒有任何便利貼。")
+            return
+        StickyNoteBatchRecategorizeDialog(
+            self.frame, notes, self._service.known_tags(notes), self._service.color_for_tag,
+            self._confirm_batch_recategorize,
+        )
+
+    def _confirm_batch_recategorize(self, note_ids, tag):
+        self._service.update_tags(note_ids, tag)
         self._invalidate_ai_results()
         self._refresh()
 

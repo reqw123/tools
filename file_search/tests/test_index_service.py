@@ -68,6 +68,47 @@ def test_delete_entry_and_delete_entries(data_dir):
     assert ir.load_entries(md) == []
 
 
+def test_update_categories_single_file(data_dir):
+    svc, ir, _cr, _mr = build(data_dir)
+    md = make_index_md(data_dir / "a.md", [
+        ("C:/1.txt", "old", "d1"), ("C:/2.txt", "old", "d2"), ("C:/3.txt", "old", "d3"),
+    ])
+    entries, _c, _s = svc.load_all_entries(md)
+    updated = svc.update_categories([entries[0], entries[2]], "new")
+    assert updated == 2
+    after = ir.load_entries(md)
+    assert [e.category for e in after] == ["new", "old", "new"]
+
+
+def test_update_categories_groups_by_source_file_one_write_each(data_dir, monkeypatch):
+    svc, ir, _cr, _mr = build(data_dir)
+    a = make_index_md(data_dir / "a.md", [("C:/1.txt", "old", "")])
+    b = make_index_md(data_dir / "b.md", [("C:/2.txt", "old", "")])
+    entries, _c, _s = svc.load_all_entries(None)  # aggregate across both files
+
+    calls = []
+    orig = ir.update_categories_by_occurrences
+
+    def spy(md_path, updates):
+        calls.append(md_path)
+        return orig(md_path, updates)
+
+    monkeypatch.setattr(ir, "update_categories_by_occurrences", spy)
+    updated = svc.update_categories(entries, "new")
+    assert updated == 2
+    assert sorted(calls) == sorted([a, b])  # exactly one write per distinct file
+    assert ir.load_entries(a)[0].category == "new"
+    assert ir.load_entries(b)[0].category == "new"
+
+
+def test_update_categories_can_clear_to_empty(data_dir):
+    svc, ir, _cr, _mr = build(data_dir)
+    md = make_index_md(data_dir / "a.md", [("C:/1.txt", "old", "")])
+    entries, _c, _s = svc.load_all_entries(md)
+    assert svc.update_categories(entries, "") == 1
+    assert ir.load_entries(md)[0].category == ""
+
+
 def test_delete_index_drops_cache_and_metadata(data_dir):
     svc, ir, cr, mr = build(data_dir)
     md = make_index_md(data_dir / "a.md", [("C:/1.txt", "", "")])

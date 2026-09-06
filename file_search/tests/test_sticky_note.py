@@ -2,6 +2,9 @@ from file_search_app.repositories.sticky_note_repository import StickyNoteReposi
 from file_search_app.services.sticky_note_service import (
     AI_SEARCH_BODY_SNIPPET_CHARS,
     StickyNoteService,
+    due_status,
+    format_due_date,
+    parse_due_date,
     preview_text,
 )
 
@@ -61,6 +64,56 @@ def test_update_bumps_created_at_and_reorders(data_dir, monkeypatch):
     got = s.list_notes()
     assert [n.title for n in got] == ["A 改", "B"]
     assert got[0].created_at == datetime(2026, 6, 30)
+
+
+def test_update_tags_batch_only_changes_checked(data_dir):
+    s = svc(data_dir)
+    a = s.add_note("A", "bodyA", "old")
+    b = s.add_note("B", "bodyB", "old")
+    c = s.add_note("C", "bodyC", "other")
+    assert s.update_tags([a.id, c.id, "unknown"], "new") == 2
+    by_id = {n.id: n for n in s.list_notes()}
+    assert by_id[a.id].tag == "new"
+    assert by_id[c.id].tag == "new"
+    assert by_id[b.id].tag == "old"  # 沒被選到的不受影響
+    # 標題／內容不動
+    assert by_id[a.id].body == "bodyA"
+
+
+def test_update_tags_strips_and_can_clear(data_dir):
+    s = svc(data_dir)
+    a = s.add_note("A", "", "old")
+    assert s.update_tags([a.id], "  new tag  ") == 1
+    assert s.list_notes()[0].tag == "new tag"
+    assert s.update_tags([a.id], "") == 1
+    assert s.list_notes()[0].tag == ""
+
+
+def test_update_tags_does_not_bump_created_at(data_dir, monkeypatch):
+    import file_search_app.services.sticky_note_service as mod
+    from datetime import datetime
+
+    clock = [datetime(2026, 1, 1), datetime(2026, 6, 30)]
+
+    class Clock:
+        @staticmethod
+        def now():
+            return clock.pop(0)
+
+    monkeypatch.setattr(mod, "datetime", Clock)
+    s = svc(data_dir)
+    a = s.add_note("A", "", "old")  # 2026-01-01
+    s.update_tags([a.id], "new")
+    assert s.list_notes()[0].created_at == datetime(2026, 1, 1)  # 沒有被更新成「重新建立」
+
+
+def test_update_tags_no_match_returns_zero(data_dir):
+    s = svc(data_dir)
+    s.add_note("A", "", "old")
+    f = data_dir / ".sticky_notes.json"
+    before = f.read_text(encoding="utf-8")
+    assert s.update_tags(["ghost-id"], "new") == 0
+    assert f.read_text(encoding="utf-8") == before  # 沒有匹配就不該寫檔
 
 
 def test_delete_notes_batch(data_dir):
@@ -205,6 +258,120 @@ def test_export_markdown_code_fence_survives_backticks(data_dir):
     assert "🏷️" not in md  # 無標籤不輸出標籤列
 
 
+# ── 垃圾桶 ─────────────────────────────────────────────────────────
+
+def test_delete_note_moves_to_trash_not_gone(data_dir):
+    s = svc(data_dir)
+    a = s.add_note("A", "", "")
+    s.add_note("B", "", "")
+    s.delete_note(a.id)
+    assert [n.title for n in s.list_notes()] == ["B"]
+    assert [t.title for t in s.list_trash()] == ["A"]
+
+
+def test_restore_note_brings_it_back(data_dir):
+    s = svc(data_dir)
+    a = s.add_note("A", "bodyA", "work")
+    s.delete_note(a.id)
+    assert s.restore_note(a.id) is True
+    restored = s.list_notes()[0]
+    assert (restored.id, restored.title, restored.tag) == (a.id, "A", "work")
+    assert s.list_trash() == []
+    assert s.restore_note("ghost-id") is False
+
+
+def test_delete_notes_batch_moves_multiple_to_trash(data_dir):
+    s = svc(data_dir)
+    a = s.add_note("a", "", "")
+    s.add_note("b", "", "")
+    c = s.add_note("c", "", "")
+    assert s.delete_notes([a.id, c.id, "unknown"]) == 2
+    assert [n.title for n in s.list_notes()] == ["b"]
+    assert {t.title for t in s.list_trash()} == {"a", "c"}
+
+
+def test_purge_note_removes_permanently(data_dir):
+    s = svc(data_dir)
+    a = s.add_note("A", "", "")
+    s.delete_note(a.id)
+    assert s.purge_note(a.id) is True
+    assert s.list_trash() == []
+    assert s.purge_note(a.id) is False  # already gone, idempotent-safe
+
+
+def test_empty_trash_clears_everything_and_counts(data_dir):
+    s = svc(data_dir)
+    a = s.add_note("a", "", "")
+    b = s.add_note("b", "", "")
+    s.delete_note(a.id)
+    s.delete_note(b.id)
+    assert s.empty_trash() == 2
+    assert s.list_trash() == []
+    assert s.empty_trash() == 0  # nothing left, no error
+
+
+def test_list_trash_newest_deleted_first(data_dir, monkeypatch):
+    import file_search_app.services.sticky_note_service as mod
+    from datetime import datetime
+
+    times = iter([
+        datetime(2026, 1, 1), datetime(2026, 1, 2),  # add_note x2 (created_at, unused here)
+        datetime(2026, 1, 10), datetime(2026, 1, 20),  # delete_note x2 (deleted_at)
+    ])
+
+    class FrozenDT:
+        @staticmethod
+        def now():
+            return next(times)
+
+    monkeypatch.setattr(mod, "datetime", FrozenDT)
+    s = svc(data_dir)
+    a = s.add_note("first-deleted", "", "")
+    b = s.add_note("second-deleted", "", "")
+    s.delete_note(a.id)
+    s.delete_note(b.id)
+    assert [t.title for t in s.list_trash()] == ["second-deleted", "first-deleted"]
+
+
+# ── 匯出/匯入含插圖 ───────────────────────────────────────────────
+
+def test_export_json_embeds_image_bytes(data_dir):
+    images_dir = data_dir / ".sticky_note_images"
+    images_dir.mkdir(parents=True)
+    (images_dir / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\nFAKE")
+
+    s = svc(data_dir)
+    from file_search_app.models import StickyNote
+    from datetime import datetime
+    s._repo.mutate(lambda notes: notes + [
+        StickyNote(id="img1", title="WithImg", body="", tag="", created_at=datetime.now(), image="photo.png"),
+    ])
+    dump = s.export_json(s.list_notes())
+    assert '"image_data": "data:image/png;base64,' in dump
+
+
+def test_import_json_writes_embedded_image_to_destination(data_dir, tmp_path):
+    src_images = data_dir / ".sticky_note_images"
+    src_images.mkdir(parents=True)
+    (src_images / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\nFAKE")
+
+    source = svc(data_dir)
+    from file_search_app.models import StickyNote
+    from datetime import datetime
+    source._repo.mutate(lambda notes: notes + [
+        StickyNote(id="img1", title="WithImg", body="", tag="", created_at=datetime.now(), image="photo.png"),
+    ])
+    dump = source.export_json(source.list_notes())
+
+    dest_dir = tmp_path / "dest"
+    dest = svc(dest_dir)
+    result = dest.import_json(dump)
+    assert result == {"added": 1, "skipped": 0}
+    dest_image = dest_dir / ".sticky_note_images" / "photo.png"
+    assert dest_image.exists()
+    assert dest_image.read_bytes() == b"\x89PNG\r\n\x1a\nFAKE"
+
+
 def test_export_json_round_trips_via_import(data_dir):
     s = svc(data_dir)
     n1 = s.add_note("A", "內容A", "工作")
@@ -303,3 +470,64 @@ def test_parse_document_to_note_response_missing_required_field(data_dir):
 def test_parse_document_to_note_response_unparseable(data_dir):
     s = svc(data_dir)
     assert s.parse_document_to_note_response("不是 JSON，也沒有大括號") is None
+
+
+# ── 到期日 ─────────────────────────────────────────────────────────
+
+def test_parse_due_date_empty_and_valid():
+    assert parse_due_date("") == ""
+    assert parse_due_date("  ") == ""
+    assert parse_due_date("2026-09-10") == "2026-09-10T23:59:59"
+
+
+def test_parse_due_date_invalid_raises():
+    try:
+        parse_due_date("not-a-date")
+        assert False, "應該要拋出 ValueError"
+    except ValueError:
+        pass
+
+
+def test_format_due_date_round_trips_and_tolerates_junk():
+    assert format_due_date("") == ""
+    assert format_due_date(parse_due_date("2026-09-10")) == "2026-09-10"
+    assert format_due_date("garbage") == ""  # 壞資料不炸掉，當作沒有到期日
+
+
+def test_due_status_classifies_overdue_soon_later():
+    from datetime import datetime
+
+    now = datetime(2026, 9, 6, 12, 0, 0)
+    assert due_status("", now=now) == ""
+    overdue = parse_due_date("2026-09-05")
+    soon = parse_due_date("2026-09-07")
+    later = parse_due_date("2026-09-20")
+    assert due_status(overdue, now=now) == "overdue"
+    assert due_status(soon, now=now) == "soon"
+    assert due_status(later, now=now) == ""
+
+
+def test_add_and_update_note_carry_due_at(data_dir):
+    s = svc(data_dir)
+    n = s.add_note("A", "", "", parse_due_date("2026-09-10"))
+    assert s.list_notes()[0].due_at == "2026-09-10T23:59:59"
+    s.update_note(n.id, "A", "", "", parse_due_date("2026-09-20"))
+    assert s.list_notes()[0].due_at == "2026-09-20T23:59:59"
+    s.update_note(n.id, "A", "", "", "")  # 清除到期日
+    assert s.list_notes()[0].due_at == ""
+
+
+def test_due_at_survives_trash_and_restore(data_dir):
+    s = svc(data_dir)
+    n = s.add_note("A", "", "", parse_due_date("2026-09-10"))
+    s.delete_note(n.id)
+    assert s.list_trash()[0].due_at == "2026-09-10T23:59:59"
+    s.restore_note(n.id)
+    assert s.list_notes()[0].due_at == "2026-09-10T23:59:59"
+
+
+def test_due_at_persists_across_repository_reload(data_dir):
+    s = svc(data_dir)
+    s.add_note("A", "", "", parse_due_date("2026-09-10"))
+    reloaded = svc(data_dir)
+    assert reloaded.list_notes()[0].due_at == "2026-09-10T23:59:59"

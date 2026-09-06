@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { noteImageUrl, type Note, type NoteInput } from '../lib/api'
 import { paperVars } from '../lib/color'
-import { stamp } from '../lib/format'
+import { dueStatus, fromStoredDueAt, stamp } from '../lib/format'
 import {
   useCreateNote,
   useDeleteNote,
@@ -35,6 +35,14 @@ export function NoteDialog({
   const [picking, setPicking] = useState(false)
   const [pickPath, setPickPath] = useState<string | null>(null)
   const [imgErr, setImgErr] = useState('')
+  // 便利貼容器裡的插圖太小看不清楚——雙擊放大 3 倍，蓋在最上層，可以超出
+  // 便利貼視窗本身的範圍。zoomedRef 讓下面 Escape 監聽器不用把 zoomed
+  // 放進 deps（不然每次放大/收合都要整個重掛一次監聽器、重設 body overflow）。
+  const [zoomed, setZoomed] = useState(false)
+  const zoomedRef = useRef(false)
+  useEffect(() => {
+    zoomedRef.current = zoomed
+  }, [zoomed])
 
   // 用資料庫的最新版本（編輯後 view 模式要顯示新內容），沒有就退回開啟當下傳進來的。
   const { data: notes } = useNotes()
@@ -65,7 +73,13 @@ export function NoteDialog({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      // Esc 先關放大檢視就好，不要連便利貼視窗一起關掉。
+      if (zoomedRef.current) {
+        setZoomed(false)
+        return
+      }
+      onClose()
     }
     document.addEventListener('keydown', onKey)
     ref.current?.focus()
@@ -117,9 +131,21 @@ export function NoteDialog({
           <>
             <h2>{note.title}</h2>
             {noteImageUrl(note) && (
-              <img className="sheet-img" src={noteImageUrl(note)!} alt="" draggable={false} />
+              <img
+                className="sheet-img"
+                src={noteImageUrl(note)!}
+                alt=""
+                draggable={false}
+                title="雙擊放大"
+                onDoubleClick={() => setZoomed(true)}
+              />
             )}
             <Body text={note.body} />
+            {dueStatus(note.due_at) && (
+              <p className={`due-badge ${dueStatus(note.due_at)}`}>
+                {dueStatus(note.due_at) === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{fromStoredDueAt(note.due_at)}
+              </p>
+            )}
             <footer>
               <span className="tag-pill">{note.tag || '未分類'}</span>
               <span className="stamp">{stamp(note.created_at)}</span>
@@ -230,6 +256,18 @@ export function NoteDialog({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {zoomed && note && noteImageUrl(note) && (
+        <div className="zoom-scrim" onClick={() => setZoomed(false)}>
+          <img
+            className="zoom-img"
+            src={noteImageUrl(note)!}
+            alt=""
+            draggable={false}
+            onDoubleClick={() => setZoomed(false)}
+          />
         </div>
       )}
     </div>

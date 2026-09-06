@@ -6,10 +6,12 @@ import hashlib
 import json
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from file_search_app.config import STICKY_NEUTRAL_COLOR, STICKY_TAG_LIGHTNESS, STICKY_TAG_SATURATION
-from file_search_app.models import StickyNote
+from file_search_app.config import (
+    STICKY_DUE_SOON_DAYS, STICKY_NEUTRAL_COLOR, STICKY_TAG_LIGHTNESS, STICKY_TAG_SATURATION,
+)
+from file_search_app.models import StickyNote, TrashedStickyNote
 from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
 
 # AI 搜尋一則便利貼內容送給模型時最多帶這麼多字——便利貼本來就是短筆記，
@@ -31,6 +33,49 @@ def preview_text(body: str, max_lines: int = 2) -> str:
     if len(lines) > max_lines:
         text += " …"
     return text
+
+
+def parse_due_date(raw: str) -> str:
+    """把使用者在到期日欄位打的 `YYYY-MM-DD` 轉成實際存檔用的格式——存成
+    當天 23:59:59（而不是 00:00:00），這樣「今天」到期的便利貼要等一整天
+    過完才算逾期，不會一到當天凌晨就馬上顯示成紅色。空字串（清除到期日）
+    原樣回傳空字串；格式不對丟 `ValueError`，交給呼叫端（對話框）顯示
+    錯誤訊息，這裡不吞例外也不猜測使用者的意思。"""
+    raw = raw.strip()
+    if not raw:
+        return ""
+    day = datetime.strptime(raw, "%Y-%m-%d")
+    return day.replace(hour=23, minute=59, second=59).isoformat()
+
+
+def format_due_date(due_at: str) -> str:
+    """把存檔格式的到期日轉回對話框輸入框要顯示的 `YYYY-MM-DD`——空字串或
+    格式壞掉（例如手動改過 JSON）都當作沒有到期日，回傳空字串，不讓一筆
+    壞資料炸掉整個編輯視窗。"""
+    if not due_at:
+        return ""
+    try:
+        return datetime.fromisoformat(due_at).strftime("%Y-%m-%d")
+    except ValueError:
+        return ""
+
+
+def due_status(due_at: str, now: datetime = None) -> str:
+    """卡片標色用的分類：`"overdue"`（已過期）／`"soon"`（
+    `STICKY_DUE_SOON_DAYS` 天內到期）／`""`（沒有到期日，或到期日還早，
+    都不特別標色）。純視覺提示分類，不觸發任何通知。"""
+    if not due_at:
+        return ""
+    try:
+        due = datetime.fromisoformat(due_at)
+    except ValueError:
+        return ""
+    now = now or datetime.now()
+    if due < now:
+        return "overdue"
+    if due - now <= timedelta(days=STICKY_DUE_SOON_DAYS):
+        return "soon"
+    return ""
 
 
 class StickyNoteService:
@@ -84,15 +129,15 @@ class StickyNoteService:
         r, g, b = colorsys.hls_to_rgb(hue, STICKY_TAG_LIGHTNESS, STICKY_TAG_SATURATION)
         return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
 
-    def add_note(self, title: str, body: str, tag: str) -> StickyNote:
+    def add_note(self, title: str, body: str, tag: str, due_at: str = "") -> StickyNote:
         note = StickyNote(
             id=uuid.uuid4().hex, title=title.strip(), body=body.strip(), tag=tag.strip(),
-            created_at=datetime.now(),
+            created_at=datetime.now(), due_at=due_at,
         )
         self._repo.mutate(lambda notes: notes + [note])
         return note
 
-    def update_note(self, note_id: str, title: str, body: str, tag: str) -> bool:
+    def update_note(self, note_id: str, title: str, body: str, tag: str, due_at: str = "") -> bool:
         """回傳有沒有真的改到——`note_id` 不在清單裡（例如卡片在別的視窗剛被
         刪掉）就回 False 且完全不寫檔，不會白白重寫一份一模一樣的內容。
 
@@ -109,6 +154,7 @@ class StickyNoteService:
                     note.title = title.strip()
                     note.body = body.strip()
                     note.tag = tag.strip()
+                    note.due_at = due_at
                     note.created_at = datetime.now()
                     found = True
                     return notes
@@ -117,23 +163,144 @@ class StickyNoteService:
         self._repo.mutate(apply)
         return found
 
-    def delete_note(self, note_id: str) -> None:
-        self._repo.mutate(lambda notes: [n for n in notes if n.id != note_id])
-
-    def delete_notes(self, note_ids) -> int:
-        """批次刪除——一次讀寫，不是逐筆呼叫 delete_note()（逐筆呼叫等於重複
-        讀寫同一份檔案 N 次，數量一多沒必要）。回傳實際刪掉幾筆。"""
+    def update_tags(self, note_ids, tag: str) -> int:
+        """批次改標籤——統一改成同一個標籤（空字串＝清空標籤），只動標籤欄，
+        標題／內容／到期日都不變，也不當成「重新建立」（不更新 created_at，
+        跟單筆編輯的語意不一樣：這裡是分類整理，不是內容變動，不該讓整批
+        便利貼因為改個標籤就全部跳到清單最上面）。一次讀寫（跟 delete_notes()
+        同一個理由，不逐筆呼叫 update_note()）。回傳實際改到幾筆。"""
         wanted = set(note_ids)
-        removed = 0
+        new_tag = tag.strip()
+        changed = 0
 
         def apply(notes):
-            nonlocal removed
-            remaining = [n for n in notes if n.id not in wanted]
-            removed = len(notes) - len(remaining)
-            return remaining
+            nonlocal changed
+            matched = [n for n in notes if n.id in wanted]
+            changed = len(matched)
+            if not matched:
+                return None
+            for note in matched:
+                note.tag = new_tag
+            return notes
 
         self._repo.mutate(apply)
+        return changed
+
+    def delete_note(self, note_id: str) -> None:
+        """「刪除」現在是「移到垃圾桶」，不是真的從資料裡消失——使用者按錯、
+        手滑都還能在垃圾桶對話框復原，真正永久刪除要另外呼叫 purge_note()
+        或在垃圾桶按「永久刪除」。"""
+        now = datetime.now()
+
+        def apply(notes, trash):
+            target = next((n for n in notes if n.id == note_id), None)
+            if target is None:
+                return None
+            remaining = [n for n in notes if n.id != note_id]
+            trashed = TrashedStickyNote(
+                id=target.id, title=target.title, body=target.body, tag=target.tag,
+                created_at=target.created_at, image=target.image, due_at=target.due_at,
+                deleted_at=now,
+            )
+            return remaining, trash + [trashed]
+
+        self._repo.mutate_all(apply)
+
+    def delete_notes(self, note_ids) -> int:
+        """批次「刪除」——同上，移到垃圾桶而不是永久刪除。一次讀寫，不是逐筆
+        呼叫 delete_note()（逐筆呼叫等於重複讀寫同一份檔案 N 次，數量一多
+        沒必要）。回傳實際移進垃圾桶幾筆。"""
+        wanted = set(note_ids)
+        removed = 0
+        now = datetime.now()
+
+        def apply(notes, trash):
+            nonlocal removed
+            to_trash = [n for n in notes if n.id in wanted]
+            removed = len(to_trash)
+            if not to_trash:
+                return None
+            remaining = [n for n in notes if n.id not in wanted]
+            newly_trashed = [
+                TrashedStickyNote(
+                    id=n.id, title=n.title, body=n.body, tag=n.tag,
+                    created_at=n.created_at, image=n.image, due_at=n.due_at, deleted_at=now,
+                )
+                for n in to_trash
+            ]
+            return remaining, trash + newly_trashed
+
+        self._repo.mutate_all(apply)
         return removed
+
+    # ── 垃圾桶 ───────────────────────────────────────────────────────
+
+    def list_trash(self) -> list:
+        """垃圾桶清單，最新丟進去的在最上面。"""
+        return sorted(self._repo.load_trash(), key=lambda t: t.deleted_at, reverse=True)
+
+    def restore_note(self, note_id: str) -> bool:
+        """從垃圾桶救回便利貼清單——保留原本的 created_at，不當成「重新建立」
+        （那是給編輯用的語意；復原只是讓它回到原本該在的時間順序位置，不該
+        因為復原這個動作就跳到清單最上面）。回傳有沒有真的復原到。"""
+        found = False
+
+        def apply(notes, trash):
+            nonlocal found
+            target = next((t for t in trash if t.id == note_id), None)
+            if target is None:
+                return None
+            found = True
+            remaining_trash = [t for t in trash if t.id != note_id]
+            restored = StickyNote(
+                id=target.id, title=target.title, body=target.body,
+                tag=target.tag, created_at=target.created_at, image=target.image,
+                due_at=target.due_at,
+            )
+            return notes + [restored], remaining_trash
+
+        self._repo.mutate_all(apply)
+        return found
+
+    def purge_note(self, note_id: str) -> bool:
+        """從垃圾桶永久刪除單一筆——這裡才是真的沒得救，連帶清掉對應的插圖
+        檔案（如果有）。回傳有沒有真的刪到。"""
+        found = False
+        image_to_remove = ""
+
+        def apply(notes, trash):
+            nonlocal found, image_to_remove
+            target = next((t for t in trash if t.id == note_id), None)
+            if target is None:
+                return None
+            found = True
+            image_to_remove = target.image
+            remaining_trash = [t for t in trash if t.id != note_id]
+            return notes, remaining_trash
+
+        self._repo.mutate_all(apply)
+        if found:
+            self._repo.remove_image_file(image_to_remove)
+        return found
+
+    def empty_trash(self) -> int:
+        """清空整個垃圾桶、連帶清掉所有插圖檔案。回傳清掉幾筆便利貼（不是
+        清掉幾張圖片——多數筆記根本沒有插圖，兩個數字不該混用）。"""
+        removed_count = 0
+        removed_images = []
+
+        def apply(notes, trash):
+            nonlocal removed_count
+            removed_count = len(trash)
+            removed_images.extend(t.image for t in trash if t.image)
+            if not trash:
+                return None
+            return notes, []
+
+        self._repo.mutate_all(apply)
+        for image in removed_images:
+            self._repo.remove_image_file(image)
+        return removed_count
 
     def export_markdown(self, notes: list) -> str:
         """把便利貼組成一份可讀的 Markdown 文件——標題當二級標題、有標籤就用

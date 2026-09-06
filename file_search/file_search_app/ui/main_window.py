@@ -33,6 +33,7 @@ from file_search_app.platform import file_actions
 from file_search_app.services.import_service import path_key
 from file_search_app.repositories.cache_repository import CACHE_TEXT_CHARS
 from file_search_app.ui.async_task import poll_queue, start_worker
+from file_search_app.ui.dialogs.batch_recategorize_dialog import BatchRecategorizeDialog
 from file_search_app.ui.dialogs.delete_dialogs import BulkDeleteDialog
 from file_search_app.ui.dialogs.ai_analyze_dialog import AIAnalyzeResultDialog
 from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
@@ -273,6 +274,9 @@ class MainWindow(_BaseTk):
         ).pack(side="left", padx=(8, 0))
         styled_button(
             toolbar2, "🗑️ 批次刪除...", self._on_bulk_delete, BTN_DANGER_BG, BTN_DANGER_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        styled_button(
+            toolbar2, "🏷️ 批次改分類...", self._on_batch_recategorize, BTN_EDIT_BG, BTN_EDIT_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
         hint = "（可把檔案拖曳進下面清單直接新增）" if _HAS_DND else "（拖曳新增功能未啟用：缺少 tkinterdnd2 套件，仍可用「新增檔案...」按鈕）"
         tk.Label(toolbar2, text=hint, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=self._font_hint).pack(side="left", padx=(10, 0))
@@ -1019,6 +1023,26 @@ class MainWindow(_BaseTk):
             messagebox.showinfo("批次刪除索引項目", f"已刪除 {total_removed} 筆。")
 
         BulkDeleteDialog(self, list(self._all_entries), _on_confirm)
+
+    def _on_batch_recategorize(self):
+        if not self._all_entries:
+            messagebox.showinfo("批次改分類", "目前沒有可操作的索引項目。")
+            return
+        existing_categories = self._search.distinct_categories(self._all_entries)
+
+        def _on_confirm(entries_to_update, category):
+            total_updated = self._index.update_categories(entries_to_update, category)
+            if total_updated == 0:
+                messagebox.showwarning(
+                    "批次改分類",
+                    "找不到對應的資料列了（可能索引檔案剛好被外部修改過），"
+                    "請按「重新載入索引」確認目前內容後再試一次。",
+                )
+                return
+            self._reload_index()
+            messagebox.showinfo("批次改分類", f"已更新 {total_updated} 筆的分類。")
+
+        BatchRecategorizeDialog(self, list(self._all_entries), existing_categories, _on_confirm)
 
     # ── 內容快取／全文檢索底層 ───────────────────────────────────────
 

@@ -13,6 +13,7 @@ document-to-note prompt，回來解析成三個欄位而不是一段說明文字
 
 import queue
 import tkinter as tk
+from datetime import datetime, timedelta
 from pathlib import Path
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
@@ -22,6 +23,7 @@ from file_search_app.config import (
     COLOR_STATUS_FG, FONT_FAMILY,
 )
 from file_search_app.models import IndexEntry
+from file_search_app.services.sticky_note_service import format_due_date, parse_due_date
 from file_search_app.ui.async_task import poll_queue, start_worker
 from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
 from file_search_app.ui.styles import styled_button
@@ -31,7 +33,7 @@ class StickyNoteDialog(tk.Toplevel):
     def __init__(
         self, parent, known_tags, on_confirm, ai_description, sticky_service,
         title="新增便利貼", confirm_text="新增",
-        initial_title="", initial_body="", initial_tag="",
+        initial_title="", initial_body="", initial_tag="", initial_due_at="",
     ):
         super().__init__(parent)
         self.title(title)
@@ -95,6 +97,25 @@ class StickyNoteDialog(tk.Toplevel):
         ).pack(fill="x", pady=(2, 10))
 
         tk.Label(
+            pad, text="到期日（可留空；卡片會依到期日標色提醒，格式 YYYY-MM-DD）：",
+            bg=COLOR_BG, font=font_label, anchor="w", wraplength=380, justify="left",
+        ).pack(fill="x")
+        due_row = tk.Frame(pad, bg=COLOR_BG)
+        due_row.pack(fill="x", pady=(2, 10))
+        self.due_var = tk.StringVar(value=format_due_date(initial_due_at))
+        due_entry = tk.Entry(due_row, textvariable=self.due_var, font=font_label, width=12)
+        due_entry.pack(side="left", ipady=4)
+        for label, days in (("今天", 0), ("明天", 1), ("3天後", 3), ("一週後", 7)):
+            styled_button(
+                due_row, label, lambda d=days: self._set_due_in(d),
+                BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_hint,
+            ).pack(side="left", padx=(6, 0))
+        styled_button(
+            due_row, "清除", lambda: self.due_var.set(""),
+            BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(6, 0))
+
+        tk.Label(
             pad, text="內容（可多行，例如一組指令步驟；超過看得到的行數可以捲動）：",
             bg=COLOR_BG, font=font_label, anchor="w", wraplength=380, justify="left",
         ).pack(fill="x")
@@ -114,8 +135,14 @@ class StickyNoteDialog(tk.Toplevel):
                 self._error_var.set("標題不能留空。")
                 title_entry.focus_set()
                 return
+            try:
+                due_value = parse_due_date(self.due_var.get())
+            except ValueError:
+                self._error_var.set("到期日格式不對，請用 YYYY-MM-DD（或清空）。")
+                due_entry.focus_set()
+                return
             body_value = self.body_text.get("1.0", "end-1c")
-            on_confirm(title_value, body_value, self.tag_var.get())
+            on_confirm(title_value, body_value, self.tag_var.get(), due_value)
             self.destroy()
 
         styled_button(btn_row, "取消", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
@@ -128,6 +155,9 @@ class StickyNoteDialog(tk.Toplevel):
         self.bind("<Escape>", lambda _e: self.destroy())
         title_entry.bind("<Return>", _confirm)
         self.bind("<Control-Return>", _confirm)  # 焦點在內容框時用 Ctrl+Enter 送出
+
+    def _set_due_in(self, days: int):
+        self.due_var.set((datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d"))
 
     def _on_ai_generate(self):
         """挑一個檔案送給目前設定的 AI，生成標題／標籤／內容並直接填進這個

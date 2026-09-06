@@ -328,9 +328,11 @@ ipcMain.handle('dw-set-autostart', (_e, on) => {
 });
 ipcMain.handle('dw-set-display', (_e, id) => {
   store.write({ displayId: id === null ? null : Number(id) });
-  positionWall();
-  positionHint();
-  positionQuitButton();
+  positionWall(); // 內部會 win.setAlwaysOnTop()，在 Windows 上會把設定視窗／
+  positionHint(); // 結束程式按鈕蓋過去（見 raiseQuitButton() 註解那段實測），
+  positionQuitButton(); // 換螢幕之後兩個都要重新搶回最上層，不然要等下次按
+  raiseSettings(); // 快捷鍵才會補救回來。
+  raiseQuitButton();
   return settingsState();
 });
 ipcMain.on('dw-open-userdata', () => shell.openPath(path.dirname(store.settingsPath())));
@@ -367,7 +369,9 @@ ipcMain.handle('wall-crop-to', (_e, ids, rect) => {
 ipcMain.handle('wall-restore-crop', () => {
   wallCropped = false;
   store.clearCrop();
-  positionWall();
+  positionWall(); // 同 dw-set-display：win.setAlwaysOnTop() 可能把設定視窗／
+  raiseSettings(); // 結束程式按鈕蓋過去，回復全螢幕後要重新搶最上層。
+  raiseQuitButton();
 });
 
 // 裁切檢視中，讓「恢復完整畫面」那顆按鈕兼職當拖曳把手——按住不放拖動時
@@ -962,9 +966,13 @@ app.whenReady().then(async () => {
   restorePinnedWindows();
 
   const repositionAll = () => {
-    positionWall();
-    positionHint();
-    positionQuitButton();
+    positionWall(); // 螢幕解析度/插拔顯示器事件——跟 dw-set-display 同一個
+    positionHint(); // 理由：positionWall() 內部的 win.setAlwaysOnTop() 在
+    positionQuitButton(); // Windows 上會把設定視窗／結束程式按鈕蓋過去，
+    raiseSettings(); // 這類事件使用者自己不會主動觸發任何快捷鍵去補救，
+    raiseQuitButton(); // 不重新搶最上層就會卡住點不到（這正是回報過的
+    // 「右上角叉叉偶爾點不到」在 quit-button 建立當下修過一次之後，換螢幕
+    // /接投影機這種情境又會重現的原因——漏了這三個呼叫點）。
   };
   screen.on('display-metrics-changed', repositionAll);
   screen.on('display-added', repositionAll);

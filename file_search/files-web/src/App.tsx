@@ -13,6 +13,7 @@ import { AddEntryDialog } from './components/AddEntryDialog'
 import { BatchImportDialog } from './components/BatchImportDialog'
 import { BatchDescribeDialog } from './components/BatchDescribeDialog'
 import { BatchDeleteDialog } from './components/BatchDeleteDialog'
+import { BatchRecategorizeDialog } from './components/BatchRecategorizeDialog'
 import { AiSettingsDialog } from './components/AiSettingsDialog'
 import { ImportIndexDialog } from './components/ImportIndexDialog'
 import { downloadIndexMarkdown } from './lib/exportIndex'
@@ -92,7 +93,7 @@ export function App() {
   const [sort, setSort] = useState<Sort>('serial')
   const [toast, setToast] = useState('')
   const [dialog, setDialog] = useState<
-    'add' | 'import' | 'describe' | 'delete' | 'ai' | 'import-index' | null
+    'add' | 'import' | 'describe' | 'recategorize' | 'delete' | 'ai' | 'import-index' | null
   >(null)
 
   const deferredQuery = useDeferredValue(query)
@@ -273,6 +274,7 @@ export function App() {
         onAdd={() => setDialog('add')}
         onBatchImport={() => setDialog('import')}
         onBatchDescribe={() => setDialog('describe')}
+        onBatchRecategorize={() => setDialog('recategorize')}
         onBatchDelete={() => setDialog('delete')}
         onOpenAiSettings={() => setDialog('ai')}
         onImportIndex={() => setDialog('import-index')}
@@ -365,6 +367,18 @@ export function App() {
           onDone={(n) => {
             setDialog(null)
             flash(`已補上 ${n} 筆說明`)
+          }}
+        />
+      )}
+      {dialog === 'recategorize' && index && (
+        <BatchRecategorizeDialog
+          indexName={index}
+          entries={entries}
+          categories={rawCategories}
+          onClose={() => setDialog(null)}
+          onDone={(updated) => {
+            setDialog(null)
+            flash(`已更新 ${updated} 筆的分類`)
           }}
         />
       )}

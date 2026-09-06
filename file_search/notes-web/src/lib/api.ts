@@ -7,6 +7,14 @@ export interface Note {
   image: string
   /** 建立時間；「編輯視同重新建立」，所以其實是「最後動過的時間」。插圖不算「動過」，設圖不會更新它。 */
   created_at: string
+  /** 到期日，存檔格式（見 lib/format.ts 的 toStoredDueAt/fromStoredDueAt/dueStatus）；'' = 沒有到期日。 */
+  due_at: string
+}
+
+/** 垃圾桶裡的便利貼——「刪除」現在是先搬到這裡，不是真的消失，可以復原或
+ *  永久刪除（見 TrashDialog）。deleted_at 是進垃圾桶的時間。 */
+export interface TrashedNote extends Note {
+  deleted_at: string
 }
 
 /** note.image → 原圖 URL（點開的編輯視窗 `sheet-img` 用這個）；沒有圖回 null。 */
@@ -27,6 +35,7 @@ export interface NoteInput {
   title: string
   body: string
   tag: string
+  due_at: string
 }
 
 const BASE = '/api'
@@ -76,10 +85,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ids }),
     }).then((r) => r.deleted),
+  bulkRecategorize: (ids: string[], tag: string) =>
+    req<{ updated: number }>('/notes/bulk-recategorize', {
+      method: 'POST',
+      body: JSON.stringify({ ids, tag }),
+    }).then((r) => r.updated),
   exportJson: () => req<{ content: string }>('/notes/export').then((r) => r.content),
   importJson: (content: string) =>
     req<{ added: number; skipped: number }>('/notes/import', {
       method: 'POST',
       body: JSON.stringify({ content }),
     }),
+  trash: () => req<{ notes: TrashedNote[] }>('/notes/trash').then((r) => r.notes),
+  restore: (id: string) =>
+    req<{ note: Note }>(`/notes/trash/${id}/restore`, { method: 'POST' }).then((r) => r.note),
+  purge: (id: string) => req<void>(`/notes/trash/${id}`, { method: 'DELETE' }),
+  emptyTrash: () => req<{ removed: number }>('/notes/trash', { method: 'DELETE' }).then((r) => r.removed),
 }

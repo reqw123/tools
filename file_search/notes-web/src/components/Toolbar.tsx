@@ -1,5 +1,6 @@
 import {
-  Bot, CopyPlus, Download, HardDriveDownload, Plus, Search, Settings2, Sparkles, Trash2, Upload,
+  Bot, CopyPlus, Download, HardDriveDownload, Plus, Recycle, Search, Settings2, Sparkles, Tags, Trash2,
+  Upload,
 } from 'lucide-react'
 import type { AiTarget } from '../lib/ai'
 import type { TagCount } from './TagBar'
@@ -26,8 +27,10 @@ export function Toolbar({
   onExportJson,
   onImportJson,
   onBatchCreate,
+  onBatchRecategorize,
   onBatchDelete,
   onGenerateNotes,
+  onTrash,
 }: {
   query: string
   onQuery: (v: string) => void
@@ -49,8 +52,10 @@ export function Toolbar({
   onExportJson: () => void
   onImportJson: () => void
   onBatchCreate: () => void
+  onBatchRecategorize: () => void
   onBatchDelete: () => void
   onGenerateNotes: () => void
+  onTrash: () => void
 }) {
   return (
     <div className="bar">
@@ -122,8 +127,14 @@ export function Toolbar({
           >
             <Sparkles size={15} strokeWidth={2.2} aria-hidden />
           </button>
+          <button className="btn ghost icon" onClick={onBatchRecategorize} title="批次改標籤">
+            <Tags size={15} strokeWidth={2.2} aria-hidden />
+          </button>
           <button className="btn ghost icon" onClick={onBatchDelete} title="批次刪除">
             <Trash2 size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button className="btn ghost icon" onClick={onTrash} title="垃圾桶（刪除的便利貼可以在這裡復原）">
+            <Recycle size={15} strokeWidth={2.2} aria-hidden />
           </button>
           <button className="btn" onClick={onAdd}>
             <Plus size={16} strokeWidth={2.6} aria-hidden />

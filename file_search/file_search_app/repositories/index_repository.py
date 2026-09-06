@@ -219,6 +219,40 @@ class IndexRepository:
             atomic_write_text(md_path, "".join(out_lines))
         return updated
 
+    def update_categories_by_occurrences(self, md_path: Path, category_by_occurrence: dict) -> int:
+        """批次版的 update_row_by_occurrence()，只改分類（說明／路徑都不動）——
+        `category_by_occurrence` 是 {occurrence_index: 新分類}，一次讀寫整份
+        檔案，不是逐筆呼叫單筆版本（批次改分類一次可能是幾十上百列，逐筆重寫
+        整份檔案是 O(n×m)，數量一多會卡），跟 append_rows／
+        remove_rows_by_occurrences 同一種「整份只讀寫一次」的批次寫入。
+        回傳實際更新到幾列（occurrence 超出目前檔案範圍的不計入）。"""
+        if not category_by_occurrence:
+            return 0
+        text = md_path.read_text(encoding="utf-8")
+        out_lines = []
+        occurrence = 0
+        updated = 0
+        for line in text.splitlines(keepends=True):
+            stripped = line.strip()
+            m = _ROW_RE.match(stripped)
+            if m:
+                if occurrence in category_by_occurrence:
+                    new_category = _sanitize_cell(category_by_occurrence[occurrence])
+                    new_line = (
+                        f"| {_format_path_code(m.group('path'))} | {new_category} | "
+                        f"{m.group('description')} |\n"
+                    )
+                    out_lines.append(new_line)
+                    updated += 1
+                else:
+                    out_lines.append(line)
+                occurrence += 1
+            else:
+                out_lines.append(line)
+        if updated:
+            atomic_write_text(md_path, "".join(out_lines))
+        return updated
+
     def remove_missing_rows(self, md_path: Path):
         """回傳 (移除筆數, 完整新內容字串)——只移除「表格資料列且路徑檔案已不存在」的
         整行，其餘所有內容（說明文字、格式規定、表頭分隔線）原封不動保留。這裡不

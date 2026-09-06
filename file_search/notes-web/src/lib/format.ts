@@ -42,6 +42,35 @@ export function tiltOf(seed: number): number {
   return ((seed % 1000) / 1000) * 5 - 2.5
 }
 
+// 到期日提醒——純視覺提示，不主動跳通知，跟桌面版 sticky_note_service.py
+// 的 parse_due_date/format_due_date/due_status 同一套規則（那三個函式的
+// docstring 有完整理由）：存成當天 23:59:59（不是 00:00:00），到期日在今天
+// （含）以前算逾期，之後 2 天內算「快到期」。兩邊寫同一份 .sticky_notes.json，
+// 格式跟門檻都要一致，不然同一則便利貼在桌面版/網頁版會顯示不同的到期狀態。
+const DUE_SOON_DAYS = 2
+
+/** `<input type="date">` 給的 `YYYY-MM-DD` → 存檔用的完整 ISO（23:59:59）。
+ *  空字串（清除到期日）原樣回傳空字串。 */
+export function toStoredDueAt(dateOnly: string): string {
+  return dateOnly ? `${dateOnly}T23:59:59` : ''
+}
+
+/** 存檔格式的到期日 → `<input type="date">` 要顯示的 `YYYY-MM-DD`。空字串
+ *  或格式壞掉都當作沒有到期日。 */
+export function fromStoredDueAt(dueAt: string): string {
+  return dueAt ? dueAt.slice(0, 10) : ''
+}
+
+/** 卡片標色分類：`'overdue'`／`'soon'`／`''`（沒有到期日，或還早）。 */
+export function dueStatus(dueAt: string, now = new Date()): 'overdue' | 'soon' | '' {
+  if (!dueAt) return ''
+  const due = new Date(dueAt)
+  if (Number.isNaN(due.getTime())) return ''
+  if (due < now) return 'overdue'
+  if (due.getTime() - now.getTime() <= DUE_SOON_DAYS * 86_400_000) return 'soon'
+  return ''
+}
+
 /** 位元組數 → 「1.2 MB」這種可讀字串，給「AI 生成便利貼」的選檔面板用。 */
 export function humanSize(bytes: number | undefined): string {
   if (bytes === undefined) return ''

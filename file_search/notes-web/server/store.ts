@@ -17,13 +17,18 @@ import { dropThumbs } from './note-thumb'
  * 儲存層——**直接讀寫桌面版的 `indexes/.sticky_notes.json`**，網頁和 Tkinter
  * 桌面版共用同一份資料。格式跟 `sticky_note_repository.py` 一致：
  *
- *   { "notes": [ { id, title, body, tag, created_at }, ... ], "panel": { "visible": bool } }
+ *   { "notes": [ { id, title, body, tag, image, due_at, created_at }, ... ],
+ *     "trash": [ { ...同上欄位, deleted_at }, ... ],
+ *     "panel": { "visible": bool } }
  *
- * - 只認得那 5 個欄位（跟 Python 的 `_parse_note` 一樣），寫檔時也只寫這 5 個。
+ * - `notes` 只認得那 7 個欄位（跟 Python 的 `_parse_note` 一樣），寫檔時也
+ *   只寫這 7 個；`trash` 多一個 `deleted_at`（見「垃圾桶」那一節）。
  * - `panel` 及其他頂層鍵原封保留，不動桌面版的面板狀態。
  * - 原子寫入：先寫暫存檔再 rename，寫到一半崩潰不會留下半截檔案（對應
  *   `atomic_io.py`）。
  * - 「編輯視同重新建立」：update 會把 `created_at` 設成現在，跟桌面版一致。
+ * - 「刪除」現在是移到 `trash`，不是真的消失——見 deleteNote/deleteNotes
+ *   跟垃圾桶那幾個函式。
  */
 
 export interface Note {
@@ -35,6 +40,15 @@ export interface Note {
    *  只存檔名不存整包 base64——共用的 .sticky_notes.json 不能被圖撐大。 */
   image: string
   created_at: string
+  /** ISO 格式（含時間，見桌面版 sticky_note_service.parse_due_date），
+   *  '' = 沒有到期日。純視覺提示用，不觸發任何主動通知。 */
+  due_at: string
+}
+
+/** 垃圾桶裡的便利貼——刪除（單筆或批次）不是真的消失，先搬到這裡，可以
+ *  復原或永久刪除（見「垃圾桶」那一節）。deleted_at 是進垃圾桶的時間。 */
+export interface TrashedNote extends Note {
+  deleted_at: string
 }
 
 export const projectRoot = join(import.meta.dirname, '..')
@@ -49,21 +63,24 @@ export const noteImagesDir = join(dirname(FILE), '.sticky_note_images')
 
 interface RawFile {
   notes: unknown[]
+  trash: unknown[]
   panel?: unknown
   [k: string]: unknown
 }
 
 function readRaw(): RawFile {
-  if (!existsSync(FILE)) return { notes: [], panel: { visible: true } }
+  if (!existsSync(FILE)) return { notes: [], trash: [], panel: { visible: true } }
   try {
     const data = JSON.parse(readFileSync(FILE, 'utf-8')) as unknown
     if (data && typeof data === 'object' && Array.isArray((data as RawFile).notes)) {
-      return data as RawFile
+      const raw = data as RawFile
+      if (!Array.isArray(raw.trash)) raw.trash = []
+      return raw
     }
   } catch {
     /* 損毀 → 當成空的，跟桌面版 _read_raw 一樣不拋例外 */
   }
-  return { notes: [], panel: { visible: true } }
+  return { notes: [], trash: [], panel: { visible: true } }
 }
 
 function writeRaw(raw: RawFile): void {
@@ -85,15 +102,32 @@ function parseNote(x: unknown): Note | null {
     body: typeof o.body === 'string' ? o.body : '',
     tag: typeof o.tag === 'string' ? o.tag : '',
     image: typeof o.image === 'string' ? o.image : '',
+    due_at: typeof o.due_at === 'string' ? o.due_at : '',
     created_at: typeof o.created_at === 'string' && o.created_at ? o.created_at : localIso(),
   }
 }
 
 function serialize(n: Note): Record<string, string> {
-  return { id: n.id, title: n.title, body: n.body, tag: n.tag, image: n.image, created_at: n.created_at }
+  return {
+    id: n.id, title: n.title, body: n.body, tag: n.tag, image: n.image,
+    due_at: n.due_at, created_at: n.created_at,
+  }
 }
 
-/** 刪掉一張插圖檔——檔名可能已經不在了（手動刪過、或從沒存成功），忽略。 */
+function parseTrashedNote(x: unknown): TrashedNote | null {
+  const n = parseNote(x)
+  if (!n) return null
+  const o = x as Record<string, unknown>
+  return { ...n, deleted_at: typeof o.deleted_at === 'string' && o.deleted_at ? o.deleted_at : localIso() }
+}
+
+function serializeTrashed(t: TrashedNote): Record<string, string> {
+  return { ...serialize(t), deleted_at: t.deleted_at }
+}
+
+/** 刪掉一張插圖檔——檔名可能已經不在了（手動刪過、或從沒存成功），忽略。
+ *  只有「垃圾桶永久刪除」才會呼叫這個；一般的 deleteNote/deleteNotes 現在
+ *  只是把便利貼搬進垃圾桶，圖片要留著，復原時才用得到。 */
 function unlinkImage(image: string): void {
   if (!image) return
   try {
@@ -102,6 +136,46 @@ function unlinkImage(image: string): void {
     /* 檔案系統層級的問題不該擋住便利貼本身的刪除 */
   }
   dropThumbs(image) // 一併清掉牆用的快取縮圖（見 note-thumb.ts）
+}
+
+// 匯出/匯入內嵌插圖用——常見圖片副檔名 → MIME type，涵蓋範圍跟前端
+// FileBrowser/scanFolder 的圖片類別一致，不需要額外套件做完整偵測。
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+}
+
+/** 讀插圖檔案、編成 `data:<mime>;base64,...`——讀不到（檔案不存在、權限
+ *  問題）就回 undefined，呼叫端當作「這筆沒有可內嵌的圖」處理。 */
+function readImageDataUri(filename: string): string | undefined {
+  try {
+    const buf = readFileSync(join(noteImagesDir, filename))
+    const mime = IMAGE_MIME[extname(filename).toLowerCase()] ?? 'application/octet-stream'
+    return `data:${mime};base64,${buf.toString('base64')}`
+  } catch {
+    return undefined
+  }
+}
+
+/** `readImageDataUri()` 的反向操作——解出 base64 內容寫回插圖資料夾。目標
+ *  檔名已經存在，或 data URI 格式不對／解碼失敗，都安靜跳過（筆記本身照常
+ *  匯入，只是插圖沿用本機既有的，或維持沒有圖）。 */
+function writeImageDataUri(filename: string, dataUri: string): void {
+  const target = join(noteImagesDir, filename)
+  if (existsSync(target)) return
+  const comma = dataUri.indexOf(',')
+  if (comma < 0) return
+  try {
+    const buf = Buffer.from(dataUri.slice(comma + 1), 'base64')
+    if (!existsSync(noteImagesDir)) mkdirSync(noteImagesDir, { recursive: true })
+    writeFileSync(target, buf)
+  } catch {
+    /* 壞掉的 base64 就不寫，筆記本身照常匯入 */
+  }
 }
 
 /** 本地時間的 ISO 字串（無時區），Python 的 datetime.fromisoformat 讀得懂。 */
@@ -124,13 +198,14 @@ export function getNote(id: string): Note | undefined {
   return listNotes().find((n) => n.id === id)
 }
 
-export function createNote(input: { title: string; body?: string; tag?: string }): Note {
+export function createNote(input: { title: string; body?: string; tag?: string; due_at?: string }): Note {
   const note: Note = {
     id: crypto.randomUUID().replace(/-/g, ''),
     title: input.title.trim(),
     body: (input.body ?? '').trim(),
     tag: (input.tag ?? '').trim(),
     image: '',
+    due_at: input.due_at ?? '',
     created_at: localIso(),
   }
   const raw = readRaw()
@@ -160,7 +235,7 @@ export function setNoteImage(id: string, image: string): Note | undefined {
 
 export function updateNote(
   id: string,
-  patch: { title?: string; body?: string; tag?: string },
+  patch: { title?: string; body?: string; tag?: string; due_at?: string },
 ): Note | undefined {
   const raw = readRaw()
   let updated: Note | undefined
@@ -172,6 +247,7 @@ export function updateNote(
       title: patch.title !== undefined ? patch.title.trim() : n.title,
       body: patch.body !== undefined ? patch.body.trim() : n.body,
       tag: patch.tag !== undefined ? patch.tag.trim() : n.tag,
+      due_at: patch.due_at !== undefined ? patch.due_at : n.due_at,
       created_at: localIso(), // 編輯視同重新建立
     }
     return serialize(updated)
@@ -181,14 +257,15 @@ export function updateNote(
   return updated
 }
 
+/** 「刪除」現在是「移到垃圾桶」，不是真的消失——復原見 restoreNote()，
+ *  永久刪除見 purgeNote()/emptyTrash()。 */
 export function deleteNote(id: string): boolean {
   const raw = readRaw()
-  const before = raw.notes.length
-  const dropped = raw.notes.map(parseNote).find((n) => n?.id === id)
+  const target = raw.notes.map(parseNote).find((n) => n?.id === id)
+  if (!target) return false
   raw.notes = raw.notes.filter((x) => (parseNote(x)?.id ?? null) !== id)
-  if (raw.notes.length === before) return false
+  raw.trash = [...raw.trash, serializeTrashed({ ...target, deleted_at: localIso() })]
   writeRaw(raw)
-  if (dropped?.image) unlinkImage(dropped.image)
   return true
 }
 
@@ -204,6 +281,7 @@ export function createNotes(
     body: (it.body ?? '').trim(),
     tag: (it.tag ?? '').trim(),
     image: '',
+    due_at: '',
     created_at: localIso(new Date(base - i)),
   }))
   const raw = readRaw()
@@ -212,23 +290,91 @@ export function createNotes(
   return made
 }
 
-/** 批次刪除——回傳實際刪掉幾筆。整份檔案只讀一次、寫一次。 */
+/**
+ * 批次改標籤——統一改成同一個標籤（空字串＝清空標籤），只動標籤欄，
+ * 標題／內容／到期日都不變，也不當成「重新建立」（不更新 created_at，
+ * 跟桌面版 update_tags() 同一個理由：這是分類整理，不是內容變動）。
+ * 整份檔案只讀一次、寫一次。回傳實際改到幾筆。
+ */
+export function updateNotesTag(ids: string[], tag: string): number {
+  const want = new Set(ids)
+  if (want.size === 0) return 0
+  const newTag = tag.trim()
+  const raw = readRaw()
+  let changed = 0
+  raw.notes = raw.notes.map((x) => {
+    const n = parseNote(x)
+    if (!n || !want.has(n.id)) return x
+    changed += 1
+    return serialize({ ...n, tag: newTag })
+  })
+  if (changed === 0) return 0
+  writeRaw(raw)
+  return changed
+}
+
+/** 批次「刪除」——同上，移到垃圾桶而不是永久刪除。回傳實際移進垃圾桶幾筆。
+ *  整份檔案只讀一次、寫一次。 */
 export function deleteNotes(ids: string[]): number {
   const want = new Set(ids)
   if (want.size === 0) return 0
   const raw = readRaw()
-  const before = raw.notes.length
-  const droppedImages = raw.notes
+  const toTrash = raw.notes
     .map(parseNote)
-    .filter((n): n is Note => n !== null && want.has(n.id) && !!n.image)
-    .map((n) => n.image)
+    .filter((n): n is Note => n !== null && want.has(n.id))
+  if (toTrash.length === 0) return 0
   raw.notes = raw.notes.filter((x) => !want.has(parseNote(x)?.id ?? ''))
-  const removed = before - raw.notes.length
-  if (removed) {
-    writeRaw(raw)
-    for (const img of droppedImages) unlinkImage(img)
+  const now = localIso()
+  raw.trash = [...raw.trash, ...toTrash.map((n) => serializeTrashed({ ...n, deleted_at: now }))]
+  writeRaw(raw)
+  return toTrash.length
+}
+
+// ── 垃圾桶 ───────────────────────────────────────────────────────
+
+export function listTrash(): TrashedNote[] {
+  const trash = readRaw().trash.map(parseTrashedNote).filter((t): t is TrashedNote => t !== null)
+  return trash.sort((a, b) => (a.deleted_at < b.deleted_at ? 1 : a.deleted_at > b.deleted_at ? -1 : 0))
+}
+
+/** 從垃圾桶救回便利貼清單——保留原本的 created_at，不當成「重新建立」
+ *  （那是編輯的語意；復原只是回到原本該在的時間順序位置）。找不到回
+ *  undefined。 */
+export function restoreNote(id: string): Note | undefined {
+  const raw = readRaw()
+  const target = raw.trash.map(parseTrashedNote).find((t) => t?.id === id)
+  if (!target) return undefined
+  raw.trash = raw.trash.filter((x) => (parseTrashedNote(x)?.id ?? null) !== id)
+  const restored: Note = {
+    id: target.id, title: target.title, body: target.body,
+    tag: target.tag, image: target.image, due_at: target.due_at, created_at: target.created_at,
   }
-  return removed
+  raw.notes = [...raw.notes, serialize(restored)]
+  writeRaw(raw)
+  return restored
+}
+
+/** 從垃圾桶永久刪除單一筆——這裡才是真的沒得救，連帶清掉對應的插圖檔案。
+ *  回傳有沒有真的刪到。 */
+export function purgeNote(id: string): boolean {
+  const raw = readRaw()
+  const target = raw.trash.map(parseTrashedNote).find((t) => t?.id === id)
+  if (!target) return false
+  raw.trash = raw.trash.filter((x) => (parseTrashedNote(x)?.id ?? null) !== id)
+  writeRaw(raw)
+  if (target.image) unlinkImage(target.image)
+  return true
+}
+
+/** 清空整個垃圾桶、連帶清掉所有插圖檔案。回傳清掉幾筆。 */
+export function emptyTrash(): number {
+  const raw = readRaw()
+  const parsed = raw.trash.map(parseTrashedNote).filter((t): t is TrashedNote => t !== null)
+  if (parsed.length === 0) return 0
+  raw.trash = []
+  writeRaw(raw)
+  for (const t of parsed) if (t.image) unlinkImage(t.image)
+  return parsed.length
 }
 
 export function tagCounts(): { tag: string; count: number }[] {
@@ -247,8 +393,22 @@ export const notesFilePath = FILE
 // 桌面版匯出的檔案可以在這裡匯入，這裡匯出的也能拿去桌面版匯入。*不含*
 // `panel` 狀態——那是這台機器/這個視窗自己的顯示設定，不該跟著搬到別的地方。
 
+/**
+ * 有插圖的筆記會把圖片內容一併用 base64 內嵌成 `image_data`（見
+ * `readImageDataUri()`）——只存檔名的話，搬到別台電腦「檔名對得上但圖片
+ * 根本沒過去」，插圖連結會整個斷掉；內嵌之後 `importNotesJson()` 才有
+ * 東西可以寫回本機的插圖資料夾。
+ */
 export function exportNotesJson(): string {
-  return JSON.stringify({ notes: listNotes().map(serialize) }, null, 2)
+  const items = listNotes().map((n) => {
+    const item: Record<string, unknown> = serialize(n)
+    if (n.image) {
+      const dataUri = readImageDataUri(n.image)
+      if (dataUri) item.image_data = dataUri
+    }
+    return item
+  })
+  return JSON.stringify({ notes: items }, null, 2)
 }
 
 export interface ImportNotesResult {
@@ -261,7 +421,9 @@ export interface ImportNotesResult {
  * 只新增真的沒有的（同一份備份重複匯入、或兩邊資料剛好有重疊都不會產生
  * 重複筆）。`text` 不是合法 JSON、或格式對不上（不是 `{"notes":[...]}`）
  * 會拋錯，交給呼叫端顯示錯誤訊息；單筆格式不符的項目安靜跳過（跟
- * `readRaw()` 對主檔案的容錯一致），不會讓整批匯入失敗。
+ * `readRaw()` 對主檔案的容錯一致），不會讓整批匯入失敗。筆記帶
+ * `image_data`（內嵌的 base64 圖片）時，順便把圖片寫回本機的插圖資料夾——
+ * 目標檔名已經存在就跳過寫入，筆記本身還是照常匯入。
  */
 export function importNotesJson(text: string): ImportNotesResult {
   let data: unknown
@@ -273,7 +435,16 @@ export function importNotesJson(text: string): ImportNotesResult {
   if (!data || typeof data !== 'object' || !Array.isArray((data as RawFile).notes)) {
     throw new Error('格式不對——找不到 notes 陣列')
   }
-  const incoming = (data as RawFile).notes.map(parseNote).filter((n): n is Note => n !== null)
+  const incoming: Note[] = []
+  for (const item of (data as RawFile).notes) {
+    const n = parseNote(item)
+    if (!n) continue
+    if (n.image && item && typeof item === 'object') {
+      const dataUri = (item as Record<string, unknown>).image_data
+      if (typeof dataUri === 'string') writeImageDataUri(n.image, dataUri)
+    }
+    incoming.push(n)
+  }
   const raw = readRaw()
   const existingIds = new Set(
     raw.notes.map((x) => parseNote(x)?.id).filter((id): id is string => !!id),

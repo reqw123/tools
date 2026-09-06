@@ -120,6 +120,14 @@ STICKY_TOAST_FG = "#166534"
 STICKY_TOOLTIP_BG = "#1f2937"
 STICKY_TOOLTIP_FG = "#ffffff"
 
+# 到期日提醒——純視覺提示，不主動跳通知。到期日在今天（含）之前算逾期，
+# 之後 STICKY_DUE_SOON_DAYS 天內算「快到期」，兩者以外算「還早」不特別標色。
+STICKY_DUE_SOON_DAYS = 2
+STICKY_DUE_OVERDUE_BG = "#fecaca"
+STICKY_DUE_OVERDUE_FG = "#991b1b"
+STICKY_DUE_SOON_BG = "#fde68a"
+STICKY_DUE_SOON_FG = "#92400e"
+
 # 預覽內容字級：跟 VS Code 的 Ctrl+=/Ctrl+- 縮放同一種邏輯，Ctrl+0 回到預設值。
 PREVIEW_TEXT_DEFAULT_SIZE = 11
 PREVIEW_TEXT_MIN_SIZE = 8

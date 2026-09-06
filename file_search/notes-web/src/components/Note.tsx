@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { noteThumbUrl, type Note as NoteT } from '../lib/api'
 import { paperVars } from '../lib/color'
-import { seedOf, stamp, tiltOf } from '../lib/format'
+import { dueStatus, fromStoredDueAt, seedOf, stamp, tiltOf } from '../lib/format'
 import { Body } from './Body'
 
 const EDGE_MARGIN = 24 // 拖到離視窗邊緣多近算「要彈出去變懸浮視窗」
@@ -147,6 +147,11 @@ export function Note({
         />
       )}
       <Body text={note.body} limit={5} />
+      {dueStatus(note.due_at) && (
+        <p className={`due-badge ${dueStatus(note.due_at)}`}>
+          {dueStatus(note.due_at) === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{fromStoredDueAt(note.due_at)}
+        </p>
+      )}
       <footer>
         <span className="tag-pill">{note.tag || '未分類'}</span>
         <span className="stamp">{stamp(note.created_at)}</span>

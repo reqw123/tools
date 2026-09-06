@@ -78,6 +78,37 @@ def test_update_row_by_occurrence_out_of_range(data_dir):
     assert r.update_row_by_occurrence(md, 5, "x", "y") is False
 
 
+def test_update_categories_by_occurrences_batches_writes(data_dir):
+    r = repo(data_dir)
+    md = make_index_md(data_dir / "a.md", [
+        ("C:/1.txt", "old", "keep-1"),
+        ("C:/2.txt", "old", "keep-2"),
+        ("C:/3.txt", "old", "keep-3"),
+    ])
+    updated = r.update_categories_by_occurrences(md, {0: "new", 2: "new"})
+    assert updated == 2
+    entries = r.load_entries(md)
+    assert [e.category for e in entries] == ["new", "old", "new"]
+    # description and path untouched
+    assert [e.description for e in entries] == ["keep-1", "keep-2", "keep-3"]
+    assert entries[0].path == "C:/1.txt"
+
+
+def test_update_categories_by_occurrences_out_of_range_ignored(data_dir):
+    r = repo(data_dir)
+    md = make_index_md(data_dir / "a.md", [("C:/a.txt", "old", "")])
+    assert r.update_categories_by_occurrences(md, {5: "new"}) == 0
+    assert r.load_entries(md)[0].category == "old"
+
+
+def test_update_categories_by_occurrences_empty_updates_is_noop(data_dir):
+    r = repo(data_dir)
+    md = make_index_md(data_dir / "a.md", [("C:/a.txt", "old", "")])
+    before = md.read_text(encoding="utf-8")
+    assert r.update_categories_by_occurrences(md, {}) == 0
+    assert md.read_text(encoding="utf-8") == before
+
+
 def test_remove_rows_by_occurrences_keeps_the_rest(data_dir):
     r = repo(data_dir)
     md = make_index_md(data_dir / "a.md", [

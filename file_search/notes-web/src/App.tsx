@@ -12,8 +12,10 @@ import { AiAnswerDialog } from './components/AiAnswerDialog'
 import { AiSettingsDialog } from './components/AiSettingsDialog'
 import { BatchCreateDialog } from './components/BatchCreateDialog'
 import { BatchDeleteDialog } from './components/BatchDeleteDialog'
+import { BatchRecategorizeDialog } from './components/BatchRecategorizeDialog'
 import { GenerateNotesDialog } from './components/GenerateNotesDialog'
 import { ImportNotesDialog } from './components/ImportNotesDialog'
+import { TrashDialog } from './components/TrashDialog'
 import { downloadStickyNotesHtml } from './lib/exportHtml'
 import { downloadNotesJson } from './lib/exportJson'
 import { getDefaultTag, setDefaultTag } from './lib/defaultTag'
@@ -57,9 +59,11 @@ export function App() {
   const aiSearch = useAiSearch()
 
   const [batchCreate, setBatchCreate] = useState(false)
+  const [batchRecategorize, setBatchRecategorize] = useState(false)
   const [batchDelete, setBatchDelete] = useState(false)
   const [generateNotes, setGenerateNotes] = useState(false)
   const [importNotes, setImportNotes] = useState(false)
+  const [trashOpen, setTrashOpen] = useState(false)
   const [defaultTag, setDefTag] = useState(getDefaultTag)
   const applyDefaultTag = useCallback((t: string) => {
     setDefaultTag(t)
@@ -258,7 +262,8 @@ export function App() {
   }, [clearAi])
 
   const anyDialogOpen =
-    !!dialog || batchCreate || batchDelete || generateNotes || importNotes || aiSettingsOpen
+    !!dialog || batchCreate || batchRecategorize || batchDelete || generateNotes || importNotes ||
+    trashOpen || aiSettingsOpen
   // 已經在裁切中就不能再拉一次框——先恢復完整畫面才能重新選——不然兩個裁切
   // 範圍疊在一起的語意會很奇怪。
   const cropActive = canFloat && !anyDialogOpen && !croppedIds
@@ -324,8 +329,10 @@ export function App() {
         onExportJson={() => void downloadNotesJson()}
         onImportJson={() => setImportNotes(true)}
         onBatchCreate={() => setBatchCreate(true)}
+        onBatchRecategorize={() => setBatchRecategorize(true)}
         onBatchDelete={() => setBatchDelete(true)}
         onGenerateNotes={() => setGenerateNotes(true)}
+        onTrash={() => setTrashOpen(true)}
       />
 
       {aiResult && (
@@ -395,6 +402,13 @@ export function App() {
           }}
         />
       )}
+      {batchRecategorize && (
+        <BatchRecategorizeDialog
+          notes={list}
+          knownTags={knownTags}
+          onClose={() => setBatchRecategorize(false)}
+        />
+      )}
       {batchDelete && (
         <BatchDeleteDialog notes={list} onClose={() => setBatchDelete(false)} />
       )}
@@ -412,6 +426,14 @@ export function App() {
           onClose={() => {
             setImportNotes(false)
             setAiResult(null) // 匯入可能新增便利貼，AI 搜尋命中清單就不保證對得上了
+          }}
+        />
+      )}
+      {trashOpen && (
+        <TrashDialog
+          onClose={() => {
+            setTrashOpen(false)
+            setAiResult(null) // 復原可能讓便利貼重新出現，AI 搜尋命中清單就不保證對得上了
           }}
         />
       )}

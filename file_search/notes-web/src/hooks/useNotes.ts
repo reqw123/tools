@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type Note, type NoteInput } from '../lib/api'
 
 const KEY = ['notes'] as const
+const TRASH_KEY = ['notes-trash'] as const
 
 /** 便利貼清單——單一資料來源。任何新增／編輯／刪除成功後都會讓它重抓，
  *  所以 UI（整面牆、分類 chip、統計數字）會自動跟著資料變。 */
@@ -56,6 +57,7 @@ export function useRemoveNoteImage() {
 export function useDeleteNote() {
   const qc = useQueryClient()
   return useMutation({
+    // 「刪除」現在是移到垃圾桶（見 server/store.ts deleteNote），不是真的消失。
     mutationFn: (id: string) => api.remove(id),
     // 樂觀更新：先從畫面拿掉，失敗再還原。
     onMutate: async (id) => {
@@ -67,7 +69,43 @@ export function useDeleteNote() {
     onError: (_e, _id, ctx) => {
       if (ctx?.prev) qc.setQueryData(KEY, ctx.prev)
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: KEY })
+      qc.invalidateQueries({ queryKey: TRASH_KEY })
+    },
+  })
+}
+
+// ── 垃圾桶 ───────────────────────────────────────────────────────
+
+export function useTrash() {
+  return useQuery({ queryKey: TRASH_KEY, queryFn: api.trash })
+}
+
+export function useRestoreNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.restore(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY })
+      qc.invalidateQueries({ queryKey: TRASH_KEY })
+    },
+  })
+}
+
+export function usePurgeNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.purge(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: TRASH_KEY }),
+  })
+}
+
+export function useEmptyTrash() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.emptyTrash(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: TRASH_KEY }),
   })
 }
 
@@ -90,9 +128,18 @@ export function useImportNotesJson() {
   })
 }
 
+export function useBulkRecategorizeNotes() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ids, tag }: { ids: string[]; tag: string }) => api.bulkRecategorize(ids, tag),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  })
+}
+
 export function useBulkDeleteNotes() {
   const qc = useQueryClient()
   return useMutation({
+    // 「刪除」現在是移到垃圾桶（見 server/store.ts deleteNotes），不是真的消失。
     mutationFn: (ids: string[]) => api.bulkDelete(ids),
     onMutate: async (ids) => {
       await qc.cancelQueries({ queryKey: KEY })
@@ -104,6 +151,9 @@ export function useBulkDeleteNotes() {
     onError: (_e, _ids, ctx) => {
       if (ctx?.prev) qc.setQueryData(KEY, ctx.prev)
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: KEY })
+      qc.invalidateQueries({ queryKey: TRASH_KEY })
+    },
   })
 }

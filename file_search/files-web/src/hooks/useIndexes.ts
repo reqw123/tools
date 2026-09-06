@@ -100,6 +100,15 @@ export function useBulkDescribe(name: string | null) {
   })
 }
 
+export function useBulkRecategorize(name: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (updates: { serial: number; path: string; category: string }[]) =>
+      api.bulkRecategorize(name!, updates),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['index', name] }),
+  })
+}
+
 export function useBulkDelete(name: string | null) {
   const qc = useQueryClient()
   return useMutation({

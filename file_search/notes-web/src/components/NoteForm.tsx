@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { NoteInput } from '../lib/api'
+import { fromStoredDueAt, toStoredDueAt } from '../lib/format'
 import { TagInput } from './TagInput'
 
 export function NoteForm({
@@ -25,6 +26,7 @@ export function NoteForm({
   const [title, setTitle] = useState(initial?.title ?? '')
   const [tag, setTag] = useState(initial?.tag ?? defaultTag ?? '')
   const [body, setBody] = useState(initial?.body ?? '')
+  const [dueDate, setDueDate] = useState(fromStoredDueAt(initial?.due_at ?? ''))
   const [touched, setTouched] = useState(false)
 
   const titleError = touched && !title.trim() ? '標題不能留空' : ''
@@ -36,7 +38,7 @@ export function NoteForm({
         e.preventDefault()
         setTouched(true)
         if (!title.trim()) return
-        onSubmit({ title: title.trim(), tag: tag.trim(), body })
+        onSubmit({ title: title.trim(), tag: tag.trim(), body, due_at: toStoredDueAt(dueDate) })
       }}
     >
       <label>
@@ -63,6 +65,41 @@ export function NoteForm({
           maxLength={60}
           placeholder="例如：每日、待辦、購物"
         />
+      </label>
+
+      <label>
+        到期日（可留空；卡片會依到期日標色提醒）
+        <div className="due-row">
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          {(
+            [
+              ['今天', 0],
+              ['明天', 1],
+              ['3天後', 3],
+              ['一週後', 7],
+            ] as const
+          ).map(([label, days]) => (
+            <button
+              key={label}
+              type="button"
+              className="btn sm ghost"
+              onClick={() => {
+                const d = new Date()
+                d.setDate(d.getDate() + days)
+                setDueDate(
+                  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+                )
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          {dueDate && (
+            <button type="button" className="btn sm ghost" onClick={() => setDueDate('')}>
+              清除
+            </button>
+          )}
+        </div>
       </label>
 
       <label>

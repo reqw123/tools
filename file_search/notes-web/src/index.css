@@ -546,6 +546,29 @@ body {
   border-radius: 3px;
   margin: 0 0 0.85rem;
   background: color-mix(in srgb, currentColor 6%, transparent);
+  cursor: zoom-in;
+}
+
+/* 便利貼卡片裡的插圖有時候還是看不清楚——雙擊放大，蓋在最上層、不受便利貼
+   視窗本身的寬高限制，撐到整個畫面能放的最大尺寸（不會超出螢幕，不然反而
+   要一直捲動找不到重點）。 */
+.zoom-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.86);
+  cursor: zoom-out;
+  animation: fade 0.15s ease;
+}
+.zoom-img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  cursor: zoom-out;
 }
 .lines {
   list-style: none;
@@ -613,6 +636,25 @@ body {
   letter-spacing: 0.06em;
   color: color-mix(in srgb, var(--paper-ink) 52%, transparent);
   font-variant-numeric: tabular-nums;
+}
+
+/* 到期日提醒——純視覺提示，配色跟桌面版 config.py 的到期日相關色彩常數
+   對齊，同一則便利貼在兩邊看起來是同一種「急迫程度」。 */
+.due-badge {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  margin: 0.4rem 0 0;
+  width: fit-content;
+}
+.due-badge.overdue {
+  background: #fecaca;
+  color: #991b1b;
+}
+.due-badge.soon {
+  background: #fde68a;
+  color: #92400e;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -789,6 +831,16 @@ body {
   color: #b23b2e;
   font-size: 0.8rem;
   font-weight: 400;
+}
+.due-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.due-row input[type='date'] {
+  width: auto;
+  flex: 0 1 auto;
 }
 
 /* ─── theme toggle ──────────────────────────────────────────────── */
@@ -1109,6 +1161,30 @@ body {
   font-size: 0.68rem;
   color: rgba(31, 41, 55, 0.6);
   font-variant-numeric: tabular-nums;
+}
+
+/* 垃圾桶清單列——沒有勾選框，改成「標題+meta」跟「復原/永久刪除按鈕」
+   兩端對齊，跟 .bd-list li label 同樣的內距，視覺上維持同一套語言。 */
+.tr-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  color: #1f2937;
+}
+.tr-row > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.tr-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 .bd-empty {
   padding: 1.2rem 0.6rem;

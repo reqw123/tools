@@ -174,4 +174,12 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ updates }),
     }),
+  // 跟 bulkDescribe 是同一支後端端點（PATCH .../entries 本來就吃 category，
+  // 只是「批次補說明」從沒送過這個欄位）——這裡只送 category，省略的
+  // description 沿用原值，見 server/store.ts updateRowsByOccurrences()。
+  bulkRecategorize: (name: string, updates: { serial: number; path: string; category: string }[]) =>
+    req<{ updated: number }>(`/indexes/${encodeURIComponent(name)}/entries`, {
+      method: 'PATCH',
+      body: JSON.stringify({ updates }),
+    }),
 }

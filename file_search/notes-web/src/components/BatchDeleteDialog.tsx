@@ -70,7 +70,9 @@ export function BatchDeleteDialog({
           ×
         </button>
         <h2>批次刪除</h2>
-        <p className="dim">勾選要刪除的便利貼（預設全部不勾選，只有勾選的會被刪除；此動作無法復原）。</p>
+        <p className="dim">
+          勾選要刪除的便利貼（預設全部不勾選，只有勾選的會被刪除；會先移到垃圾桶，之後還能復原）。
+        </p>
 
         <div className="bd-controls">
           <input

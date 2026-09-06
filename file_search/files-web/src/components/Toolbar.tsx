@@ -8,6 +8,7 @@ import {
   Search,
   Settings2,
   Tag,
+  Tags,
   Trash2,
   Upload,
 } from 'lucide-react'
@@ -43,6 +44,7 @@ export function Toolbar({
   onAdd,
   onBatchImport,
   onBatchDescribe,
+  onBatchRecategorize,
   onBatchDelete,
   onOpenAiSettings,
   onImportIndex,
@@ -74,6 +76,7 @@ export function Toolbar({
   onAdd: () => void
   onBatchImport: () => void
   onBatchDescribe: () => void
+  onBatchRecategorize: () => void
   onBatchDelete: () => void
   onOpenAiSettings: () => void
   onImportIndex: () => void
@@ -154,6 +157,14 @@ export function Toolbar({
             title="對說明是空的項目擷取內容（或用 AI）逐筆補上說明"
           >
             <PencilLine size={14} strokeWidth={2.2} aria-hidden /> 批次補說明
+          </button>
+          <button
+            className="btn sm"
+            onClick={onBatchRecategorize}
+            disabled={!index}
+            title="勾選項目，統一改成同一個分類"
+          >
+            <Tags size={14} strokeWidth={2.2} aria-hidden /> 批次改分類
           </button>
           <button
             className="btn sm"

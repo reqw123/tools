@@ -153,6 +153,19 @@ class IndexService:
                 total_removed += removed
         return total_removed
 
+    def update_categories(self, entries, category: str) -> int:
+        """批次改分類——把選中的項目分類統一改成同一個值，說明／路徑都不動。
+        依每筆實際的來源索引檔案分組，各自只寫一次（跟 delete_entries 同一種
+        分組寫入模式，「全部索引」聚合模式下橫跨多份檔案也只各寫一次）。
+        回傳實際更新了幾筆。"""
+        by_origin = defaultdict(dict)
+        for entry in entries:
+            by_origin[entry.source_index][entry.row_index] = category
+        total = 0
+        for origin, row_updates in by_origin.items():
+            total += self._index_repo.update_categories_by_occurrences(origin, row_updates)
+        return total
+
     # ── 清除失效項目 ─────────────────────────────────────────────────
 
     def preview_cleanup(self, files):

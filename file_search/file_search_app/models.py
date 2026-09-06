@@ -65,6 +65,29 @@ class StickyNote:
     # 編輯過的便利貼會把網頁版加的圖弄丟（兩邊共用同一份 .sticky_notes.json，
     # 序列化時只寫自己認得的欄位）。
     image: str = ""
+    # ISO 格式（含時間，見 sticky_note_service.parse_due_date），空字串代表
+    # 沒有到期日。純視覺提示用，不觸發任何主動通知。
+    due_at: str = ""
+
+
+@dataclass
+class TrashedStickyNote:
+    """垃圾桶裡的便利貼——刪除（單筆或批次）不再直接從資料裡消失，而是先搬
+    到這裡，使用者可以之後在「🗑️ 垃圾桶」對話框復原，或永久刪除。欄位跟
+    StickyNote 一模一樣，只多一個 deleted_at（進垃圾桶的時間，垃圾桶清單
+    依這個由新到舊排）。刻意存成獨立清單、不是在 StickyNote 上加一個
+    deleted 旗標——這樣 StickyNoteRepository.load_notes() 永遠只回傳「還在
+    使用中」的筆記，不用擔心哪個既有呼叫端忘記多濾一層條件、把垃圾桶裡的
+    東西也顯示出來。"""
+
+    id: str
+    title: str
+    body: str
+    tag: str
+    created_at: datetime
+    image: str
+    deleted_at: datetime
+    due_at: str = ""
 
 
 @dataclass
