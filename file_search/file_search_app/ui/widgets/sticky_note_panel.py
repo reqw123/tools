@@ -1,6 +1,9 @@
 """左側常駐便利貼面板——顯示彩色小卡片清單（依標籤自動配色），提供關鍵字＋
 標籤篩選、AI 自然語言搜尋、單擊複製、右鍵選單編輯／刪除，頂端「➕新增」
-「📤匯出」「🗑️批次刪除」按鈕跟空白處右鍵「新增便利貼」。面板本身只管畫面與
+「📤匯出」「📥匯入資料」「💾匯出資料」「🗑️批次刪除」按鈕跟空白處右鍵
+「新增便利貼」。「📤匯出」是給人看的 Markdown 文件；「💾匯出資料」／
+「📥匯入資料」是給程式讀回去用的 JSON，給搬家／備份用（見 _on_export_json／
+_on_import_json）。面板本身只管畫面與
 使用者互動，資料的存取／篩選／配色規則都委派給建構子注入的
 StickyNoteService，不在這裡碰 JSON 或檔案路徑；呼叫 AI 的設定/連線邏輯則
 委派給建構子注入的 AIDescriptionService（跟「AI 批次說明」共用同一套設定，
@@ -161,6 +164,16 @@ class StickyNotePanel:
         export_btn = _icon_button(header, "📤", self._on_export, BTN_IMPORT_BG, BTN_IMPORT_ACTIVE, self._font_icon)
         export_btn.pack(side="right", padx=(0, 4))
         _Tooltip(export_btn, "匯出成 Markdown 文件（目前篩選出的清單）", font_hint)
+        import_data_btn = _icon_button(
+            header, "📥", self._on_import_json, BTN_CREATE_BG, BTN_CREATE_ACTIVE, self._font_icon,
+        )
+        import_data_btn.pack(side="right", padx=(0, 4))
+        _Tooltip(import_data_btn, "匯入便利貼資料（讀取先前匯出的 JSON，合併進目前清單）", font_hint)
+        export_data_btn = _icon_button(
+            header, "💾", self._on_export_json, BTN_IMPORT_BG, BTN_IMPORT_ACTIVE, self._font_icon,
+        )
+        export_data_btn.pack(side="right", padx=(0, 4))
+        _Tooltip(export_data_btn, "匯出便利貼資料（JSON，可搬到另一台電腦匯入）", font_hint)
         edit_file_btn = _icon_button(
             header, "📝", self._on_edit_file, BTN_EDIT_BG, BTN_EDIT_ACTIVE, self._font_icon,
         )
@@ -499,6 +512,62 @@ class StickyNotePanel:
             messagebox.showerror("匯出便利貼", f"寫入檔案失敗：\n{exc}")
             return
         messagebox.showinfo("匯出便利貼", f"已匯出 {len(notes)} 則便利貼到：\n{path}")
+
+    def _on_export_json(self):
+        """匯出「全部」便利貼成可攜 JSON——不受目前篩選影響，這是給搬家／
+        備份用的，篩選只是畫面上想看的子集合，備份就該是全部。跟 _on_export()
+        的差別：那個是 Markdown 給人看，這個是 JSON 給 _on_import_json() 讀
+        回去用。"""
+        notes = self._service.list_notes()
+        if not notes:
+            messagebox.showinfo("匯出便利貼資料", "目前沒有任何便利貼可以匯出。")
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self.frame,
+            title="匯出便利貼資料",
+            defaultextension=".json",
+            initialfile=f"便利貼備份_{datetime.now():%Y%m%d_%H%M}.json",
+            filetypes=[("JSON", "*.json"), ("所有檔案", "*.*")],
+        )
+        if not path:
+            return
+        content = self._service.export_json(notes)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except OSError as exc:
+            messagebox.showerror("匯出便利貼資料", f"寫入檔案失敗：\n{exc}")
+            return
+        messagebox.showinfo("匯出便利貼資料", f"已匯出 {len(notes)} 則便利貼到：\n{path}")
+
+    def _on_import_json(self):
+        """匯入之前用 _on_export_json() 匯出的 JSON——依 id 判斷是否已存在，
+        已經匯入過的會被略過，不會匯出重複的便利貼（見
+        StickyNoteService.import_json()）。"""
+        path = filedialog.askopenfilename(
+            parent=self.frame,
+            title="匯入便利貼資料",
+            filetypes=[("JSON", "*.json"), ("所有檔案", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except OSError as exc:
+            messagebox.showerror("匯入便利貼資料", f"讀取檔案失敗：\n{exc}")
+            return
+        try:
+            result = self._service.import_json(content)
+        except ValueError as exc:
+            messagebox.showerror("匯入便利貼資料", f"檔案格式不對：\n{exc}")
+            return
+        self._invalidate_ai_results()
+        self._refresh()
+        message = f"已新增 {result['added']} 則便利貼。"
+        if result["skipped"]:
+            message += f"\n{result['skipped']} 則跟目前清單重複（相同 id），已略過。"
+        messagebox.showinfo("匯入便利貼資料", message)
 
     def _on_edit_file(self):
         """直接打開底層 `.sticky_notes.json` 讓使用者用文字編輯器手動改——

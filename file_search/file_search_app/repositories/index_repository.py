@@ -127,6 +127,17 @@ class IndexRepository:
     def delete_index_file(self, md_path: Path) -> None:
         md_path.unlink()
 
+    def import_index_file(self, filename: str, content: str) -> Path:
+        """把外部帶進來的 .md 內容原封不動存成 indexes/ 底下一份新的索引集
+        （例如從另一台電腦複製過來、或先前用「匯出索引集」存出去的檔案）。
+        內容本身不另外驗證表格格式——不合法的列讀取時本來就會安靜跳過（見
+        `load_entries()`），不會讓匯入整個失敗，頂多那幾列搜尋不到。呼叫端
+        要先用 `validate_name()` 檢查過檔名合法、沒有撞名。"""
+        self.indexes_dir.mkdir(parents=True, exist_ok=True)
+        path = self.indexes_dir / filename
+        atomic_write_text(path, content)
+        return path
+
     # ── 資料列 ───────────────────────────────────────────────────────
 
     def read_text(self, md_path: Path) -> str:

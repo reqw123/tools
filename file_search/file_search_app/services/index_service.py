@@ -28,6 +28,16 @@ class IndexService:
     def create_index(self, filename: str) -> Path:
         return self._index_repo.create_index_file(filename)
 
+    def export_index_text(self, md_path: Path) -> str:
+        """給「匯出索引集」用——索引集本來就是一份 .md 檔，匯出就是把原始
+        內容原封不動存到使用者指定的位置。"""
+        return self._index_repo.read_text(md_path)
+
+    def import_index(self, filename: str, content: str) -> Path:
+        """給「匯入索引集」用——把外部一份既有 .md 的內容存成一份新的索引集。
+        `filename` 要先用 `validate_name()` 檢查過。"""
+        return self._index_repo.import_index_file(filename, content)
+
     def delete_index(self, md_path: Path) -> None:
         """刪除一份索引集及其附屬資料（內容快取、加入時間紀錄），但絕不碰索引
         指向的實體檔案。"""

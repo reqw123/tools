@@ -96,3 +96,19 @@ def test_resolve_scope_files(data_dir):
     make_index_md(data_dir / "b.md", [])
     assert svc.resolve_scope_files(a) == [a]
     assert len(svc.resolve_scope_files(None)) == 2
+
+
+def test_export_index_text_returns_raw_markdown(data_dir):
+    svc, ir, _cr, _mr = build(data_dir)
+    md = make_index_md(data_dir / "a.md", [("C:/1.txt", "cat", "desc")])
+    assert svc.export_index_text(md) == ir.read_text(md)
+
+
+def test_import_index_creates_new_file_from_content(data_dir):
+    svc, ir, _cr, _mr = build(data_dir)
+    src_content = "| `C:/x.txt` | k | v |\n"
+    filename, err = svc.validate_name("imported")
+    assert err is None
+    p = svc.import_index(filename, src_content)
+    assert p.exists()
+    assert [e.path for e in ir.load_entries(p)] == ["C:/x.txt"]

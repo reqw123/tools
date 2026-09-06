@@ -205,6 +205,44 @@ def test_export_markdown_code_fence_survives_backticks(data_dir):
     assert "🏷️" not in md  # 無標籤不輸出標籤列
 
 
+def test_export_json_round_trips_via_import(data_dir):
+    s = svc(data_dir)
+    n1 = s.add_note("A", "內容A", "工作")
+    n2 = s.add_note("B", "內容B", "")
+    dump = s.export_json(s.list_notes())
+
+    other = svc(data_dir / "other")  # 模擬「另一台電腦」，指向不同的資料夾
+    result = other.import_json(dump)
+    assert result == {"added": 2, "skipped": 0}
+    imported = {n.id: n for n in other.list_notes()}
+    assert set(imported) == {n1.id, n2.id}  # id 原封不動保留下來
+    assert imported[n1.id].title == "A" and imported[n1.id].tag == "工作"
+
+
+def test_import_json_skips_already_existing_by_id(data_dir):
+    s = svc(data_dir)
+    s.add_note("A", "", "")
+    dump = s.export_json(s.list_notes())
+
+    result = s.import_json(dump)  # 匯入同一份到同一份資料——id 都已存在
+    assert result == {"added": 0, "skipped": 1}
+    assert len(s.list_notes()) == 1  # 沒有變成兩筆
+
+
+def test_import_json_rejects_bad_format(data_dir):
+    s = svc(data_dir)
+    try:
+        s.import_json("not json")
+        assert False, "應該要拋出 ValueError"
+    except ValueError:
+        pass
+    try:
+        s.import_json('{"no_notes_key": []}')
+        assert False, "應該要拋出 ValueError"
+    except ValueError:
+        pass
+
+
 def test_panel_state_persist(data_dir):
     s = svc(data_dir)
     s.save_panel_visible(False)

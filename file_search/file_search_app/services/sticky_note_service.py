@@ -161,6 +161,42 @@ class StickyNoteService:
             lines.append("")
         return "\n".join(lines).rstrip() + "\n"
 
+    def export_json(self, notes: list) -> str:
+        """匯出成可攜 JSON——跟 `export_markdown()` 不同，這份是給程式讀回去
+        用的資料格式（原封不動的 id/title/body/tag/created_at/image），不是
+        給人看的文件。用 `import_json()` 讀回來就是同一批便利貼，包括 id，
+        搬去另一台電腦匯入也認得出「這幾則已經匯入過」。"""
+        return self._repo.serialize_notes(notes)
+
+    def import_json(self, text: str) -> dict:
+        """匯入之前用 `export_json()` 匯出的便利貼——依 id 判斷是否已存在，
+        已經存在的直接跳過（同一份備份重複匯入、或兩台電腦的資料剛好有
+        重疊都不會產生重複筆），只新增真的沒有的。回傳
+        `{"added": int, "skipped": int}`。`text` 格式不對會讓
+        `StickyNoteRepository.parse_notes()` 拋 ValueError，交給呼叫端顯示
+        錯誤訊息。"""
+        incoming = self._repo.parse_notes(text)
+        added = 0
+        skipped = 0
+
+        def apply(notes):
+            nonlocal added, skipped
+            existing_ids = {n.id for n in notes}
+            new_notes = []
+            for note in incoming:
+                if note.id in existing_ids:
+                    skipped += 1
+                    continue
+                new_notes.append(note)
+                existing_ids.add(note.id)
+            added = len(new_notes)
+            if not new_notes:
+                return None  # 全部跳過，不用寫檔
+            return notes + new_notes
+
+        self._repo.mutate(apply)
+        return {"added": added, "skipped": skipped}
+
     @staticmethod
     def _code_fence_for(body: str) -> str:
         """圍住內容用的 backtick 圍欄——一般是三個，但內容本身若含有 ``` 之類

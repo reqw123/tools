@@ -60,7 +60,7 @@ class StickyNote:
     body: str
     tag: str
     created_at: datetime
-    # 網頁版（sticky-wall-web）的便利貼插圖檔名，存在 indexes/.sticky_note_images/
+    # 網頁版（notes-web）的便利貼插圖檔名，存在 indexes/.sticky_note_images/
     # 底下。桌面版目前不顯示也不編輯它，但存檔時要原樣保留——不然在桌面版
     # 編輯過的便利貼會把網頁版加的圖弄丟（兩邊共用同一份 .sticky_notes.json，
     # 序列化時只寫自己認得的欄位）。
@@ -82,7 +82,7 @@ class ScanResult:
 
     files: list  # list[Path]，依路徑排序、跨 jobs 去重過
     write_blocked: bool  # True 代表這次結果不能拿去寫入索引（超過安全筆數，或掃描不完整）
-    stopped_early: bool  # True 代表使用者主動中止（取消，或詢問時選「否」），files 不是完整結果
+    stopped_early: bool  # True 代表使用者主動取消，files 不是完整結果
     hit_hard_limit: bool  # True 代表是撞到硬上限才停下來的
 
 

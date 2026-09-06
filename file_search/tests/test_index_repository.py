@@ -129,3 +129,12 @@ def test_create_and_delete_index_file(data_dir):
     assert p.exists() and p in r.list_index_files()
     r.delete_index_file(p)
     assert not p.exists()
+
+
+def test_import_index_file_writes_content_verbatim(data_dir):
+    r = repo(data_dir)
+    content = "| `C:/a.txt` | cat | desc |\n"
+    p = r.import_index_file("imported.md", content)
+    assert p.exists() and p in r.list_index_files()
+    assert r.read_text(p) == content
+    assert [e.path for e in r.load_entries(p)] == ["C:/a.txt"]

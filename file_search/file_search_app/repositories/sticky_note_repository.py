@@ -3,6 +3,7 @@
 同時放筆記清單跟面板目前的展開/收合狀態。內容本身不含機密，不需要比照
 AI API Key 額外搬到本機快取目錄。"""
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -47,6 +48,34 @@ class StickyNoteRepository:
         raw = self._read_raw()
         raw["panel"] = {"visible": bool(visible)}
         self._write_raw(raw)
+
+    def serialize_notes(self, notes: list) -> str:
+        """把一份便利貼清單序列化成獨立可攜的 JSON 字串——給「匯出便利貼資料」
+        用，格式是 `.sticky_notes.json` 那個 `notes` 陣列本身（不含 `panel`
+        狀態，那是這台機器/這個視窗自己的顯示設定，不該跟著搬到別台電腦）。
+        跟 `parse_notes()` 成對，之後可以在別台電腦（或同一台）讀回來。"""
+        return json.dumps(
+            {"notes": [self._serialize_note(n) for n in notes]},
+            ensure_ascii=False, indent=2,
+        )
+
+    def parse_notes(self, text: str) -> list:
+        """`serialize_notes()` 的反向操作——給「匯入便利貼資料」用。壞掉的
+        JSON、或格式對不上（不是 `{"notes": [...]}`）直接拋 ValueError，讓
+        呼叫端顯示明確的錯誤訊息；單筆格式不符的項目安靜跳過（跟 `_read_raw()`
+        對主檔案的容錯一致），不會因為一筆壞資料讓整批匯入失敗。"""
+        try:
+            data = json.loads(text)
+        except ValueError as exc:
+            raise ValueError(f"不是合法的 JSON：{exc}") from exc
+        if not isinstance(data, dict) or not isinstance(data.get("notes"), list):
+            raise ValueError("格式不對——找不到 notes 陣列")
+        notes = []
+        for item in data["notes"]:
+            note = self._parse_note(item)
+            if note is not None:
+                notes.append(note)
+        return notes
 
     def _read_raw(self) -> dict:
         """檔案不存在、損毀或結構不對都回傳一份空白預設值，不拋例外——便利貼是

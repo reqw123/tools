@@ -26,15 +26,15 @@ call npm install
 if %errorlevel% neq 0 goto installfail
 :have_root
 
-if exist "sticky-wall-web\node_modules\" goto have_sticky
-echo [setup] installing sticky-wall-web deps ^(first run, ~30s^) ...
-call npm --prefix sticky-wall-web install
+if exist "notes-web\node_modules\" goto have_sticky
+echo [setup] installing notes-web deps ^(first run, ~30s^) ...
+call npm --prefix notes-web install
 if %errorlevel% neq 0 goto installfail
 :have_sticky
 
-if exist "index-wall-web\node_modules\" goto have_index
-echo [setup] installing index-wall-web deps ^(first run, ~30s^) ...
-call npm --prefix index-wall-web install
+if exist "files-web\node_modules\" goto have_index
+echo [setup] installing files-web deps ^(first run, ~30s^) ...
+call npm --prefix files-web install
 if %errorlevel% neq 0 goto installfail
 :have_index
 

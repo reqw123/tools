@@ -2,14 +2,14 @@
   "name": "file-search-web",
   "private": true,
   "version": "0.1.0",
-  "description": "file_search_app 的兩個網頁分流——sticky-wall-web（便利貼）與 index-wall-web（檔案索引）。這份 package.json 只是把兩邊的 dev server 一次拉起來。",
+  "description": "file_search_app 的兩個網頁分流——notes-web（便利貼）與 files-web（檔案索引）。這份 package.json 只是把兩邊的 dev server 一次拉起來。",
   "scripts": {
-    "dev": "concurrently -k -n s-api,s-web,i-api,i-web -c blue,cyan,green,magenta \"npm --prefix sticky-wall-web run dev:api\" \"npm --prefix sticky-wall-web run dev:web\" \"npm --prefix index-wall-web run dev:api\" \"npm --prefix index-wall-web run dev:web\"",
-    "dev:sticky": "npm --prefix sticky-wall-web run dev",
-    "dev:index": "npm --prefix index-wall-web run dev",
-    "build": "npm --prefix sticky-wall-web run build && npm --prefix index-wall-web run build",
-    "install:all": "npm --prefix sticky-wall-web install && npm --prefix index-wall-web install",
-    "lint": "npm --prefix sticky-wall-web run lint && npm --prefix index-wall-web run lint"
+    "dev": "concurrently -k -n s-api,s-web,i-api,i-web -c blue,cyan,green,magenta \"npm --prefix notes-web run dev:api\" \"npm --prefix notes-web run dev:web\" \"npm --prefix files-web run dev:api\" \"npm --prefix files-web run dev:web\"",
+    "dev:notes": "npm --prefix notes-web run dev",
+    "dev:files": "npm --prefix files-web run dev",
+    "build": "npm --prefix notes-web run build && npm --prefix files-web run build",
+    "install:all": "npm --prefix notes-web install && npm --prefix files-web install",
+    "lint": "npm --prefix notes-web run lint && npm --prefix files-web run lint"
   },
   "devDependencies": {
     "concurrently": "^9"

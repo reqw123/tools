@@ -344,12 +344,12 @@ class UnindexedScanDialog(tk.Toplevel):
                 )
             elif result.stopped_early:
                 self._result_var.set(
-                    f"已在 {len(found)} 筆時停止掃描，尚未掃描完整（超過安全筆數 {SCAN_SOFT_LIMIT}，"
-                    f"這次掃描結果不會用來加入索引）。建議縮小範圍後重新掃描。"
+                    f"已取消，只掃到 {len(found)} 筆、尚未掃描完整，這次掃描結果不會用來加入索引。"
+                    f"重新按「掃描」再試一次即可。"
                 )
             else:
                 self._result_var.set(
-                    f"掃描完成，共找到 {len(found)} 個檔案，超過可直接加入索引的安全上限（{SCAN_SOFT_LIMIT}），"
+                    f"掃描完成，共找到 {len(found)} 個檔案，超過可直接加入索引的安全上限（{SCAN_SOFT_LIMIT:,}），"
                     f"這次掃描結果不會用來加入索引。建議縮小範圍後重新掃描。"
                 )
             self._rebuild_checklist()

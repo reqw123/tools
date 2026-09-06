@@ -8,7 +8,7 @@ __pycache__/
 /packaging/build/
 /packaging/.build-venv/
 
-# 網頁分流（sticky-wall-web / index-wall-web）＋根目錄 dev 啟動器
+# 網頁分流（notes-web / files-web）＋根目錄 dev 啟動器
 node_modules/
 *.log
 

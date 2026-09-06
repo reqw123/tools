@@ -1,10 +1,12 @@
 """掃描相關的共用 UI 元件——「匯入資料夾...」與「找出未收錄檔案...」兩個
-對話框共用同一套掃描進度視窗（含軟／硬上限詢問）與類別數量顯示格線。"""
+對話框共用同一套掃描進度視窗（含硬上限保護）與類別數量顯示格線。"""
 
 import tkinter as tk
-from tkinter import font as tkfont, messagebox, ttk
+from tkinter import font as tkfont, ttk
 
-from file_search_app.config import COLOR_BG, COLOR_STATUS_FG, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE
+from file_search_app.config import (
+    BTN_DETECT_ACTIVE, BTN_DETECT_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, COLOR_BG, COLOR_STATUS_FG,
+)
 from file_search_app.config import CATEGORY_COLOR, FONT_FAMILY
 from file_search_app.models import ScanResult
 from file_search_app.services.scan_service import ScanService
@@ -35,12 +37,14 @@ def run_scan_with_progress(parent, scan_service: ScanService, jobs, on_done):
     中止。用 after() 把掃描切成一小批一小批處理，每批處理完才把控制權交還事件
     迴圈再排下一批，不是整個掃描迴圈一次跑完卡住介面。
 
-    掃描筆數一旦超過軟上限（原本可以直接匯入的安全筆數），會先暫停掃描、跳出
-    對話框問使用者要不要繼續看下去——不管答案是哪個，這次掃描結果都不會拿去
-    寫入索引檔案，呼叫端要依 ScanResult.write_blocked 鎖住確認鈕。
+    掃描筆數一旦超過軟上限（原本可以直接匯入／寫入的安全筆數），會先暫停掃描，
+    在這個視窗裡多冒出一顆「繼續掃描」鈕（不是另外跳出擋住畫面的訊息框）——
+    按下去才會接著掃到底或撞到硬上限；不管按不按，這次結果都超過安全筆數了，
+    呼叫端一律依 ScanResult.write_blocked 鎖住確認鈕，不能拿去寫入／匯入，
+    「繼續掃描」單純是讓使用者能看看這個資料夾裡總共有多少個檔案。
 
     on_done(scan_result: ScanResult) 會在掃描結束時（正常掃完／撞到硬上限／
-    使用者取消／使用者選擇不繼續，四種都算）呼叫一次。
+    使用者取消，三種都算）呼叫一次。
     """
     soft_limit = scan_service.soft_limit
     hard_limit = scan_service.hard_limit
@@ -67,7 +71,7 @@ def run_scan_with_progress(parent, scan_service: ScanService, jobs, on_done):
     percent_var = tk.StringVar(value="0%")
     tk.Label(pad, textvariable=percent_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_label).pack(anchor="e")
 
-    state = {"cancelled": False, "declined": False, "asked": False, "write_blocked": False, "hit_hard_cap": False}
+    state = {"cancelled": False, "hit_hard_cap": False, "over_soft": False, "paused": False}
     found = []
     seen = set()
 
@@ -75,10 +79,14 @@ def run_scan_with_progress(parent, scan_service: ScanService, jobs, on_done):
 
     def _cancel():
         state["cancelled"] = True
+        if state["paused"]:  # 暫停中沒有排程中的 _step()，取消要自己收尾
+            _finish()
 
     btn_row = tk.Frame(pad, bg=COLOR_BG)
     btn_row.pack(fill="x", pady=(12, 0))
     styled_button(btn_row, "取消", _cancel, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
+    continue_btn = styled_button(btn_row, "繼續掃描", lambda: _resume(), BTN_DETECT_BG, BTN_DETECT_ACTIVE, font_label)
+    # 一開始不需要「繼續掃描」——只在暫停（超過軟上限）時才 pack 出來。
     dlg.protocol("WM_DELETE_WINDOW", _cancel)  # 掃描中關視窗也當「取消」，狀態才會乾淨收尾
 
     def _update_progress():
@@ -93,10 +101,15 @@ def run_scan_with_progress(parent, scan_service: ScanService, jobs, on_done):
         dlg.destroy()
         on_done(ScanResult(
             files=sorted(found),
-            write_blocked=state["write_blocked"] or state["cancelled"],
-            stopped_early=state["cancelled"] or state["declined"],
+            write_blocked=state["cancelled"] or state["hit_hard_cap"] or state["over_soft"],
+            stopped_early=state["cancelled"],
             hit_hard_limit=state["hit_hard_cap"],
         ))
+
+    def _resume():
+        state["paused"] = False
+        continue_btn.pack_forget()
+        dlg.after(1, _step)
 
     def _step():
         if state["cancelled"]:
@@ -116,27 +129,20 @@ def run_scan_with_progress(parent, scan_service: ScanService, jobs, on_done):
                 # 撞到硬上限就直接停在目前累積的筆數，這一筆新找到的檔案不計入
                 # found（先判斷再加入，避免 found 實際筆數比硬上限多 1）。
                 state["hit_hard_cap"] = True
-                state["write_blocked"] = True
                 _finish()
                 return
             seen.add(key)
             found.append(p)
-            if len(found) == soft_limit + 1 and not state["asked"]:
-                state["asked"] = True
-                state["write_blocked"] = True
+            if len(found) == soft_limit + 1 and not state["over_soft"]:
+                state["over_soft"] = True
+                state["paused"] = True
                 _update_progress()
-                proceed = messagebox.askyesno(
-                    "掃描筆數過多",
-                    f"已經找到超過 {soft_limit} 個檔案。這次掃描結果不會用來寫入索引檔案"
-                    f"（不管接下來選繼續還是停止都一樣，只能看筆數／瀏覽）。\n\n"
-                    f"要繼續掃描到上限 {hard_limit:,} 筆，看看資料夾裡總共有多少個檔案嗎？\n"
-                    f"選「否」會停在目前找到的 {len(found)} 筆，不再繼續掃描。",
-                    parent=dlg,
+                status_var.set(
+                    f"已找到超過 {soft_limit} 個檔案，超過安全上限——這次結果不能拿去寫入／匯入，"
+                    f"但可以按「繼續掃描」看看這個資料夾裡總共有多少個檔案。"
                 )
-                if not proceed:
-                    state["declined"] = True
-                    _finish()
-                    return
+                continue_btn.pack(side="left")
+                return
         _update_progress()
         dlg.after(1, _step)
 

@@ -196,6 +196,12 @@ class MainWindow(_BaseTk):
             index_picker, "➕ 新增索引集...", self._on_create_index, BTN_CREATE_BG, BTN_CREATE_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(10, 0))
         styled_button(
+            index_picker, "📥 匯入索引集...", self._on_import_index, BTN_CREATE_BG, BTN_CREATE_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        styled_button(
+            index_picker, "📤 匯出索引集...", self._on_export_index, BTN_IMPORT_BG, BTN_IMPORT_ACTIVE, self._font_hint,
+        ).pack(side="left", padx=(8, 0))
+        styled_button(
             index_picker, "🗑️ 刪除索引集", self._on_delete_index,
             BTN_DANGER_BG, BTN_DANGER_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
@@ -450,6 +456,60 @@ class MainWindow(_BaseTk):
         # 直接切換過去新建立的這份空白索引集。
         self._index_var.set(filename)
         self._refresh_index_list()
+
+    def _on_export_index(self):
+        """匯出目前選取的索引集——索引集本來就是一份 .md 檔，匯出就是把原始
+        內容存到使用者指定的位置，方便手動搬到另一台電腦（或用「匯入索引
+        集...」讀回來）。"""
+        if self._current_index_path is None:
+            messagebox.showwarning("匯出索引集", "請先在右上角選擇一份指定的索引集；「全部索引」模式不能匯出。")
+            return
+        index_path = self._current_index_path
+        dest = filedialog.asksaveasfilename(
+            title="匯出索引集",
+            defaultextension=".md",
+            initialfile=index_path.name,
+            filetypes=[("Markdown", "*.md"), ("所有檔案", "*.*")],
+        )
+        if not dest:
+            return
+        content = self._index.export_index_text(index_path)
+        try:
+            Path(dest).write_text(content, encoding="utf-8")
+        except OSError as exc:
+            messagebox.showerror("匯出索引集", f"寫入檔案失敗：\n{exc}")
+            return
+        messagebox.showinfo("匯出索引集", f"已匯出「{index_path.name}」到：\n{dest}")
+
+    def _on_import_index(self):
+        """匯入一份既有的 .md 索引集——填補「新增索引集」只能建空白檔案的
+        缺口，讓從另一台電腦複製過來（或先前用「匯出索引集」存出去）的檔案
+        可以直接帶進來，變成一份新的索引集。"""
+        path = filedialog.askopenfilename(
+            title="選擇要匯入的索引集 (.md)",
+            filetypes=[("Markdown", "*.md"), ("所有檔案", "*.*")],
+        )
+        if not path:
+            return
+        src = Path(path)
+        try:
+            content = src.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            try:
+                content = src.read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeDecodeError) as exc:
+                messagebox.showerror("匯入索引集", f"讀不出這個檔案的內容（編碼不是 UTF-8）：\n{exc}")
+                return
+        except OSError as exc:
+            messagebox.showerror("匯入索引集", f"讀取檔案失敗：\n{exc}")
+            return
+
+        def _import_confirmed(filename):
+            self._index.import_index(filename, content)
+            self._index_var.set(filename)
+            self._refresh_index_list()
+
+        CreateIndexDialog(self, self._index.validate_name, _import_confirmed, import_source_name=src.name)
 
     def _on_delete_index(self):
         """刪除目前單一索引集及其附屬資料，但絕不碰索引指向的實體檔案。"""
