@@ -101,4 +101,25 @@ export const api = {
     req<{ note: Note }>(`/notes/trash/${id}/restore`, { method: 'POST' }).then((r) => r.note),
   purge: (id: string) => req<void>(`/notes/trash/${id}`, { method: 'DELETE' }),
   emptyTrash: () => req<{ removed: number }>('/notes/trash', { method: 'DELETE' }).then((r) => r.removed),
+  getReminderSettings: () => req<ReminderSettings>('/reminder-settings'),
+  setReminderSettings: (dueSoonHours: number) =>
+    req<ReminderSettings>('/reminder-settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ dueSoonHours }),
+    }),
+  getTagColors: () => req<TagColors>('/tag-colors'),
+  setTagColor: (tag: string, color: string) =>
+    req<TagColors>('/tag-colors', { method: 'PATCH', body: JSON.stringify({ tag, color }) }),
+  clearTagColor: (tag: string) =>
+    req<TagColors>(`/tag-colors/${encodeURIComponent(tag)}`, { method: 'DELETE' }),
 }
+
+/** 「快到期」門檻——卡片標色跟 /notes/due-soon（給 Node-RED 用）共用同一份，
+ *  在「⏰ 提醒設定」對話框調整。 */
+export interface ReminderSettings {
+  dueSoonHours: number
+}
+
+/** 標籤→自訂顏色（hex）。沒自訂過的標籤不會出現在這裡，colorForTag() 拿不
+ *  到就照舊退回雜湊配色。 */
+export type TagColors = Record<string, string>

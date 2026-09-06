@@ -121,13 +121,49 @@ class StickyNoteService:
         可能值，撞色機率低很多；但終究是有限的桶數，標籤多到一定程度（人眼
         本來就分不清楚十幾種以上顏色的差異）還是可能出現顏色很像的情況——
         這時候標籤文字本身（卡片上的「# 標籤」）才是真正用來分辨的依據，
-        顏色只是方便一眼分群的輔助。"""
+        顏色只是方便一眼分群的輔助。
+
+        使用者可以在新增/編輯便利貼時另外指定某個標籤要用固定的顏色（見
+        `set_tag_color`）——這裡先查有沒有自訂過，有的話直接用，沒有才走
+        雜湊配色這條路。自訂顏色存在獨立的 `.sticky_tag_colors.json`，跟
+        notes-web 共用同一份檔案。"""
         if not tag:
             return STICKY_NEUTRAL_COLOR
+        override = self._repo.load_tag_colors().get(tag)
+        if override:
+            return override
         digest = hashlib.md5(tag.encode("utf-8")).hexdigest()
         hue = (int(digest, 16) % 360) / 360.0
         r, g, b = colorsys.hls_to_rgb(hue, STICKY_TAG_LIGHTNESS, STICKY_TAG_SATURATION)
         return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
+
+    def get_tag_color_override(self, tag: str) -> str:
+        """這個標籤有沒有自訂過顏色——回傳自訂的 hex，沒有就回空字串。給
+        UI 判斷「重設」按鈕要不要顯示成可點的用，不是給卡片顯示用（顯示
+        一律呼叫 `color_for_tag`，不管有沒有自訂都拿得到一個顏色）。"""
+        if not tag:
+            return ""
+        return self._repo.load_tag_colors().get(tag, "")
+
+    def set_tag_color(self, tag: str, color: str) -> None:
+        """指定某個標籤固定用這個顏色，覆蓋掉雜湊配色。`tag`／`color` 留空
+        都直接不做事——呼叫端應該已經檔掉這兩種情況，這裡再擋一次純粹保險。"""
+        tag = tag.strip()
+        color = color.strip()
+        if not tag or not color:
+            return
+        colors = self._repo.load_tag_colors()
+        colors[tag] = color
+        self._repo.save_tag_colors(colors)
+
+    def clear_tag_color(self, tag: str) -> None:
+        """拿掉某個標籤的自訂顏色，改回雜湊配色。標籤本來就沒自訂過就什麼
+        都不做（不會無謂寫檔）。"""
+        tag = tag.strip()
+        colors = self._repo.load_tag_colors()
+        if tag in colors:
+            del colors[tag]
+            self._repo.save_tag_colors(colors)
 
     def add_note(self, title: str, body: str, tag: str, due_at: str = "") -> StickyNote:
         note = StickyNote(

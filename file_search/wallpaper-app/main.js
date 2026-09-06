@@ -1,8 +1,9 @@
 'use strict';
 const {
-  app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, screen, ipcMain, shell,
+  app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, screen, ipcMain, shell, net,
 } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const store = require('./settings-store.js');
 const servers = require('./servers.js');
 
@@ -199,6 +200,79 @@ function applyAutostart() {
 // ── 系統匣 ──────────────────────────────────────────────────────────
 function refreshTray() {
   if (tray) tray.setContextMenu(buildTrayMenu());
+}
+
+// ── 到期便利貼角標 ────────────────────────────────────────────────────
+// 系統匣圖示疊一個數字角標，顯示現在有幾則便利貼到期/快到期——不用開牆
+// 也能瞄到一眼。低耦合設計：只讀 notes-web 既有的 GET /api/notes/due-soon
+// （跟 Node-RED 那份 flow 讀的是同一支 API，門檻在notes-web「⏰ 提醒設定」
+// 調整，這裡不用另外設定），整段包在 try/catch 裡——本機 server 還沒就緒、
+// 網路不通、繪圖失敗，都只是這一輪角標沒更新，絕不會讓桌面牆本身的任何
+// 功能連帶壞掉。
+const DUE_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 分鐘一次，夠即時又不會一直打本機 API
+let dueBadgeWin = null; // 專門拿來畫角標的隱藏視窗，重複使用不每次重建
+let lastDueBadgeKey = ''; // 空字串保證程式剛啟動一定會畫一次（就算真的是 0/0）
+let duePollTimer = null;
+
+function ensureDueBadgeWin() {
+  if (dueBadgeWin && !dueBadgeWin.isDestroyed()) return dueBadgeWin;
+  dueBadgeWin = new BrowserWindow({
+    show: false,
+    width: 32,
+    height: 32,
+    frame: false,
+    skipTaskbar: true,
+    webPreferences: { offscreen: false },
+  });
+  return dueBadgeWin;
+}
+
+// 把 tray-badge.html 畫好的 32x32 圖抓回來當新的系統匣圖示——只在「已逾期／
+// 快到期」這組數字真的變動時才重畫（lastDueBadgeKey 比對兩個數字，不是只
+// 比總數：逾期 1＋快到期 1 跟逾期 2＋快到期 0 總數一樣，但提示文字不一樣，
+// 只比總數會漏更新），不用每次 5 分鐘的輪詢都重畫一次一模一樣的圖。
+async function updateDueBadge(overdueCount, soonCount) {
+  const key = `${overdueCount}:${soonCount}`;
+  if (key === lastDueBadgeKey) return;
+  lastDueBadgeKey = key;
+  const count = overdueCount + soonCount;
+  try {
+    const w = ensureDueBadgeWin();
+    const params = new URLSearchParams({ icon: trayIcon().toDataURL(), count: String(count) });
+    const badgeUrl = `${pathToFileURL(path.join(__dirname, 'tray-badge.html')).href}?${params.toString()}`;
+    await w.loadURL(badgeUrl);
+    // 等 tray-badge.html 的 <script> 真的畫完再截圖，不然可能抓到還沒畫的空白畫面。
+    await w.webContents.executeJavaScript(
+      "new Promise((resolve) => { const check = () => window.__badgeReady ? resolve() : setTimeout(check, 20); check(); })",
+    );
+    const shot = await w.webContents.capturePage({ x: 0, y: 0, width: 32, height: 32 });
+    if (tray && !tray.isDestroyed()) {
+      tray.setImage(shot);
+      // Windows 系統匣提示支援 \n 換行——兩行分開列「已到期」「將到期」比
+      // 塞成一句「N 則到期中」清楚，一眼就看得出有幾則是已經逾期的。
+      tray.setToolTip(
+        count > 0 ? `已到期 ${overdueCount} 則\n將到期 ${soonCount} 則` : '桌面牆',
+      );
+    }
+  } catch (err) {
+    console.error('[wallpaper-app] 更新到期角標失敗（不影響其他功能）：', err.message);
+  }
+}
+
+async function pollDueSoon() {
+  try {
+    const res = await net.fetch(`http://127.0.0.1:${servers.WEBS.sticky.port}/api/notes/due-soon`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    await updateDueBadge(data.overdue?.length ?? 0, data.soon?.length ?? 0);
+  } catch (err) {
+    console.error('[wallpaper-app] 檢查便利貼到期狀態失敗（不影響其他功能）：', err.message);
+  }
+}
+
+function startDueBadgePolling() {
+  pollDueSoon(); // 啟動後馬上先查一次，不用乾等滿 5 分鐘才看到第一次結果
+  duePollTimer = setInterval(pollDueSoon, DUE_POLL_INTERVAL_MS);
 }
 
 function buildTrayMenu() {
@@ -964,6 +1038,7 @@ app.whenReady().then(async () => {
   createHintOverlay();
   createQuitButton();
   restorePinnedWindows();
+  startDueBadgePolling();
 
   const repositionAll = () => {
     positionWall(); // 螢幕解析度/插拔顯示器事件——跟 dw-set-display 同一個
@@ -999,6 +1074,7 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (duePollTimer) clearInterval(duePollTimer);
   servers.killAll();
 });
 

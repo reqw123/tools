@@ -30,12 +30,16 @@ const toHex = (n: number) => Math.trunc(n * 255).toString(16).padStart(2, '0')
 
 /**
  * 對應 sticky_note_service.color_for_tag()：
- * 空字串 → 中性灰；否則 md5(tag) 當成 128-bit 整數 % 360 取色環角度，
- * 再用固定的飽和度/亮度（55% / 82%）轉成 HSL → RGB。整數截斷（不四捨五入），
- * 跟 Python 的 int(x*255) 一致。
+ * 空字串 → 中性灰；否則先查 `overrides`（使用者在「⏰ 提醒設定」旁邊自訂過
+ * 的顏色，來自 useTagColors()）有沒有這個標籤，有就直接用；沒有才走
+ * md5(tag) 當成 128-bit 整數 % 360 取色環角度，再用固定的飽和度/亮度
+ * （55% / 82%）轉成 HSL → RGB。整數截斷（不四捨五入），跟 Python 的
+ * int(x*255) 一致。
  */
-export function colorForTag(tag: string): string {
+export function colorForTag(tag: string, overrides?: Record<string, string>): string {
   if (!tag) return NEUTRAL
+  const override = overrides?.[tag]
+  if (override) return override
   const hue = Number(BigInt('0x' + md5(tag)) % 360n) / 360
   const [r, g, b] = hlsToRgb(hue, LIGHT, SAT)
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`
@@ -58,8 +62,13 @@ export const FOLD_DARKEN = 0.2 // STICKY_CARD_FOLD_DARKEN
 export const TAPE_DARKEN = 0.12 // STICKY_CARD_BORDER_DARKEN
 
 /** 便利貼一組衍生色 + 傾斜角 + 進場序號，塞進 CSS 自訂屬性用。 */
-export function paperVars(tag: string, rot = 0, index?: number): CSSProperties {
-  const face = colorForTag(tag)
+export function paperVars(
+  tag: string,
+  rot = 0,
+  index?: number,
+  overrides?: Record<string, string>,
+): CSSProperties {
+  const face = colorForTag(tag, overrides)
   const vars: Record<string, string | number> = {
     '--face': face,
     '--fold': darken(face, FOLD_DARKEN),

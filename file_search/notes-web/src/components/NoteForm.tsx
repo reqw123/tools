@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { NoteInput } from '../lib/api'
+import { colorForTag } from '../lib/color'
 import { fromStoredDueAt, toStoredDueAt } from '../lib/format'
+import { useClearTagColor, useSetTagColor, useTagColors } from '../hooks/useNotes'
 import { TagInput } from './TagInput'
 
 export function NoteForm({
@@ -31,6 +33,12 @@ export function NoteForm({
 
   const titleError = touched && !title.trim() ? '標題不能留空' : ''
 
+  const trimmedTag = tag.trim()
+  const { data: tagColors } = useTagColors()
+  const setTagColor = useSetTagColor()
+  const clearTagColor = useClearTagColor()
+  const hasColorOverride = !!trimmedTag && !!tagColors?.[trimmedTag]
+
   return (
     <form
       className="form"
@@ -54,17 +62,40 @@ export function NoteForm({
       </label>
 
       <label>
-        分類（可留空；跟既有分類同名會套用同一個顏色）
+        分類（可留空；跟既有分類同名會套用同一個顏色，也可以按右邊色塊自訂）
         {defaultTag && tag === defaultTag && !initial && (
           <span className="hint">已帶入預設分類「{defaultTag}」，可改</span>
         )}
-        <TagInput
-          value={tag}
-          onChange={setTag}
-          knownTags={knownTags}
-          maxLength={60}
-          placeholder="例如：每日、待辦、購物"
-        />
+        <div className="tag-color-row">
+          <TagInput
+            value={tag}
+            onChange={setTag}
+            knownTags={knownTags}
+            maxLength={60}
+            placeholder="例如：每日、待辦、購物"
+            className="tag-color-row-input"
+          />
+          <input
+            type="color"
+            className="tag-color-swatch"
+            // 空標籤沒有顏色概念可以自訂，用中性灰佔位並停用整顆輸入框。
+            value={trimmedTag ? colorForTag(trimmedTag, tagColors) : '#e5e7eb'}
+            disabled={!trimmedTag}
+            title={trimmedTag ? `自訂「${trimmedTag}」的顏色` : '請先輸入分類名稱'}
+            onChange={(e) => {
+              if (trimmedTag) setTagColor.mutate({ tag: trimmedTag, color: e.target.value })
+            }}
+          />
+          {hasColorOverride && (
+            <button
+              type="button"
+              className="btn sm ghost"
+              onClick={() => clearTagColor.mutate(trimmedTag)}
+            >
+              重設
+            </button>
+          )}
+        </div>
       </label>
 
       <label>

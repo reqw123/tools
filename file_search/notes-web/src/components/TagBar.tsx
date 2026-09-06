@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { colorForTag } from '../lib/color'
+import { useTagColors } from '../hooks/useNotes'
 
 export interface TagCount {
   tag: string
@@ -17,6 +18,7 @@ export function TagBar({
   total: number
   onPick: (t: string | null) => void
 }) {
+  const { data: tagColors } = useTagColors()
   return (
     <div className="chips" role="group" aria-label="依分類篩選">
       <button className="chip" aria-pressed={active === null} onClick={() => onPick(null)}>
@@ -27,7 +29,7 @@ export function TagBar({
           key={tag}
           className="chip"
           aria-pressed={active === tag}
-          style={{ '--cd': colorForTag(tag) } as CSSProperties}
+          style={{ '--cd': colorForTag(tag, tagColors) } as CSSProperties}
           onClick={() => onPick(active === tag ? null : tag)}
         >
           <span className="dot" aria-hidden />

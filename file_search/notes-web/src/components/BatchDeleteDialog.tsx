@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Note } from '../lib/api'
 import { colorForTag } from '../lib/color'
 import { stamp } from '../lib/format'
-import { useBulkDeleteNotes } from '../hooks/useNotes'
+import { useBulkDeleteNotes, useTagColors } from '../hooks/useNotes'
 
 /** 批次刪除：列出全部便利貼、勾選要刪的（預設全不勾）、可搜尋、兩段確認。 */
 export function BatchDeleteDialog({
@@ -14,6 +14,7 @@ export function BatchDeleteDialog({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const del = useBulkDeleteNotes()
+  const { data: tagColors } = useTagColors()
   const [query, setQuery] = useState('')
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [confirming, setConfirming] = useState(false)
@@ -95,7 +96,7 @@ export function BatchDeleteDialog({
 
         <ul className="bd-list">
           {shown.map((note) => (
-            <li key={note.id} style={{ background: colorForTag(note.tag) }}>
+            <li key={note.id} style={{ background: colorForTag(note.tag, tagColors) }}>
               <label>
                 <input
                   type="checkbox"

@@ -116,6 +116,49 @@ def test_update_tags_no_match_returns_zero(data_dir):
     assert f.read_text(encoding="utf-8") == before  # 沒有匹配就不該寫檔
 
 
+# ── 標籤自訂顏色 ──────────────────────────────────────────────────
+
+def test_color_for_tag_uses_override_when_set(data_dir):
+    s = svc(data_dir)
+    life_hashed = s.color_for_tag("life")
+    assert s.get_tag_color_override("work") == ""  # 一開始沒有自訂過
+    s.set_tag_color("work", "#ff0000")
+    assert s.color_for_tag("work") == "#ff0000"
+    assert s.get_tag_color_override("work") == "#ff0000"
+    # 自訂 work 的顏色不該影響到 life——雜湊配色照舊
+    assert s.color_for_tag("life") == life_hashed
+
+
+def test_clear_tag_color_reverts_to_hash(data_dir):
+    s = svc(data_dir)
+    hashed = s.color_for_tag("work")
+    s.set_tag_color("work", "#00ff00")
+    assert s.color_for_tag("work") == "#00ff00"
+    s.clear_tag_color("work")
+    assert s.color_for_tag("work") == hashed
+    assert s.get_tag_color_override("work") == ""
+
+
+def test_clear_tag_color_on_unset_tag_is_noop(data_dir):
+    s = svc(data_dir)
+    s.clear_tag_color("never-set")  # 不該拋例外，也不該無謂寫檔
+    assert s.get_tag_color_override("never-set") == ""
+
+
+def test_set_tag_color_persists_across_reload(data_dir):
+    s = svc(data_dir)
+    s.set_tag_color("work", "#123456")
+    reloaded = svc(data_dir)
+    assert reloaded.color_for_tag("work") == "#123456"
+
+
+def test_empty_tag_never_gets_override(data_dir):
+    s = svc(data_dir)
+    s.set_tag_color("", "#ff0000")  # 空標籤——不該真的存進去
+    assert s.get_tag_color_override("") == ""
+    assert s.color_for_tag("") == "#e5e7eb"  # STICKY_NEUTRAL_COLOR，不受影響
+
+
 def test_delete_notes_batch(data_dir):
     s = svc(data_dir)
     a = s.add_note("a", "", "")

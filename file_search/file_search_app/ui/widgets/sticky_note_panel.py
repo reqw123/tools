@@ -237,6 +237,15 @@ class StickyNotePanel:
         self._tag_filter_combo.pack(side="left", fill="x", expand=True, padx=(4, 0))
         self._tag_filter_combo.bind("<<ComboboxSelected>>", lambda _e: self._refresh())
 
+        due_row = tk.Frame(filter_box, bg=STICKY_FILTER_BOX_BG)
+        due_row.pack(fill="x", padx=8, pady=(0, 4))
+        self._due_only_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            due_row, text="⏰ 只看快到期／已逾期（依到期日排序）", variable=self._due_only_var,
+            command=self._refresh, bg=STICKY_FILTER_BOX_BG, fg=STICKY_FILTER_BOX_FG,
+            activebackground=STICKY_FILTER_BOX_BG, selectcolor=STICKY_FILTER_BOX_BG, font=font_hint,
+        ).pack(side="left")
+
         self._count_var = tk.StringVar(value="")
         tk.Label(
             filter_box, textvariable=self._count_var, bg=STICKY_FILTER_BOX_BG, fg=STICKY_FILTER_BOX_FG,
@@ -309,6 +318,14 @@ class StickyNotePanel:
             self._ai_result_ids = None
             shown = self._service.search(notes, query_text, tag_filter)
             ai_mode = False
+
+        # 「只看快到期/已逾期」——疊加在其他篩選之上，同時把排序從「最新建立
+        # 在上」換成「最早到期在上」，這樣才看得出接下來該優先處理哪幾則；
+        # due_at 是 ISO 字串，字典序排序就是時間序，不用另外解析。
+        if self._due_only_var.get():
+            shown = [n for n in shown if due_status(n.due_at)]
+            shown.sort(key=lambda n: n.due_at)
+
         self._last_shown = shown  # 匯出功能沿用「目前篩選出的清單」，見 _on_export()
 
         if ai_mode:
@@ -317,6 +334,8 @@ class StickyNotePanel:
             self._count_var.set(f"符合條件：{len(shown)} / {len(notes)} 則")
         else:
             self._count_var.set(f"共 {len(notes)} 則")
+        if self._due_only_var.get():
+            self._count_var.set(self._count_var.get() + "　·　只看快到期/已逾期")
 
         for child in self._inner.winfo_children():
             child.destroy()

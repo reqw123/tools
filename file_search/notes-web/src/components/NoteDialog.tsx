@@ -6,8 +6,10 @@ import {
   useCreateNote,
   useDeleteNote,
   useNotes,
+  useReminderSettings,
   useRemoveNoteImage,
   useSetNoteImage,
+  useTagColors,
   useUpdateNote,
 } from '../hooks/useNotes'
 import { Body } from './Body'
@@ -22,12 +24,17 @@ export function NoteDialog({
   knownTags,
   defaultTag,
   onClose,
+  onPrev,
+  onNext,
 }: {
   note: Note | null
   initialMode: Mode
   knownTags: string[]
   defaultTag?: string
   onClose: () => void
+  /** 上一則／下一則——在呼叫端目前篩選出的清單裡移動；undefined＝已經是頭/尾，不顯示按鈕。 */
+  onPrev?: () => void
+  onNext?: () => void
 }) {
   const ref = useRef<HTMLElement>(null)
   const [mode, setMode] = useState<Mode>(initialMode)
@@ -35,20 +42,44 @@ export function NoteDialog({
   const [picking, setPicking] = useState(false)
   const [pickPath, setPickPath] = useState<string | null>(null)
   const [imgErr, setImgErr] = useState('')
-  // 便利貼容器裡的插圖太小看不清楚——雙擊放大 3 倍，蓋在最上層，可以超出
-  // 便利貼視窗本身的範圍。zoomedRef 讓下面 Escape 監聽器不用把 zoomed
-  // 放進 deps（不然每次放大/收合都要整個重掛一次監聽器、重設 body overflow）。
+  // 便利貼容器裡的插圖太小看不清楚——雙擊放大，蓋在最上層，可以超出便利貼
+  // 視窗本身的範圍。zoomedRef 讓下面 Escape 監聽器不用把 zoomed 放進 deps
+  // （不然每次放大/收合都要整個重掛一次監聽器、重設 body overflow）。
   const [zoomed, setZoomed] = useState(false)
   const zoomedRef = useRef(false)
   useEffect(() => {
     zoomedRef.current = zoomed
   }, [zoomed])
 
+  // 同樣道理：上一則/下一則的鍵盤快捷鍵（←/→）要讀最新的 onPrev/onNext/mode，
+  // 但不想讓下面掛 Escape/方向鍵監聽器的 effect 因為這幾個每次 render 都變
+  // 的東西（onPrev/onNext 是呼叫端傳進來的內聯函式）而重新掛載一次。
+  const navRef = useRef({ onPrev, onNext, mode })
+  useEffect(() => {
+    navRef.current = { onPrev, onNext, mode }
+  }, [onPrev, onNext, mode])
+
+  // 上一則／下一則是換 note prop、不是整個對話框重新掛載（同一個 NoteDialog
+  // 實例留著），上面這些「這一則專屬」的暫存 UI 狀態不會自動歸零——不重置
+  // 的話，例如在 A 便利貼按了「刪除」還沒確認就切到 B，B 一開就會顯示
+  // 「確定要刪除」的提示，或 A 放大看的圖片疊在 B 上面，都是很奇怪的殘留。
+  useEffect(() => {
+    setMode(initialMode)
+    setConfirmDel(false)
+    setPicking(false)
+    setPickPath(null)
+    setImgErr('')
+    setZoomed(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialNote?.id])
+
   // 用資料庫的最新版本（編輯後 view 模式要顯示新內容），沒有就退回開啟當下傳進來的。
   const { data: notes } = useNotes()
   const note = initialNote
     ? (notes?.find((n) => n.id === initialNote.id) ?? initialNote)
     : null
+  const { data: reminderSettings } = useReminderSettings()
+  const due = note ? dueStatus(note.due_at, reminderSettings?.dueSoonHours) : ''
 
   const create = useCreateNote()
   const update = useUpdateNote()
@@ -73,6 +104,15 @@ export function NoteDialog({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        // 只在檢視模式（不是編輯/新增，也沒開著放大檢視）才讓方向鍵切便利貼
+        // ——編輯中的文字內容本來就需要方向鍵移動游標，不能搶走。
+        const { onPrev, onNext, mode: m } = navRef.current
+        if (m !== 'view' || zoomedRef.current) return
+        if (e.key === 'ArrowLeft') onPrev?.()
+        else onNext?.()
+        return
+      }
       if (e.key !== 'Escape') return
       // Esc 先關放大檢視就好，不要連便利貼視窗一起關掉。
       if (zoomedRef.current) {
@@ -92,7 +132,8 @@ export function NoteDialog({
   }, [onClose])
 
   const tag = mode === 'new' ? '' : (note?.tag ?? '')
-  const style = paperVars(tag)
+  const { data: tagColors } = useTagColors()
+  const style = paperVars(tag, 0, undefined, tagColors)
 
   const submit = (input: NoteInput) => {
     if (mode === 'new') {
@@ -129,7 +170,29 @@ export function NoteDialog({
 
         {mode === 'view' && note ? (
           <>
-            <h2>{note.title}</h2>
+            <div className="note-nav-row">
+              <button
+                type="button"
+                className="note-nav-btn"
+                onClick={onPrev}
+                disabled={!onPrev}
+                aria-label="上一則"
+                title="上一則（←）"
+              >
+                ‹
+              </button>
+              <h2>{note.title}</h2>
+              <button
+                type="button"
+                className="note-nav-btn"
+                onClick={onNext}
+                disabled={!onNext}
+                aria-label="下一則"
+                title="下一則（→）"
+              >
+                ›
+              </button>
+            </div>
             {noteImageUrl(note) && (
               <img
                 className="sheet-img"
@@ -141,9 +204,9 @@ export function NoteDialog({
               />
             )}
             <Body text={note.body} />
-            {dueStatus(note.due_at) && (
-              <p className={`due-badge ${dueStatus(note.due_at)}`}>
-                {dueStatus(note.due_at) === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{fromStoredDueAt(note.due_at)}
+            {due && (
+              <p className={`due-badge ${due}`}>
+                {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{fromStoredDueAt(note.due_at)}
               </p>
             )}
             <footer>

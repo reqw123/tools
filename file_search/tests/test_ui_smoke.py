@@ -208,6 +208,100 @@ def test_sticky_panel_debounce_and_ai_invalidate(tk_root, data_dir):
     assert panel._last_shown and panel._last_shown[0].title == "Docker"
 
 
+def test_sticky_panel_due_only_filters_and_sorts(tk_root, data_dir):
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService, parse_due_date
+    from file_search_app.ui.widgets.sticky_note_panel import StickyNotePanel
+    import tkinter.font as tkfont
+    from datetime import datetime, timedelta
+
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    no_due = svc.add_note("NoDue", "", "")
+    soon = svc.add_note("Soon", "", "", parse_due_date((datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")))
+    overdue = svc.add_note("Overdue", "", "", parse_due_date((datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")))
+
+    class FakeAIDesc:
+        def is_configured(self):
+            return True, ""
+
+    panel = StickyNotePanel(tk_root, svc, FakeAIDesc(), on_open_ai_settings=lambda e: None,
+                            font_hint=tkfont.Font(size=10), width=380, on_collapse=lambda: None)
+    tk_root.update()
+    assert {n.id for n in panel._last_shown} == {no_due.id, soon.id, overdue.id}
+
+    panel._due_only_var.set(True)
+    panel._refresh()
+    # 沒有到期日的被濾掉，剩下的依到期日由早到晚排（逾期的最先到期）。
+    assert [n.id for n in panel._last_shown] == [overdue.id, soon.id]
+    assert "只看快到期" in panel._count_var.get()
+
+    panel._due_only_var.set(False)
+    panel._refresh()
+    assert {n.id for n in panel._last_shown} == {no_due.id, soon.id, overdue.id}
+
+
+def test_sticky_note_dialog_tag_color_picker(tk_root, data_dir, monkeypatch):
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.dialogs.sticky_note_dialog import StickyNoteDialog
+    import file_search_app.ui.dialogs.sticky_note_dialog as mod
+
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+
+    dlg = StickyNoteDialog(
+        tk_root, known_tags=[], on_confirm=lambda *_a: None,
+        ai_description=None, sticky_service=svc, initial_tag="work",
+    )
+    tk_root.update()
+
+    # 一開始沒自訂過顏色，色塊顯示雜湊配色，「重設」按鈕停用。
+    hashed = svc.color_for_tag("work")
+    assert dlg._tag_swatch.cget("bg") == hashed
+    assert str(dlg._reset_color_btn["state"]) == "disabled"
+
+    # 模擬使用者用色盤選了紅色——colorchooser.askcolor 回傳 (rgb_tuple, hex_str)。
+    monkeypatch.setattr(mod.colorchooser, "askcolor", lambda *_a, **_kw: ((255, 0, 0), "#ff0000"))
+    dlg._pick_tag_color()
+    assert svc.get_tag_color_override("work") == "#ff0000"
+    assert dlg._tag_swatch.cget("bg") == "#ff0000"
+    assert str(dlg._reset_color_btn["state"]) == "normal"
+
+    # 切換到別的標籤——色塊要跟著換成那個標籤自己的顏色（沒自訂過就是雜湊配色）。
+    other_hashed = svc.color_for_tag("life")
+    dlg.tag_var.set("life")
+    tk_root.update()
+    assert dlg._tag_swatch.cget("bg") == other_hashed
+    assert str(dlg._reset_color_btn["state"]) == "disabled"
+
+    # 切回 work，重設應該清掉剛剛設定的紅色，退回雜湊配色。
+    dlg.tag_var.set("work")
+    tk_root.update()
+    dlg._reset_tag_color()
+    assert svc.get_tag_color_override("work") == ""
+    assert dlg._tag_swatch.cget("bg") == hashed
+    dlg.destroy()
+
+
+def test_sticky_note_dialog_pick_color_without_tag_shows_info(tk_root, data_dir, monkeypatch):
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.dialogs.sticky_note_dialog import StickyNoteDialog
+    import file_search_app.ui.dialogs.sticky_note_dialog as mod
+
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    shown = {}
+    monkeypatch.setattr(mod.messagebox, "showinfo", lambda title, msg: shown.update(title=title, msg=msg))
+
+    dlg = StickyNoteDialog(
+        tk_root, known_tags=[], on_confirm=lambda *_a: None,
+        ai_description=None, sticky_service=svc,
+    )
+    tk_root.update()
+    dlg._pick_tag_color()
+    assert "標籤" in shown.get("msg", "")
+    dlg.destroy()
+
+
 def test_sticky_trash_dialog_restore(tk_root, data_dir):
     from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
     from file_search_app.services.sticky_note_service import StickyNoteService

@@ -1,6 +1,6 @@
 import {
-  Bot, CopyPlus, Download, HardDriveDownload, Plus, Recycle, Search, Settings2, Sparkles, Tags, Trash2,
-  Upload,
+  AlarmClock, Bot, CopyPlus, Download, HardDriveDownload, Plus, Recycle, Search, Settings2, Sparkles, Tags,
+  Timer, Trash2, Upload,
 } from 'lucide-react'
 import type { AiTarget } from '../lib/ai'
 import type { TagCount } from './TagBar'
@@ -31,6 +31,9 @@ export function Toolbar({
   onBatchDelete,
   onGenerateNotes,
   onTrash,
+  dueOnly,
+  onToggleDueOnly,
+  onOpenReminderSettings,
 }: {
   query: string
   onQuery: (v: string) => void
@@ -56,6 +59,9 @@ export function Toolbar({
   onBatchDelete: () => void
   onGenerateNotes: () => void
   onTrash: () => void
+  dueOnly: boolean
+  onToggleDueOnly: () => void
+  onOpenReminderSettings: () => void
 }) {
   return (
     <div className="bar">
@@ -94,6 +100,21 @@ export function Toolbar({
           </button>
           <button className="btn ghost icon" onClick={onOpenAiSettings} title="AI 設定">
             <Settings2 size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button
+            className={`btn ghost icon${dueOnly ? ' on' : ''}`}
+            onClick={onToggleDueOnly}
+            aria-pressed={dueOnly}
+            title="只看快到期／已逾期（依到期日由早到晚排序）"
+          >
+            <AlarmClock size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button
+            className="btn ghost icon"
+            onClick={onOpenReminderSettings}
+            title="提醒設定（幾小時內算快到期）"
+          >
+            <Timer size={15} strokeWidth={2.2} aria-hidden />
           </button>
           <button
             className="btn ghost icon"

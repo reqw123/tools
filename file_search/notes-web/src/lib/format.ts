@@ -43,11 +43,18 @@ export function tiltOf(seed: number): number {
 }
 
 // 到期日提醒——純視覺提示，不主動跳通知，跟桌面版 sticky_note_service.py
-// 的 parse_due_date/format_due_date/due_status 同一套規則（那三個函式的
-// docstring 有完整理由）：存成當天 23:59:59（不是 00:00:00），到期日在今天
-// （含）以前算逾期，之後 2 天內算「快到期」。兩邊寫同一份 .sticky_notes.json，
-// 格式跟門檻都要一致，不然同一則便利貼在桌面版/網頁版會顯示不同的到期狀態。
-const DUE_SOON_DAYS = 2
+// 的 parse_due_date/format_due_date 同一套存檔格式（那邊 docstring 有完整
+// 理由）：存成當天 23:59:59（不是 00:00:00），到期日在今天（含）以前算
+// 逾期。兩邊寫同一份 .sticky_notes.json，格式要一致，不然同一則便利貼在
+// 桌面版/網頁版會顯示不同的到期狀態。
+//
+// 「幾小時內算快到期」這個門檻在 notes-web 這邊是可調的（見 lib/api.ts 的
+// ReminderSettings、「⏰ 提醒設定」對話框），桌面版目前還是固定 2 天——
+// 這裡的預設值只在還沒讀到使用者設定值那一瞬間當退回值用。
+
+/** dueStatus() 沒指定 soonHours 時的退回值——跟後端 server/store.ts 的
+ *  DEFAULT_DUE_SOON_HOURS 一致（改動門檻邏輯時兩邊要一起改）。 */
+export const DEFAULT_DUE_SOON_HOURS = 48
 
 /** `<input type="date">` 給的 `YYYY-MM-DD` → 存檔用的完整 ISO（23:59:59）。
  *  空字串（清除到期日）原樣回傳空字串。 */
@@ -61,13 +68,19 @@ export function fromStoredDueAt(dueAt: string): string {
   return dueAt ? dueAt.slice(0, 10) : ''
 }
 
-/** 卡片標色分類：`'overdue'`／`'soon'`／`''`（沒有到期日，或還早）。 */
-export function dueStatus(dueAt: string, now = new Date()): 'overdue' | 'soon' | '' {
+/** 卡片標色分類：`'overdue'`／`'soon'`／`''`（沒有到期日，或還早）。
+ *  `soonHours` 來自 useReminderSettings()，呼叫端沒傳（或還在載入中）就用
+ *  DEFAULT_DUE_SOON_HOURS 頂著，不會因為設定值還沒讀回來就整個不標色。 */
+export function dueStatus(
+  dueAt: string,
+  soonHours = DEFAULT_DUE_SOON_HOURS,
+  now = new Date(),
+): 'overdue' | 'soon' | '' {
   if (!dueAt) return ''
   const due = new Date(dueAt)
   if (Number.isNaN(due.getTime())) return ''
   if (due < now) return 'overdue'
-  if (due.getTime() - now.getTime() <= DUE_SOON_DAYS * 86_400_000) return 'soon'
+  if (due.getTime() - now.getTime() <= soonHours * 3_600_000) return 'soon'
   return ''
 }
 

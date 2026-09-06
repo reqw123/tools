@@ -1,8 +1,9 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { Note } from './lib/api'
-import { useNotes } from './hooks/useNotes'
+import { useNotes, useReminderSettings, useTagColors } from './hooks/useNotes'
 import { useAiSearch, useAiTarget } from './hooks/useAi'
 import { hasDesktopWall } from './lib/desktopWall'
+import { dueStatus } from './lib/format'
 import { Toolbar } from './components/Toolbar'
 import { Wall } from './components/Wall'
 import { CropOverlay } from './components/CropOverlay'
@@ -15,6 +16,7 @@ import { BatchDeleteDialog } from './components/BatchDeleteDialog'
 import { BatchRecategorizeDialog } from './components/BatchRecategorizeDialog'
 import { GenerateNotesDialog } from './components/GenerateNotesDialog'
 import { ImportNotesDialog } from './components/ImportNotesDialog'
+import { ReminderSettingsDialog } from './components/ReminderSettingsDialog'
 import { TrashDialog } from './components/TrashDialog'
 import { downloadStickyNotesHtml } from './lib/exportHtml'
 import { downloadNotesJson } from './lib/exportJson'
@@ -48,6 +50,12 @@ export function App() {
   const [tag, setTag] = useState<string | null>(null)
   const [dialog, setDialog] = useState<DialogState>(null)
 
+  // 「只看快到期／已逾期」——疊加在其他篩選之上，開啟時同時把排序從「最新
+  // 建立在上」換成「最早到期在上」，見下面 shown 的計算。
+  const [dueOnly, setDueOnly] = useState(false)
+  const { data: reminderSettings } = useReminderSettings()
+  const { data: tagColors } = useTagColors()
+
   const [aiMode, setAiMode] = useState(false)
   const [rawAiResult, setAiResult] = useState<AiResult | null>(null)
   const [answerDismissed, setAnswerDismissed] = useState(false)
@@ -64,6 +72,7 @@ export function App() {
   const [generateNotes, setGenerateNotes] = useState(false)
   const [importNotes, setImportNotes] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
+  const [reminderSettingsOpen, setReminderSettingsOpen] = useState(false)
   const [defaultTag, setDefTag] = useState(getDefaultTag)
   const applyDefaultTag = useCallback((t: string) => {
     setDefaultTag(t)
@@ -221,9 +230,28 @@ export function App() {
         : list
     }
     if (tag) base = base.filter((n) => n.tag === tag)
+    if (dueOnly) {
+      // 疊加在其他篩選之上，同時把排序從「最新建立在上」換成「最早到期在
+      // 上」——due_at 是 ISO 字串，字典序排序就是時間序，不用另外解析。
+      const soonHours = reminderSettings?.dueSoonHours
+      base = base.filter((n) => dueStatus(n.due_at, soonHours)).sort((a, b) => (a.due_at < b.due_at ? -1 : 1))
+    }
     // 拖出去變懸浮視窗的便利貼從牆上拿掉——懸浮視窗那邊（FocusedNote）自己顯示。
     return floatedIds.size ? base.filter((n) => !floatedIds.has(n.id)) : base
-  }, [list, tag, deferredQuery, aiMode, aiResult, croppedIds, floatedIds])
+  }, [list, tag, deferredQuery, aiMode, aiResult, croppedIds, floatedIds, dueOnly, reminderSettings])
+
+  // 詳細視窗的「上一則／下一則」——在目前這份篩選/排序出的清單（shown）裡移
+  // 動，不是整份未篩選清單，這樣使用者在「只看快到期」之類的篩選底下瀏覽
+  // 時，上一則/下一則走的也是眼前看得到的這批，不會跳到篩選掉的項目。
+  const openNote = dialog?.kind === 'open' ? dialog.note : null
+  const openIndex = openNote ? shown.findIndex((n) => n.id === openNote.id) : -1
+  const goToOffset = useCallback(
+    (delta: number) => {
+      const next = shown[openIndex + delta]
+      if (next) setDialog({ kind: 'open', note: next })
+    },
+    [openIndex, shown],
+  )
 
   const clearAi = useCallback(() => {
     setAiResult(null)
@@ -263,7 +291,7 @@ export function App() {
 
   const anyDialogOpen =
     !!dialog || batchCreate || batchRecategorize || batchDelete || generateNotes || importNotes ||
-    trashOpen || aiSettingsOpen
+    trashOpen || aiSettingsOpen || reminderSettingsOpen
   // 已經在裁切中就不能再拉一次框——先恢復完整畫面才能重新選——不然兩個裁切
   // 範圍疊在一起的語意會很奇怪。
   const cropActive = canFloat && !anyDialogOpen && !croppedIds
@@ -323,7 +351,7 @@ export function App() {
         sendCount={inScope.length}
         onOpenAiSettings={() => setAiSettingsOpen(true)}
         onExport={() => {
-          if (shown.length) void downloadStickyNotesHtml(shown)
+          if (shown.length) void downloadStickyNotesHtml(shown, tagColors)
         }}
         exportCount={shown.length}
         onExportJson={() => void downloadNotesJson()}
@@ -331,6 +359,9 @@ export function App() {
         onBatchCreate={() => setBatchCreate(true)}
         onBatchRecategorize={() => setBatchRecategorize(true)}
         onBatchDelete={() => setBatchDelete(true)}
+        dueOnly={dueOnly}
+        onToggleDueOnly={() => setDueOnly((v) => !v)}
+        onOpenReminderSettings={() => setReminderSettingsOpen(true)}
         onGenerateNotes={() => setGenerateNotes(true)}
         onTrash={() => setTrashOpen(true)}
       />
@@ -389,6 +420,8 @@ export function App() {
           knownTags={knownTags}
           defaultTag={defaultTag}
           onClose={closeDialog}
+          onPrev={openIndex > 0 ? () => goToOffset(-1) : undefined}
+          onNext={openIndex >= 0 && openIndex < shown.length - 1 ? () => goToOffset(1) : undefined}
         />
       )}
       {batchCreate && (
@@ -436,6 +469,9 @@ export function App() {
             setAiResult(null) // 復原可能讓便利貼重新出現，AI 搜尋命中清單就不保證對得上了
           }}
         />
+      )}
+      {reminderSettingsOpen && (
+        <ReminderSettingsDialog onClose={() => setReminderSettingsOpen(false)} />
       )}
       {aiResult && !answerDismissed && (
         <AiAnswerDialog

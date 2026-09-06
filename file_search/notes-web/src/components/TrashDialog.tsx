@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { colorForTag } from '../lib/color'
 import { stamp } from '../lib/format'
-import { useEmptyTrash, usePurgeNote, useRestoreNote, useTrash } from '../hooks/useNotes'
+import { useEmptyTrash, usePurgeNote, useRestoreNote, useTagColors, useTrash } from '../hooks/useNotes'
 
 /**
  * 垃圾桶——「刪除」（單筆或批次）現在只是把便利貼搬到這裡，不是真的消失。
@@ -12,6 +12,7 @@ import { useEmptyTrash, usePurgeNote, useRestoreNote, useTrash } from '../hooks/
 export function TrashDialog({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const { data: trash, isLoading, isError } = useTrash()
+  const { data: tagColors } = useTagColors()
   const restore = useRestoreNote()
   const purge = usePurgeNote()
   const empty = useEmptyTrash()
@@ -85,7 +86,7 @@ export function TrashDialog({ onClose }: { onClose: () => void }) {
 
             <ul className="bd-list">
               {shown.map((note) => (
-                <li key={note.id} style={{ background: colorForTag(note.tag) }}>
+                <li key={note.id} style={{ background: colorForTag(note.tag, tagColors) }}>
                   <div className="tr-row">
                     <div>
                       <span className="bd-title">{note.title || '(無標題)'}</span>

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { noteThumbUrl, type Note as NoteT } from '../lib/api'
 import { paperVars } from '../lib/color'
 import { dueStatus, fromStoredDueAt, seedOf, stamp, tiltOf } from '../lib/format'
+import { useReminderSettings, useTagColors } from '../hooks/useNotes'
 import { Body } from './Body'
 
 const EDGE_MARGIN = 24 // 拖到離視窗邊緣多近算「要彈出去變懸浮視窗」
@@ -29,7 +30,10 @@ export function Note({
   const seed = seedOf(note.title + note.tag)
   const rot = tiltOf(seed)
   const usePin = seed % 3 === 2
-  const style = paperVars(note.tag, rot, index)
+  const { data: tagColors } = useTagColors()
+  const style = paperVars(note.tag, rot, index, tagColors)
+  const { data: reminderSettings } = useReminderSettings()
+  const due = dueStatus(note.due_at, reminderSettings?.dueSoonHours)
 
   const open = () => {
     // 剛剛在拖（不管有沒有真的拖出去），這次 click 是拖曳動作的副產物，
@@ -147,9 +151,9 @@ export function Note({
         />
       )}
       <Body text={note.body} limit={5} />
-      {dueStatus(note.due_at) && (
-        <p className={`due-badge ${dueStatus(note.due_at)}`}>
-          {dueStatus(note.due_at) === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{fromStoredDueAt(note.due_at)}
+      {due && (
+        <p className={`due-badge ${due}`}>
+          {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{fromStoredDueAt(note.due_at)}
         </p>
       )}
       <footer>

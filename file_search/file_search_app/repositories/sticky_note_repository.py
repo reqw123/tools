@@ -20,11 +20,30 @@ _DEFAULT_PANEL_STATE = {"visible": True}
 # 讀寫這個資料夾，讓「搬便利貼」時圖片能一起帶走。
 _IMAGES_DIRNAME = ".sticky_note_images"
 
+# 標籤自訂顏色——獨立的小檔案，不塞進 .sticky_notes.json：這是顯示偏好，不是
+# 便利貼資料本身，分開存壞掉互不牽連。跟 notes-web 的 .sticky_tag_colors.json
+# 同名同格式（{"<標籤>": "#rrggbb", ...}），兩邊各自讀寫、同一份檔案。
+_TAG_COLORS_FILENAME = ".sticky_tag_colors.json"
+
 
 class StickyNoteRepository:
     def __init__(self, indexes_dir: Path = INDEXES_DIR):
         self.path = indexes_dir / ".sticky_notes.json"
         self._images_dir = indexes_dir / _IMAGES_DIRNAME
+        self._tag_colors_path = indexes_dir / _TAG_COLORS_FILENAME
+
+    def load_tag_colors(self) -> dict:
+        """標籤→自訂顏色（hex）對照表；沒有自訂過的標籤不會出現在這裡，交由
+        呼叫端（StickyNoteService.color_for_tag）退回雜湊配色。檔案不存在或
+        壞掉都回傳空字典，不拋例外——這是次要的顯示偏好，不該擋住便利貼本身
+        的顯示。"""
+        data = read_json(self._tag_colors_path, None)
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+        return {}
+
+    def save_tag_colors(self, colors: dict) -> None:
+        write_json(self._tag_colors_path, colors)
 
     def load_notes(self) -> list:
         return self._read_raw()["notes"]

@@ -109,6 +109,55 @@ export function useEmptyTrash() {
   })
 }
 
+const REMINDER_SETTINGS_KEY = ['reminder-settings'] as const
+
+/** 「快到期」門檻——卡片標色跟 dueOnly 篩選都讀這個。staleTime 給長一點，
+ *  這種偏好設定不太可能被別的視窗同時改，沒必要每次切換分類/搜尋都重抓。 */
+export function useReminderSettings() {
+  return useQuery({
+    queryKey: REMINDER_SETTINGS_KEY,
+    queryFn: api.getReminderSettings,
+    staleTime: 60_000,
+  })
+}
+
+export function useSetReminderSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dueSoonHours: number) => api.setReminderSettings(dueSoonHours),
+    onSuccess: (settings) => qc.setQueryData(REMINDER_SETTINGS_KEY, settings),
+  })
+}
+
+const TAG_COLORS_KEY = ['tag-colors'] as const
+
+/** 標籤自訂顏色對照表——colorForTag()/paperVars() 都要帶這個當覆寫來源。
+ *  staleTime 給長一點，理由同 reminder-settings：偏好設定不太會被別的視窗
+ *  同時改，沒必要每次切換分類/搜尋都重抓。 */
+export function useTagColors() {
+  return useQuery({
+    queryKey: TAG_COLORS_KEY,
+    queryFn: api.getTagColors,
+    staleTime: 60_000,
+  })
+}
+
+export function useSetTagColor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ tag, color }: { tag: string; color: string }) => api.setTagColor(tag, color),
+    onSuccess: (colors) => qc.setQueryData(TAG_COLORS_KEY, colors),
+  })
+}
+
+export function useClearTagColor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (tag: string) => api.clearTagColor(tag),
+    onSuccess: (colors) => qc.setQueryData(TAG_COLORS_KEY, colors),
+  })
+}
+
 export function useBulkCreateNotes() {
   const qc = useQueryClient()
   return useMutation({

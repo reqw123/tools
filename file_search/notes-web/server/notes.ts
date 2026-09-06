@@ -1,17 +1,23 @@
 import type { FastifyPluginAsync } from 'fastify'
 import {
+  clearTagColor,
   createNote,
   createNotes,
   deleteNote,
   deleteNotes,
+  dueSummary,
   emptyTrash,
   exportNotesJson,
   getNote,
+  getReminderSettings,
+  getTagColors,
   importNotesJson,
   listNotes,
   listTrash,
   purgeNote,
   restoreNote,
+  setReminderSettings,
+  setTagColor,
   tagCounts,
   updateNote,
   updateNotesTag,
@@ -39,6 +45,56 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
   app.get('/notes', async () => ({ notes: listNotes() }))
 
   app.get('/tags', async () => ({ tags: tagCounts() }))
+
+  // 給外部排程/自動化拉取的到期提醒摘要（例如 Node-RED 定時輪詢，自己接
+  // 後面要發 Discord/LINE 或其他通知）——純讀取，這支 app 不主動推播任何
+  // 東西。回應格式見 store.ts 的 DueSummary。「快到期」的門檻讀自
+  // reminder-settings，Node-RED 不需要另外知道這個設定存在。
+  app.get('/notes/due-soon', async () => dueSummary())
+
+  // 「快到期」門檻——使用者在設定視窗調整，卡片標色跟 due-soon 都用同一份。
+  app.get('/reminder-settings', async () => getReminderSettings())
+
+  app.patch<{ Body: { dueSoonHours?: number } }>(
+    '/reminder-settings',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['dueSoonHours'],
+          properties: { dueSoonHours: { type: 'number', minimum: 1, maximum: 720 } },
+        },
+      },
+    },
+    async (req) => setReminderSettings(req.body.dueSoonHours ?? 48),
+  )
+
+  // 標籤自訂顏色——沒自訂過的標籤不會出現在回應裡，前端 colorForTag() 拿不
+  // 到就照舊退回雜湊配色。
+  app.get('/tag-colors', async () => getTagColors())
+
+  app.patch<{ Body: { tag?: string; color?: string } }>(
+    '/tag-colors',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['tag', 'color'],
+          properties: {
+            tag: { type: 'string', minLength: 1, maxLength: 60 },
+            color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
+          },
+        },
+      },
+    },
+    async (req) => setTagColor(req.body.tag ?? '', req.body.color ?? ''),
+  )
+
+  // Fastify 的路由器本來就會先解碼路徑參數，這裡不用再 decodeURIComponent
+  // 一次——標籤名稱含 % 的話再解一次反而會壞掉（雙重解碼）。
+  app.delete<{ Params: { tag: string } }>('/tag-colors/:tag', async (req) =>
+    clearTagColor(req.params.tag),
+  )
 
   app.get<{ Params: { id: string } }>('/notes/:id', async (req, reply) => {
     const note = getNote(req.params.id)

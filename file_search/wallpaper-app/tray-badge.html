@@ -1,0 +1,60 @@
+<!doctype html>
+<!--
+  給系統匣角標用的離線繪圖頁——main.js 用一個隱藏的 BrowserWindow 載入這個
+  檔案（帶 icon/count 兩個查詢參數），畫完之後 main.js 呼叫
+  webContents.capturePage() 把畫出來的圖抓回去當 tray.setImage() 的圖示。
+
+  用「隱藏視窗 + canvas + capturePage」而不是裝 canvas/sharp 之類的套件，
+  是因為 Electron 主行程本身沒有繪圖能力，這個做法完全靠 Electron/Chromium
+  內建的東西（一個 BrowserWindow、一個 <canvas>），不用多裝任何相依套件，
+  跟專案其他地方（main.js 沒有任何 npm 相依，只靠 electron 本身）維持同一種
+  極簡風格。
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+  </head>
+  <body style="margin: 0; padding: 0; overflow: hidden; background: transparent">
+    <canvas id="c" width="32" height="32"></canvas>
+    <script>
+      ;(function () {
+        const params = new URLSearchParams(location.search)
+        const count = parseInt(params.get('count') || '0', 10)
+        const iconDataUrl = params.get('icon') || ''
+        const canvas = document.getElementById('c')
+        const ctx = canvas.getContext('2d')
+
+        function done() {
+          // main.js 輪詢這個旗標，畫完（或畫失敗）才去 capturePage()，
+          // 避免抓到一張還沒畫完的空白圖。
+          window.__badgeReady = true
+        }
+
+        const img = new Image()
+        img.onload = function () {
+          ctx.clearRect(0, 0, 32, 32)
+          ctx.drawImage(img, 0, 0, 32, 32)
+          if (count > 0) {
+            // 右下角紅色圓形角標——數字超過 9 就顯示「9+」，圓圈大小固定，
+            // 不會因為字數變多被撐爆版面。
+            ctx.beginPath()
+            ctx.arc(23, 23, 9, 0, Math.PI * 2)
+            ctx.fillStyle = '#e11d2e'
+            ctx.fill()
+            ctx.lineWidth = 1.5
+            ctx.strokeStyle = '#ffffff'
+            ctx.stroke()
+            ctx.fillStyle = '#ffffff'
+            ctx.font = 'bold 13px Arial'
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText(count > 9 ? '9+' : String(count), 23, 24)
+          }
+          done()
+        }
+        img.onerror = done // 底圖讀不到也要放行，不要卡住等待端
+        img.src = iconDataUrl
+      })()
+    </script>
+  </body>
+</html>

@@ -387,6 +387,145 @@ export function tagCounts(): { tag: string; count: number }[] {
 
 export const notesFilePath = FILE
 
+// ── 到期日提醒摘要（給外部排程/自動化拉取用，例如 Node-RED）───────────────
+// 只讀、不主動推播——這支 app 本身不知道怎麼發 Discord/LINE，也不該知道
+// （那是每個人自己的 Node-RED flow 要接的事）。這裡只負責把「現在有哪些
+// 便利貼已經逾期／快到期」用穩定的 JSON 格式吐出來，讓 Node-RED 用
+// inject（排程）+ http request 定時拉這支，自己接後面要發去哪裡。
+//
+// ── 提醒設定（「快到期」門檻，使用者可調）─────────────────────────────
+// 獨立的小設定檔，不跟 .sticky_notes.json 混在一起——這是顯示/通知用的偏好
+//設定，不是筆記資料本身，分開存壞掉互不牽連（設定檔壞了不影響便利貼，
+// 便利貼檔案的原子寫入邏輯也不用管這個額外欄位）。
+//
+// 這個門檻同時是 dueSummary()（給 Node-RED 用）跟前端卡片標色共用的唯一
+// 依據——前端透過 GET /reminder-settings 讀同一份值，不是自己另外存一份，
+// 兩邊看到的「快到期」定義才會一致。Node-RED 那邊完全不需要知道這個設定
+// 存在：它只讀 dueSummary() 算好的結果，門檻在哪裡調整、怎麼調整都不影響
+// 它怎麼呼叫這支 API——這就是特意要的低耦合：改設定不用碰 Node-RED 那邊
+// 的流程，這支 API 掛掉或設定檔壞掉也不會讓 Node-RED 整個流程壞掉（就只
+// 是那一輪讀不到資料、不會發通知，僅此而已）。
+const SETTINGS_FILE = join(dirname(FILE), '.notes_settings.json')
+const DEFAULT_DUE_SOON_HOURS = 48 // 跟改動前硬寫的「2 天」門檻一致，設定檔還不存在時的預設值
+
+export interface ReminderSettings {
+  /** 到期前幾小時內算「快到期」。 */
+  dueSoonHours: number
+}
+
+export function getReminderSettings(): ReminderSettings {
+  try {
+    const data = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) as unknown
+    const hours = (data as Record<string, unknown> | null)?.dueSoonHours
+    if (typeof hours === 'number' && Number.isFinite(hours) && hours > 0) {
+      return { dueSoonHours: hours }
+    }
+  } catch {
+    // 檔案不存在或壞掉都退回預設值，不拋例外——這是次要的顯示偏好，不該
+    // 因為一份設定檔壞了就讓整支 API（甚至整個 server）掛掉。
+  }
+  return { dueSoonHours: DEFAULT_DUE_SOON_HOURS }
+}
+
+/** 1 小時 ~ 30 天（720 小時），純粹避免打錯數字（例如多打一個 0）產生離譜
+ *  的門檻；不是什麼精確的業務邏輯上限。 */
+export function setReminderSettings(dueSoonHours: number): ReminderSettings {
+  const clamped = Math.min(720, Math.max(1, Math.round(dueSoonHours)))
+  const dir = dirname(SETTINGS_FILE)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(SETTINGS_FILE, JSON.stringify({ dueSoonHours: clamped }, null, 1), 'utf-8')
+  return { dueSoonHours: clamped }
+}
+
+export interface DueNote {
+  id: string
+  title: string
+  tag: string
+  due_at: string
+}
+
+export interface DueSummary {
+  generated_at: string
+  overdue: DueNote[]
+  soon: DueNote[]
+}
+
+function toDueNote(n: Note): DueNote {
+  return { id: n.id, title: n.title, tag: n.tag, due_at: n.due_at }
+}
+
+export function dueSummary(): DueSummary {
+  const { dueSoonHours } = getReminderSettings()
+  const soonMs = dueSoonHours * 3_600_000
+  const now = new Date()
+  const overdue: DueNote[] = []
+  const soon: DueNote[] = []
+  for (const n of listNotes()) {
+    if (!n.due_at) continue
+    const due = new Date(n.due_at)
+    if (Number.isNaN(due.getTime())) continue
+    if (due < now) overdue.push(toDueNote(n))
+    else if (due.getTime() - now.getTime() <= soonMs) soon.push(toDueNote(n))
+  }
+  const byDueAtAsc = (a: DueNote, b: DueNote) => (a.due_at < b.due_at ? -1 : 1)
+  overdue.sort(byDueAtAsc)
+  soon.sort(byDueAtAsc)
+  return { generated_at: now.toISOString(), overdue, soon }
+}
+
+// ── 標籤自訂顏色 ─────────────────────────────────────────────────────
+// 獨立的小檔案，跟 .sticky_notes.json 分開存（顯示偏好，不是筆記資料本身，
+// 壞掉互不牽連）。跟桌面版的 .sticky_tag_colors.json 同名同格式
+// （{"<標籤>": "#rrggbb", ...}），兩邊各自讀寫同一份檔案。
+const TAG_COLORS_FILE = join(dirname(FILE), '.sticky_tag_colors.json')
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
+
+export type TagColors = Record<string, string>
+
+export function getTagColors(): TagColors {
+  try {
+    const data = JSON.parse(readFileSync(TAG_COLORS_FILE, 'utf-8')) as unknown
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const out: TagColors = {}
+      for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+        if (typeof v === 'string' && HEX_COLOR_RE.test(v)) out[k] = v
+      }
+      return out
+    }
+  } catch {
+    // 檔案不存在或壞掉都回空物件，不拋例外——次要的顯示偏好，不該擋住便利貼本身。
+  }
+  return {}
+}
+
+function writeTagColors(colors: TagColors): void {
+  const dir = dirname(TAG_COLORS_FILE)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(TAG_COLORS_FILE, JSON.stringify(colors, null, 1), 'utf-8')
+}
+
+/** 指定某個標籤固定用這個顏色，回傳更新後的完整對照表。`tag`／`color` 格式
+ *  不對（color 必須是 `#rrggbb`）就直接不做事、原樣回傳目前的表。 */
+export function setTagColor(tag: string, color: string): TagColors {
+  const trimmed = tag.trim()
+  if (!trimmed || !HEX_COLOR_RE.test(color)) return getTagColors()
+  const colors = getTagColors()
+  colors[trimmed] = color
+  writeTagColors(colors)
+  return colors
+}
+
+/** 拿掉某個標籤的自訂顏色，改回前端雜湊配色。回傳更新後的完整對照表。 */
+export function clearTagColor(tag: string): TagColors {
+  const trimmed = tag.trim()
+  const colors = getTagColors()
+  if (trimmed in colors) {
+    delete colors[trimmed]
+    writeTagColors(colors)
+  }
+  return colors
+}
+
 // ── 匯出／匯入（搬家／備份用）──────────────────────────────────────
 // 格式跟桌面版 `StickyNoteRepository.serialize_notes()`／`parse_notes()`
 // 完全一致（`{"notes":[{id,title,body,tag,image,created_at}]}`），兩邊互通：

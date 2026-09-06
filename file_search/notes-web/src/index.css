@@ -742,6 +742,41 @@ body {
   text-wrap: pretty;
   overflow-wrap: anywhere;
 }
+/* 詳細視窗的上一則／下一則——標題兩側各一顆，鍵盤 ←/→ 也能切（見
+   NoteDialog 的 ArrowLeft/ArrowRight 監聽），沒有上一則/下一則時整顆變淡
+   且不能點，不是直接藏起來（藏起來會讓標題跳動、兩側按鈕位置不對稱）。 */
+.note-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+.note-nav-row h2 {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.note-nav-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  line-height: 1;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+  cursor: pointer;
+}
+.note-nav-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.16);
+}
+.note-nav-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
 .sheet .lines {
   font-size: 1rem;
   gap: 0.5rem;
@@ -841,6 +876,44 @@ body {
 .due-row input[type='date'] {
   width: auto;
   flex: 0 1 auto;
+}
+
+/* 分類欄旁邊的自訂顏色色塊——.tag-color-row-input 讓 TagInput 的外層
+   wrapper（原本是 block 撐滿一整行）在這個 flex row 裡改成吃剩餘寬度，
+   色塊跟「重設」按鈕維持自己的固定寬度不被擠壓。 */
+.tag-color-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tag-color-row-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 選擇器故意寫成 .tag-color-row input.tag-color-swatch（不是單純
+   .tag-color-swatch）——特異度要贏過 .form input 的 width:100%，不然這裡的
+   width:34px 會被蓋掉，色塊撐成整排寬度，把旁邊的「重設」按鈕擠出容器
+   （這正是實際踩到的 bug：色塊變超寬，按鈕跟著被推到看不見的地方）。 */
+.tag-color-row input.tag-color-swatch {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--hair);
+  border-radius: 3px;
+  cursor: pointer;
+  background: none;
+}
+.tag-color-swatch:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.tag-color-swatch::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+.tag-color-swatch::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
 }
 
 /* ─── theme toggle ──────────────────────────────────────────────── */

@@ -208,7 +208,10 @@ const SCRIPT = `
 
 /** 目前這批便利貼 → 一份可離線開、可列印、可點開看大張的 HTML 文件（跟牆上同一套視覺）。
  *  有插圖的便利貼會把圖片以 data URI 內嵌進去，所以檔案可能不小——這是「可離線」的代價。 */
-export async function buildStickyNotesHtml(notes: Note[]): Promise<string> {
+export async function buildStickyNotesHtml(
+  notes: Note[],
+  tagColors?: Record<string, string>,
+): Promise<string> {
   const now = new Date()
   const p = (n: number) => String(n).padStart(2, '0')
   const when = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`
@@ -216,7 +219,7 @@ export async function buildStickyNotesHtml(notes: Note[]): Promise<string> {
   const cards = (
     await Promise.all(
       notes.map(async (n) => {
-        const face = colorForTag(n.tag)
+        const face = colorForTag(n.tag, tagColors)
         const fold = darken(face, 0.2)
         const tag = n.tag ? `<span class="tag"># ${esc(n.tag)}</span>` : '<span></span>'
         const dataUri = noteImageUrl(n) ? await imageDataUri(n.image) : null
@@ -264,8 +267,11 @@ ${cards}
 }
 
 /** 觸發下載。filename 例：便利貼_20260903_1530.html */
-export async function downloadStickyNotesHtml(notes: Note[]): Promise<void> {
-  const html = await buildStickyNotesHtml(notes)
+export async function downloadStickyNotesHtml(
+  notes: Note[],
+  tagColors?: Record<string, string>,
+): Promise<void> {
+  const html = await buildStickyNotesHtml(notes, tagColors)
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

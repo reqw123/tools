@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { colorForTag } from '../lib/color'
+import { useTagColors } from '../hooks/useNotes'
 
 /**
  * 分類輸入框＋自訂下拉建議清單——取代原生 `<input list><datalist>`。原生
@@ -35,6 +36,7 @@ export function TagInput({
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const { data: tagColors } = useTagColors()
 
   const matches = useMemo(() => {
     const q = value.trim().toLowerCase()
@@ -106,7 +108,7 @@ export function TagInput({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(t)}
               >
-                <span className="tag-suggest-dot" style={{ background: colorForTag(t) }} aria-hidden />
+                <span className="tag-suggest-dot" style={{ background: colorForTag(t, tagColors) }} aria-hidden />
                 {t}
               </button>
             </li>

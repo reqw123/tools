@@ -15,7 +15,7 @@ import queue
 import tkinter as tk
 from datetime import datetime, timedelta
 from pathlib import Path
-from tkinter import filedialog, font as tkfont, messagebox, ttk
+from tkinter import colorchooser, filedialog, font as tkfont, messagebox, ttk
 
 from file_search_app.config import (
     BTN_EDIT_ACTIVE, BTN_EDIT_BG, BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG,
@@ -88,13 +88,28 @@ class StickyNoteDialog(tk.Toplevel):
         title_entry.select_range(0, "end")
 
         tk.Label(
-            pad, text="標籤（可留空；跟既有標籤同名會套用同一個顏色）：",
+            pad, text="標籤（可留空；跟既有標籤同名會套用同一個顏色，也可以按右邊色塊自訂）：",
             bg=COLOR_BG, font=font_label, anchor="w", wraplength=380, justify="left",
         ).pack(fill="x")
+        tag_row = tk.Frame(pad, bg=COLOR_BG)
+        tag_row.pack(fill="x", pady=(2, 10))
         self.tag_var = tk.StringVar(value=initial_tag)
         ttk.Combobox(
-            pad, textvariable=self.tag_var, values=sorted(known_tags), font=font_label,
-        ).pack(fill="x", pady=(2, 10))
+            tag_row, textvariable=self.tag_var, values=sorted(known_tags), font=font_label,
+        ).pack(side="left", fill="x", expand=True)
+        self._tag_swatch = tk.Frame(
+            tag_row, width=28, height=28, cursor="hand2",
+            highlightbackground=COLOR_STATUS_FG, highlightthickness=1,
+        )
+        self._tag_swatch.pack(side="left", padx=(6, 0))
+        self._tag_swatch.pack_propagate(False)
+        self._tag_swatch.bind("<Button-1>", lambda _e: self._pick_tag_color())
+        self._reset_color_btn = styled_button(
+            tag_row, "重設", self._reset_tag_color, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_hint,
+        )
+        self._reset_color_btn.pack(side="left", padx=(6, 0))
+        self.tag_var.trace_add("write", lambda *_a: self._refresh_tag_swatch())
+        self._refresh_tag_swatch()
 
         tk.Label(
             pad, text="到期日（可留空；卡片會依到期日標色提醒，格式 YYYY-MM-DD）：",
@@ -158,6 +173,35 @@ class StickyNoteDialog(tk.Toplevel):
 
     def _set_due_in(self, days: int):
         self.due_var.set((datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d"))
+
+    def _refresh_tag_swatch(self):
+        """標籤欄位打字的當下（包括切換到別的既有標籤）就即時更新色塊——不用
+        等存檔才看到顏色對不對。空標籤顯示中性灰，「重設」按鈕只有在目前這個
+        標籤真的有自訂過顏色時才能點，沒自訂過按了也沒意義。"""
+        tag = self.tag_var.get().strip()
+        color = self._sticky_service.color_for_tag(tag)
+        self._tag_swatch.configure(bg=color)
+        has_override = bool(tag) and bool(self._sticky_service.get_tag_color_override(tag))
+        self._reset_color_btn.config(state="normal" if has_override else "disabled")
+
+    def _pick_tag_color(self):
+        tag = self.tag_var.get().strip()
+        if not tag:
+            messagebox.showinfo("自訂標籤顏色", "請先輸入標籤名稱，才能設定顏色。")
+            return
+        current = self._sticky_service.color_for_tag(tag)
+        _rgb, hex_color = colorchooser.askcolor(color=current, title=f"選擇「{tag}」的顏色", parent=self)
+        if not hex_color:
+            return  # 使用者按取消
+        self._sticky_service.set_tag_color(tag, hex_color)
+        self._refresh_tag_swatch()
+
+    def _reset_tag_color(self):
+        tag = self.tag_var.get().strip()
+        if not tag:
+            return
+        self._sticky_service.clear_tag_color(tag)
+        self._refresh_tag_swatch()
 
     def _on_ai_generate(self):
         """挑一個檔案送給目前設定的 AI，生成標題／標籤／內容並直接填進這個
