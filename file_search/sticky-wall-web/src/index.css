@@ -1,0 +1,1635 @@
+@import 'tailwindcss';
+
+/* ─── design tokens ───────────────────────────────────────────────
+   牆面／油墨／黃銅隨主題變動；便利貼「紙張」的顏色來自資料（對應
+   file_search_app 的 color_for_tag()），不吃主題，只用一個濾鏡 token
+   在暗房裡把它壓成「被燈打亮的紙」而非刺眼螢光。三段主題：
+   :root = 完整淺色；prefers-color-scheme + :not([data-theme=light]) = 系統暗色；
+   [data-theme=dark] = 使用者手動選暗色。                              */
+:root {
+  --wall: #efe8dc;
+  --wall-deep: #e0d4bf;
+  --ink: #2a241c;
+  --ink-soft: #7c7059;
+  --hair: #d8ccb5;
+  --brass: #a9782f;
+  --panel: #f6f1e7;
+  --panel-2: #ede5d5;
+  --scrim: rgba(20, 15, 8, 0.62);
+  --paper-ink: #1f2937;
+  --paper-filter: none;
+  --paper-edge: rgba(40, 30, 12, 0.16);
+  --lift-1: 0 1px 1px rgba(35, 26, 10, 0.14);
+  --lift-2: 0 10px 22px -12px rgba(35, 26, 10, 0.38);
+  --grain-opacity: 0.05;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --wall: #201b14;
+    --wall-deep: #14100b;
+    --ink: #f0e7d5;
+    --ink-soft: #a1937b;
+    --hair: #3a3125;
+    --brass: #d0a75f;
+    --panel: #29221a;
+    --panel-2: #322a20;
+    --scrim: rgba(6, 4, 2, 0.72);
+    --paper-ink: #211d18;
+    --paper-filter: saturate(0.9) brightness(0.93);
+    --paper-edge: rgba(0, 0, 0, 0.4);
+    --lift-1: 0 1px 1px rgba(0, 0, 0, 0.4);
+    --lift-2: 0 14px 30px -14px rgba(0, 0, 0, 0.66);
+    --grain-opacity: 0.07;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --wall: #201b14;
+  --wall-deep: #14100b;
+  --ink: #f0e7d5;
+  --ink-soft: #a1937b;
+  --hair: #3a3125;
+  --brass: #d0a75f;
+  --panel: #29221a;
+  --panel-2: #322a20;
+  --scrim: rgba(6, 4, 2, 0.72);
+  --paper-ink: #211d18;
+  --paper-filter: saturate(0.9) brightness(0.93);
+  --paper-edge: rgba(0, 0, 0, 0.4);
+  --lift-1: 0 1px 1px rgba(0, 0, 0, 0.4);
+  --lift-2: 0 14px 30px -14px rgba(0, 0, 0, 0.66);
+  --grain-opacity: 0.07;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  background: var(--wall);
+  color: var(--ink);
+  font-family: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* ─── 捲軸——做成明顯的黃銅色圓角膠囊，一眼看得出「這裡可以拉」。
+   ::-webkit-scrollbar 的 pseudo 在 Chromium 不吃 var() 自訂屬性，也會被 Tailwind
+   v4 的 lightningcss 把 scrollbar-color 反編譯成的規則蓋掉——所以一律用寫死的
+   顏色，深色主題另外覆寫。 */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(169, 120, 47, 0.72); /* --brass（淺色）@ 72% */
+  border: 3px solid transparent; /* + padding-box：膠囊往內縮、像浮在溝槽裡 */
+  background-clip: padding-box;
+  border-radius: 999px;
+  min-height: 44px;
+}
+::-webkit-scrollbar-thumb:hover { background-color: #a9782f; }
+::-webkit-scrollbar-thumb:active { background-color: #855f24; }
+::-webkit-scrollbar-corner { background: transparent; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) ::-webkit-scrollbar-thumb {
+    background-color: rgba(208, 167, 95, 0.6);
+  }
+  :root:not([data-theme='light']) ::-webkit-scrollbar-thumb:hover {
+    background-color: #d0a75f;
+  }
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background-color: rgba(208, 167, 95, 0.6);
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background-color: #d0a75f;
+}
+.mono {
+  font-family: 'IBM Plex Mono', ui-monospace, 'Noto Sans TC', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.brush {
+  font-family: 'LXGW WenKai TC', 'Kaiti TC', 'DFKai-SB', serif;
+}
+
+/* 牆面：中央亮、四周沉下去的燈光 + 一層極淡的灰泥顆粒 */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% -10%, transparent 38%, var(--wall-deep) 140%);
+}
+.backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.86' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+.page {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── 桌面牆模式（desktop-wall / Electron，?surface=desktop）─────────────
+   牆面變成半透明蓋在桌布上，--wall-opacity（0~1，預設 0.55）由 Electron 帶入，
+   0 = 只剩便利貼卡片。一般瀏覽器開網頁不帶參數，這段完全不生效。            */
+:root[data-surface='desktop'] body {
+  background: color-mix(in srgb, var(--wall) calc(var(--wall-opacity, 0.55) * 100%), transparent);
+}
+:root[data-surface='desktop'] .backdrop {
+  opacity: calc(var(--wall-opacity, 0.55) * 0.7);
+}
+:root[data-surface='desktop'] .bar {
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+/* 標題區跟著牆面透明度一起淡出——--wall-opacity = 0 時只剩卡片，
+   跟 body 底色同一套邏輯（index-wall-web 也是這樣處理）。 */
+:root[data-surface='desktop'] .hero {
+  opacity: var(--wall-opacity, 0.55);
+}
+
+/* ─── hero ──────────────────────────────────────────────────────── */
+.hero {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(3rem, 8vw, 5.5rem) clamp(1.25rem, 5vw, 3rem) clamp(1.25rem, 4vw, 2rem);
+}
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 1.1rem;
+}
+.hero h1 {
+  font-weight: 700;
+  font-size: clamp(2.4rem, 7vw, 4.6rem);
+  line-height: 1.04;
+  letter-spacing: 0.02em;
+  text-wrap: balance;
+  margin: 0 0 0.9rem;
+}
+.hero h1 em {
+  font-style: normal;
+  color: var(--brass);
+}
+.lede {
+  max-width: 34rem;
+  font-size: 1rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4rem 2.2rem;
+  margin-top: 1.9rem;
+}
+.stat b {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.stat span {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* ─── sticky control bar ────────────────────────────────────────── */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--wall) 84%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-block: 1px solid var(--hair);
+}
+.bar-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0.8rem clamp(1.25rem, 5vw, 3rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.bar-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.field {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: var(--panel);
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  padding: 0.5rem 0.8rem;
+  flex: 1;
+  min-width: 12rem;
+  max-width: 24rem;
+}
+.field svg {
+  flex: none;
+  color: var(--ink-soft);
+}
+.field input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  outline: none;
+}
+.field input::placeholder {
+  color: var(--ink-soft);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+.btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.95rem;
+  border: 1px solid var(--brass);
+  border-radius: 2px;
+  background: var(--brass);
+  color: #fff;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.btn:hover {
+  filter: brightness(1.08);
+}
+.btn.ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--hair);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+.btn.ghost:hover {
+  border-color: var(--ink-soft);
+  filter: none;
+}
+.btn.danger {
+  background: transparent;
+  color: #c0392b;
+  border-color: color-mix(in srgb, #c0392b 45%, var(--hair));
+}
+:root[data-theme='dark'] .btn.danger,
+:root:not([data-theme='light']) .btn.danger {
+  color: #e8897f;
+}
+.chips {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+}
+/* 分類 chip 這排是小小的橫向捲動，用比主捲軸細一點的同色膠囊 */
+.chips::-webkit-scrollbar { height: 9px; }
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.32rem 0.7rem;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.83rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.chip .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--cd, var(--ink-soft));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.chip .n {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.chip:hover {
+  color: var(--ink);
+  border-color: var(--ink-soft);
+}
+.chip[aria-pressed='true'] {
+  color: var(--ink);
+  border-color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 14%, transparent);
+}
+.chip:focus-visible,
+.field:focus-within,
+.btn:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* ─── the wall ──────────────────────────────────────────────────── */
+.wall {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 5vw, 3rem) clamp(1.25rem, 5vw, 3rem) 1rem;
+  columns: 4 240px;
+  column-gap: 1.9rem;
+}
+@media (max-width: 1180px) {
+  .wall {
+    columns: 3 240px;
+  }
+}
+@media (max-width: 860px) {
+  .wall {
+    columns: 2 220px;
+  }
+}
+@media (max-width: 560px) {
+  .wall {
+    columns: 1;
+    column-gap: 0;
+  }
+}
+
+.note {
+  --rot: 0deg;
+  break-inside: avoid;
+  display: block;
+  width: 100%;
+  margin: 0 0 1.9rem;
+  padding: 1.15rem 1.15rem 1.3rem;
+  position: relative;
+  text-align: left;
+  font: inherit;
+  color: var(--paper-ink);
+  background: var(--face);
+  border: 0;
+  border-radius: 2px 2px 3px 3px;
+  filter: var(--paper-filter);
+  box-shadow: var(--lift-1), var(--lift-2);
+  cursor: pointer;
+  transform: rotate(var(--rot));
+  transition:
+    transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.32s;
+}
+.note::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--paper-edge);
+  pointer-events: none;
+}
+.note:hover,
+.note:focus-visible {
+  transform: rotate(0deg) translateY(-10px) scale(1.025);
+  box-shadow:
+    var(--lift-1),
+    0 26px 44px -18px rgba(30, 22, 8, 0.5),
+    0 0 66px 6px var(--halo);
+  z-index: 5;
+}
+.note:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 4px;
+}
+
+.curl {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 38px;
+  height: 38px;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  background: linear-gradient(
+    135deg,
+    var(--fold) 0%,
+    color-mix(in srgb, var(--fold) 55%, #fff) 52%,
+    var(--face) 53%
+  );
+  box-shadow: -4px -4px 7px rgba(0, 0, 0, 0.16);
+  border-bottom-right-radius: 3px;
+}
+
+.tape {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 92px;
+  height: 26px;
+  transform: translateX(-50%) rotate(var(--tape-rot, -4deg));
+  background: var(--tape);
+  opacity: 0.62;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0 3px,
+    #000 6px calc(100% - 6px),
+    transparent calc(100% - 3px) 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0 3px,
+    #000 6px calc(100% - 6px),
+    transparent calc(100% - 3px) 100%
+  );
+}
+.tape::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    118deg,
+    rgba(255, 255, 255, 0.42) 0 22%,
+    transparent 23% 46%,
+    rgba(255, 255, 255, 0.28) 47% 60%,
+    transparent 61%
+  );
+}
+.pin {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 32%, #ffe9b8 0 12%, var(--brass) 42%, #6f4d17 100%);
+  box-shadow:
+    0 4px 5px rgba(0, 0, 0, 0.4),
+    inset -2px -2px 3px rgba(0, 0, 0, 0.35),
+    inset 2px 2px 3px rgba(255, 255, 255, 0.5);
+}
+.pin::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 92%;
+  width: 34px;
+  height: 12px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.16);
+  filter: blur(4px);
+  border-radius: 50%;
+}
+
+.note h3 {
+  font-family: 'LXGW WenKai TC', 'Kaiti TC', 'DFKai-SB', serif;
+  font-weight: 700;
+  font-size: 1.28rem;
+  line-height: 1.3;
+  margin: 0.35rem 0 0.6rem;
+  text-wrap: balance;
+}
+.note .para {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.72;
+  color: color-mix(in srgb, var(--paper-ink) 88%, transparent);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 便利貼插圖——牆上的卡片給固定高度裁切預覽（不然一張大圖會把整張卡撐爆、
+   打亂 masonry 欄高）。點開的大便利貼（.sheet-img）才顯示完整比例。 */
+.note-img {
+  display: block;
+  width: 100%;
+  max-height: 168px;
+  object-fit: cover;
+  border-radius: 2px;
+  margin: 0.1rem 0 0.6rem;
+  background: color-mix(in srgb, var(--paper-ink) 8%, transparent);
+}
+.focused-note .note-img {
+  max-height: min(46vh, 320px);
+  object-fit: contain;
+}
+.sheet-img {
+  display: block;
+  width: 100%;
+  max-height: 46vh;
+  object-fit: contain;
+  border-radius: 3px;
+  margin: 0 0 0.85rem;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+.lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+  font-size: 0.9rem;
+}
+.lines .task {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  line-height: 1.5;
+}
+.lines .task .box {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-top: 2px;
+  border: 1.5px solid color-mix(in srgb, var(--paper-ink) 55%, transparent);
+  border-radius: 3px;
+}
+.lines .fld {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.lines .fld span {
+  flex: none;
+  color: color-mix(in srgb, var(--paper-ink) 82%, transparent);
+}
+.lines .fld i {
+  flex: 1;
+  height: 0;
+  border-bottom: 1.4px dotted color-mix(in srgb, var(--paper-ink) 42%, transparent);
+  transform: translateY(-3px);
+}
+.lines .more {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.74rem;
+  color: color-mix(in srgb, var(--paper-ink) 60%, transparent);
+  margin-top: 0.15rem;
+}
+.note footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.tag-pill {
+  font-family: 'LXGW WenKai TC', serif;
+  font-size: 0.86rem;
+  color: color-mix(in srgb, var(--paper-ink) 80%, transparent);
+}
+.tag-pill::before {
+  content: '# ';
+  opacity: 0.5;
+}
+.stamp {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--paper-ink) 52%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .wall.enter .note {
+    animation: drop 0.58s cubic-bezier(0.18, 0.7, 0.24, 1) backwards;
+    animation-delay: min(calc(var(--i) * 22ms), 520ms);
+  }
+  @keyframes drop {
+    from {
+      opacity: 0;
+      transform: translateY(-46px) rotate(calc(var(--rot) * 2.4)) scale(0.94);
+    }
+  }
+}
+
+/* ─── states ────────────────────────────────────────────────────── */
+.notice {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 3.5rem clamp(1.25rem, 5vw, 3rem) 5rem;
+  color: var(--ink-soft);
+  font-family: 'IBM Plex Mono', ui-monospace, 'Noto Sans TC', monospace;
+}
+.notice.err {
+  color: #c0392b;
+}
+
+/* ─── dialog ────────────────────────────────────────────────────── */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  /* 捲動交給外層這一格（不是 .sheet 自己）——.sheet 內容一到 max-height 邊界，
+     它自己的捲軸出現/消失會改內容寬度，balance 換行又改高度，就會一閃一閃。
+     flex column + align-items:center 水平置中；.sheet 用 margin:auto 垂直置中，
+     內容比視窗高時 margin 自動收成 0、靠上、外層捲（頂端一定碰得到）。 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(1rem, 4vw, 3rem);
+  background: var(--scrim);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: fade 0.2s ease;
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+.sheet {
+  position: relative;
+  width: min(31rem, 100%);
+  margin: auto;
+  overflow-x: hidden;
+  padding: 2rem 1.9rem 2rem;
+  color: var(--paper-ink);
+  background: var(--face);
+  filter: var(--paper-filter);
+  border-radius: 3px;
+  box-shadow:
+    0 40px 80px -20px rgba(0, 0, 0, 0.6),
+    0 0 90px 4px var(--halo);
+  animation: pop 0.3s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(12px);
+  }
+}
+.sheet .curl {
+  width: 46px;
+  height: 46px;
+}
+.sheet h2 {
+  font-family: 'LXGW WenKai TC', 'Kaiti TC', serif;
+  font-weight: 700;
+  font-size: 1.8rem;
+  line-height: 1.28;
+  margin: 0 0 1rem;
+  /* pretty 而非 balance：balance 會隨寬度些微變動重算換行，捲軸一出現就抖 */
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.sheet .lines {
+  font-size: 1rem;
+  gap: 0.5rem;
+}
+.sheet .para {
+  font-size: 1rem;
+}
+.sheet footer {
+  margin-top: 1.5rem;
+}
+.sheet-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+.icon-btn {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.14);
+  color: var(--paper-ink);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.icon-btn:hover {
+  background: rgba(0, 0, 0, 0.24);
+}
+.icon-btn:focus-visible {
+  outline: 2px solid var(--paper-ink);
+  outline-offset: 2px;
+}
+
+/* form inside the dialog */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--paper-ink) 78%, transparent);
+}
+.form input,
+.form textarea {
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--paper-ink);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 2px;
+  padding: 0.5rem 0.6rem;
+  outline: none;
+  /* textarea 預設 cols=20 會給自己一個內在寬度，在 flex 裡不加這兩行就可能
+     把 .sheet 撐出水平捲軸 */
+  width: 100%;
+  min-width: 0;
+}
+:root[data-theme='dark'] .form input,
+:root[data-theme='dark'] .form textarea,
+:root:not([data-theme='light']) .form input,
+:root:not([data-theme='light']) .form textarea {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.form input:focus,
+.form textarea:focus {
+  border-color: var(--paper-ink);
+}
+.form textarea {
+  min-height: 8.5rem;
+  resize: vertical;
+  line-height: 1.6;
+}
+.form .err {
+  color: #b23b2e;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+/* ─── theme toggle ──────────────────────────────────────────────── */
+.toggle {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 40;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hair);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 1rem;
+}
+.toggle:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* ─── footer ────────────────────────────────────────────────────── */
+.colophon {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 2.5rem clamp(1.25rem, 5vw, 3rem) 4rem;
+  border-top: 1px solid var(--hair);
+  color: var(--ink-soft);
+  font-family: 'IBM Plex Mono', ui-monospace, 'Noto Sans TC', monospace;
+  font-size: 0.74rem;
+  line-height: 1.9;
+  letter-spacing: 0.03em;
+}
+.colophon b {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* ─── AI 搜尋 ───────────────────────────────────────────────────── */
+.field.ai {
+  border-color: var(--brass);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 35%, transparent);
+}
+.field.ai svg {
+  color: var(--brass);
+}
+.btn.icon {
+  padding: 0.5rem;
+}
+.btn.ghost.icon.on {
+  border-color: var(--brass);
+  color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 12%, transparent);
+}
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-left: 0.5rem;
+  font: inherit;
+  font-size: inherit;
+  color: var(--brass);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.link:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+.ai-disclose {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2rem 0;
+}
+
+.ai-banner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0.7rem clamp(1.25rem, 5vw, 3rem);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.6rem;
+  font-size: 0.82rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--brass) 12%, transparent);
+  border-bottom: 1px solid var(--hair);
+}
+
+/* ─── 非便利貼樣式的對話框（AI 回答 / AI 設定）──────────────────── */
+.sheet.plain,
+.sheet.answer {
+  background: var(--panel);
+  color: var(--ink);
+  filter: none;
+  box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.6);
+}
+.sheet.plain h2,
+.sheet.answer h2 {
+  color: var(--ink);
+}
+.answer-q {
+  margin: 0.2rem 0 0.9rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+.answer-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--ink);
+}
+.answer-count {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.sheet .dim {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.7;
+  margin: 0 0 0.4rem;
+}
+.sheet .dim code {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  padding: 0.05em 0.3em;
+  border-radius: 2px;
+}
+.radio-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.3rem 0 0.2rem;
+}
+.radio {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+  font-weight: 400 !important;
+  color: var(--ink) !important;
+  font-size: 0.9rem !important;
+  cursor: pointer;
+}
+.radio input {
+  width: auto !important;
+  accent-color: var(--brass);
+}
+.sheet.plain .form input {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-color: var(--hair);
+  color: var(--ink);
+}
+.sheet.plain .form input:focus {
+  border-color: var(--brass);
+}
+.ok-msg {
+  color: #2e7d4f;
+  font-size: 0.82rem;
+}
+:root[data-theme='dark'] .ok-msg,
+:root:not([data-theme='light']) .ok-msg {
+  color: #6fcf97;
+}
+
+/* ─── 批次對話框 ────────────────────────────────────────────────── */
+.sheet.plain.wide { width: min(40rem, 100%); }
+.form .hint {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--brass);
+  line-height: 1.55;
+}
+.form .hint code,
+.form label code {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  padding: 0.05em 0.3em;
+  border-radius: 2px;
+}
+.btn.sm { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
+
+/* ─── AI 設定：Ollama 本機/區網 + 分段位址 ───────────────────────── */
+.ai-q {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.1rem;
+}
+.form .check-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 400;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.form .check-inline input { width: auto; accent-color: var(--brass); }
+
+/* 分段輸入：http:// 與 :11434 唯讀（灰底），中間 host 欄是唯一要動的，加藍框提示 */
+.seg-url {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--hair);
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.seg-url .seg-fix {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.55rem;
+  font: 0.92rem 'IBM Plex Mono', ui-monospace, monospace;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  white-space: nowrap;
+}
+.seg-url .seg-host {
+  flex: 1;
+  min-width: 0;
+  border: none !important;
+  border-radius: 0 !important;
+  background: var(--brass-tint, color-mix(in srgb, var(--brass) 12%, transparent)) !important;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--brass) 55%, transparent);
+}
+.seg-url .seg-host:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--brass);
+}
+
+.model-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: stretch;
+}
+.model-row input { flex: 1; min-width: 0; }
+.model-row .btn { white-space: nowrap; flex: none; }
+
+.bd-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+.bd-search {
+  flex: 1 1 12rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  padding: 0.45rem 0.6rem;
+  outline: none;
+}
+.bd-search:focus { border-color: var(--brass); }
+.bd-controls .dim { flex: 1 1 100%; order: 3; }
+
+.bd-list {
+  list-style: none;
+  margin: 0 0 0.9rem;
+  padding: 0.4rem;
+  max-height: 46vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+}
+.bd-list li {
+  border-radius: 2px;
+  filter: var(--paper-filter);
+}
+.bd-list li label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  color: #1f2937;
+  min-width: 0;
+}
+.bd-list li input {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  accent-color: #1f2937;
+}
+.bd-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: 'LXGW WenKai TC', 'Kaiti TC', serif;
+  font-weight: 700;
+  font-size: 0.96rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bd-meta {
+  flex: none;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.68rem;
+  color: rgba(31, 41, 55, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+.bd-empty {
+  padding: 1.2rem 0.6rem;
+  text-align: center;
+  color: var(--ink-soft);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+/* ─── 「AI 生成便利貼」──────────────────────────────────────────────
+   選檔（file browser）、資料夾掃描的類型篩選、AI 生成進度／揭露、審核
+   卡片的標題／標籤欄位。跟 index-wall-web 同名 class 的樣式移植，色彩
+   token 換成這個牆自己的（--brass 取代 --marker，--panel-2 取代 --raise，
+   --hair 取代 --line，硬編 #c0392b 取代 --alert，跟本檔其他地方一致）。 */
+
+.fb-path { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.7rem; }
+.fb-cwd {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  padding: 0.35rem 0.55rem;
+}
+.fb-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  overflow: hidden;
+  max-height: 42vh;
+  overflow-y: auto;
+}
+.fb-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  text-align: left;
+  background: var(--panel-2);
+  border: none;
+  border-bottom: 1px solid var(--hair);
+  color: var(--ink);
+  cursor: pointer;
+}
+.fb-item:last-child { border-bottom: none; }
+.fb-item:hover { background: color-mix(in srgb, var(--brass) 12%, var(--panel-2)); }
+.fb-item.on { background: color-mix(in srgb, var(--brass) 22%, var(--panel-2)); }
+.fb-item .fb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-item .fb-size { flex: none; font-size: 0.72rem; color: var(--ink-soft); }
+.fb-item svg { flex: none; color: var(--ink-soft); }
+.fb-item.dir svg { color: var(--brass); }
+.fb-empty { padding: 1.1rem; text-align: center; color: var(--ink-soft); font-size: 0.84rem; }
+.fb-empty.err { color: #c0392b; }
+.fb-drives { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+.fb-trunc { margin: 0.5rem 0 0; font-size: 0.75rem; color: #c0392b; }
+
+/* 檔案類型按鈕——每個類型一個色（--tc），未選＝淡底＋原色字，選中＝滿色底＋白字。 */
+.type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.2rem, 1fr)); gap: 0.5rem; }
+.type-btn {
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.84rem;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.7rem;
+  border: 1.5px solid color-mix(in srgb, var(--tc) 42%, var(--hair));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tc) 10%, var(--panel-2));
+  color: color-mix(in srgb, var(--tc) 85%, var(--ink));
+  cursor: pointer;
+  transition: transform 0.08s, background 0.12s, box-shadow 0.12s;
+}
+.type-btn:hover { background: color-mix(in srgb, var(--tc) 20%, var(--panel-2)); border-color: var(--tc); }
+.type-btn:active { transform: translateY(1px); }
+.type-btn.on {
+  background: var(--tc);
+  border-color: var(--tc);
+  color: #fff;
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--tc) 65%, transparent), inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.type-btn .type-ico { font-size: 0.95rem; line-height: 1; flex: none; }
+.type-btn.on .type-ico { background: #fff; border-radius: 5px; padding: 0.08rem 0.16rem; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); }
+
+/* 掃描結果的類別統計——同一套色，做成小藥丸；數量 0 的淡化 */
+.cat-pills { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.55rem 0 0.9rem; }
+.cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  font-size: 0.76rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tc) 32%, transparent);
+  background: color-mix(in srgb, var(--tc) 13%, var(--panel-2));
+  color: color-mix(in srgb, var(--tc) 78%, var(--ink));
+}
+.cat-pill b {
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--tc);
+  background: color-mix(in srgb, var(--tc) 20%, var(--panel-2));
+  border-radius: 999px;
+  min-width: 1.15rem;
+  text-align: center;
+  padding: 0 0.2rem;
+}
+.cat-pill.zero { opacity: 0.4; border-style: dashed; background: transparent; }
+.cat-pill.zero b { background: transparent; }
+
+.bi-check { display: flex; align-items: center; gap: 0.45rem; font-size: 0.86rem; margin-bottom: 0.9rem; }
+.bi-scan { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; margin: 0.5rem 0 0.4rem; }
+.bi-result { font-size: 0.82rem; color: var(--ink-soft); }
+.bi-result b { color: var(--ink); font-weight: 700; }
+.bi-result.warn { color: #c0392b; }
+
+/* AI 送出中進度、送出前揭露、結果統計——用在確認 modal 跟審核清單裡。
+   原本只是一條純色靜態長條，使用者反映太單調——改成會「呼吸」的外框光暈
+   （呼應牆上便利貼被燈打亮的質感）+ 進度條本身用跟牆面「膠帶」同一種
+   斜紋滾動起來（貼牆主題本來就有膠帶意象，用它當「處理中」動畫比套一個
+   跟主題無關的通用 spinner 更貼合），機器人圖示輕輕點頭，再補一個百分比
+   數字——讓「正在跑」這件事有份量，不是被忽略的一條細線。 */
+.ai-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  margin: 0.5rem 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--brass) 12%, var(--panel-2));
+  border: 1px solid color-mix(in srgb, var(--brass) 32%, transparent);
+  font-size: 0.82rem;
+  color: var(--ink);
+  animation: ai-progress-glow 2.4s ease-in-out infinite;
+}
+@keyframes ai-progress-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brass) 0%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--brass) 16%, transparent); }
+}
+.ai-progress-icon {
+  display: inline-block;
+  animation: ai-progress-nod 1.15s ease-in-out infinite;
+}
+@keyframes ai-progress-nod {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-2px) rotate(-6deg); }
+}
+.ai-bar {
+  position: relative;
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brass) 20%, var(--panel-2));
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+.ai-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background-color: var(--brass);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.32) 0 8px,
+    transparent 8px 16px
+  );
+  background-size: 22px 22px;
+  transition: width 0.25s ease;
+  animation: ai-bar-tape 0.85s linear infinite;
+}
+@keyframes ai-bar-tape {
+  from { background-position: 0 0; }
+  to { background-position: 22px 0; }
+}
+.ai-progress-pct {
+  flex: none;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--brass);
+  min-width: 2.6rem;
+  text-align: right;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-progress, .ai-progress-icon, .ai-bar-fill { animation: none; }
+}
+.ai-summary { font-size: 0.8rem; color: var(--ink-soft); white-space: pre-wrap; margin: 0.4rem 0; }
+.ai-summary b { color: var(--ink); }
+.ai-summary-err { color: #c0392b; }
+.gn-disclose {
+  margin: 0.6rem 0 0.8rem;
+  padding-left: 1.1rem;
+  font-size: 0.84rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+.gn-disclose .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; word-break: break-all; }
+.ai-warn { color: #c0392b; }
+
+/* 草稿審核卡片——標題／標籤輸入列。.gn-tag 現在是 TagInput 的外層 wrapper
+   （不是 input 本身），flex 比例掛在 wrapper 上，字級／邊框等交給裡面
+   .tag-input input 那份共用樣式（見下方「分類輸入框」區塊）。 */
+.gn-fields { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.gn-title {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  flex: 2;
+}
+.gn-title:focus { outline: none; border-color: var(--brass); }
+.gn-fields .gn-tag { flex: 1; min-width: 8rem; }
+.gn-tag input {
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  outline: none;
+}
+.gn-tag input:focus { border-color: var(--brass); }
+
+/* ─── 分類輸入框——自訂下拉建議（取代原生 datalist）───────────────────
+   原生 <input list><datalist> 的下拉選單完全交給瀏覽器畫，字級小、樣式
+   套不進去、每個瀏覽器/系統長得不一樣。這裡自己刻：字級跟其他欄位一致，
+   每個建議項前面帶一個 colorForTag() 算出來的色點——跟牆上便利貼卡片
+   同一套配色，色點本身就是「這是哪個分類」的獨立辨識，不用另外發明
+   一套視覺語言。.tag-input 是 TagInput 元件的外層 wrapper，內部 <input>
+   的外觀交給各自使用情境的 class（.form input 或 .gn-tag input）決定，
+   這裡只管定位跟下拉清單本身。 */
+.tag-input { position: relative; }
+.tag-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  max-height: 14rem;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  box-shadow: var(--lift-2);
+}
+.tag-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.92rem;
+  text-align: left;
+  cursor: pointer;
+}
+.tag-suggest-item:hover, .tag-suggest-item.active {
+  background: color-mix(in srgb, var(--brass) 16%, transparent);
+}
+.tag-suggest-dot {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+.gn-card {
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel-2);
+  filter: var(--paper-filter);
+}
+.gn-card.off { opacity: 0.5; }
+.gn-card-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; cursor: pointer; }
+.gn-source { flex-basis: 100%; font-size: 0.72rem; color: var(--ink-soft); overflow-wrap: anywhere; }
+.gn-body {
+  font: inherit;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  resize: vertical;
+}
+.gn-body:focus { outline: none; border-color: var(--brass); }
+
+/* 掃描結果的勾選清單（挑檔案送 AI 用，不是便利貼卡片，不套 colorForTag） */
+.gn-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 36vh;
+  overflow-y: auto;
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  padding: 0.4rem;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.gn-file-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.gn-file-row:hover { background: color-mix(in srgb, var(--brass) 8%, transparent); }
+.gn-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.86rem; }
+.gn-file-path { flex-basis: 100%; font-size: 0.7rem; color: var(--ink-soft); overflow-wrap: anywhere; }
+.gn-file-size { flex: none; font-size: 0.72rem; color: var(--ink-soft); }
+
+.ae-file {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.95rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--panel-2);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+}
+.ae-file svg { flex: none; color: var(--ink-soft); }
+.ae-fname { font-weight: 600; word-break: break-all; }
+
+.field-block { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.85rem; }
+.field-block label { font-size: 0.82rem; font-weight: 600; }
+
+/* 沒有包在 .form 裡的錯誤訊息（GenerateNotesDialog 掃描／儲存失敗）—— .form .err
+   只在表單內生效，這裡補一個獨立版本，顏色跟 .notice.err 一致。 */
+.err { color: #c0392b; font-size: 0.82rem; }
+
+/* ─── focus note：拉框裁切 + 拖出去變懸浮視窗（只有 desktop-wall 會用到）── */
+
+/* 裁切中——只留牆面本身，標題／工具列／AI 提示／頁尾都先讓開，呼應
+   「除了這則便利貼其他區塊都消失」的需求；.toggle 也一併藏起來，
+   維持畫面乾淨，要換主題／新增等操作請先按左上角恢復。 */
+.page.cropped .hero,
+.page.cropped .bar,
+.page.cropped .ai-banner,
+.page.cropped .colophon,
+.page.cropped .toggle {
+  display: none;
+}
+/* 裁切視窗現在照使用者畫的框原尺寸開，可能非常小——固定寫死一個剛好夠
+   讓開左上角恢復按鈕的高度就好（原本用 clamp() 帶 vw 分量，但 vw 是這個
+   小視窗自己的寬度，裁切視窗幾乎不可能寬到讓 vw 那段生效，等於一直都是
+   在吃 clamp 的最小值，不如直接寫死更誠實）。裝不下的內容交給頁面原生
+   捲動（body 預設 overflow-y 沒關掉），不會整個裁掉看不到。 */
+.page.cropped .wall {
+  padding-top: 3.5rem;
+}
+
+/* 這顆按鈕兼職拖曳把手（按住拖可以搬動裁切視窗，單純點一下才恢復完整
+   畫面）——用 grab/grabbing 游標提示「這個可以抓著拖」，跟純點擊按鈕
+   （cursor:pointer）的視覺語言區分開來。 */
+.crop-restore {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: grab;
+  box-shadow: var(--lift-1);
+}
+.crop-restore:active {
+  cursor: grabbing;
+}
+.crop-restore:hover {
+  background: color-mix(in srgb, var(--brass) 14%, var(--panel));
+  transform: translateY(-1px);
+}
+.crop-restore:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* 拉框選取——跟著滑鼠即時畫的那個框，座標是 viewport 座標所以用 fixed。 */
+.crop-marquee {
+  position: fixed;
+  z-index: 30;
+  border: 1.5px dashed var(--brass);
+  background: color-mix(in srgb, var(--brass) 12%, transparent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* 拖出去變懸浮視窗——拖曳中關掉 .note 原本的 transform 過場動畫，
+   不然會卡在跟著滑鼠跑的每一幀都補間，手感會黏黏的。 */
+.note.dragging-out {
+  transition: none !important;
+  cursor: grabbing;
+  box-shadow:
+    var(--lift-1),
+    0 30px 50px -16px rgba(30, 22, 8, 0.55);
+}
+/* 靠近視窗邊緣，放開就會真的變成懸浮視窗——用發光框給個「放開就成立」的提示。 */
+.note.will-pop {
+  outline: 2px solid var(--brass);
+  outline-offset: 3px;
+  box-shadow:
+    var(--lift-1),
+    0 0 46px 10px var(--halo);
+}
+
+/* ─── focus note：懸浮視窗本體（desktop-wall 開的那個小視窗載入的網頁）── */
+.focus-mode body {
+  background: transparent;
+}
+.focused-note {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  padding: 0.35rem;
+  box-sizing: border-box;
+}
+.focused-note .note {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  box-sizing: border-box;
+  transform: none;
+}
+.focused-note .note:hover,
+.focused-note .note:focus-visible {
+  transform: none;
+}
+/* 沒有系統標題列可以拖——上緣留一條透明的拖曳把手，靠 Electron 的
+   -webkit-app-region 讓整個小視窗能被拖著移動。 */
+.focused-drag-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1.4rem;
+  -webkit-app-region: drag;
+  z-index: 6;
+}
+/* 上緣以外的三邊也給一條拖曳區——這個視窗常常緊貼著某側螢幕邊界生出來，
+   只有上緣能拖的話，貼著左/右/下邊界時那條把手可能整個被邊界吃掉、
+   完全摸不到。四邊都給，不管貼哪一側，至少還有其他三邊可以抓來移動。
+   四個角落刻意留空（不蓋 app-region: drag）——BrowserWindow 本身
+   resizable: true，角落是原生縮放握把慣用的位置，蓋住的話會被拖曳搶走，
+   反而讓「調整大小」變不能用。 */
+.focused-drag-edge {
+  position: absolute;
+  -webkit-app-region: drag;
+  z-index: 6;
+}
+.focused-drag-edge.edge-bottom {
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 10px;
+}
+.focused-drag-edge.edge-left {
+  top: 1.4rem;
+  bottom: 14px;
+  left: 0;
+  width: 10px;
+}
+.focused-drag-edge.edge-right {
+  top: 1.4rem;
+  bottom: 14px;
+  right: 0;
+  width: 10px;
+}
+/* 收回按鈕——沒有系統標題列就沒有 ✕，這是懸浮視窗唯一能關掉自己、放回
+   牆上的方式，一定要疊在拖曳把手之上（no-drag，不然按下去變成拖視窗）。 */
+.focused-unpin {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  z-index: 7;
+  -webkit-app-region: no-drag;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hair);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.focused-unpin:hover {
+  background: color-mix(in srgb, var(--brass) 16%, var(--panel));
+}
+.focused-unpin:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}

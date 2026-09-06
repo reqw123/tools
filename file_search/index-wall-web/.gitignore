@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
+
+# 測試用的索引目錄複本
+.tt/
+
+# 編輯器 / 系統
+.DS_Store
+*.log

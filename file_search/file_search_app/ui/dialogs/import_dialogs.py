@@ -8,10 +8,11 @@ import tkinter as tk
 from tkinter import font as tkfont, ttk
 
 from file_search_app.config import (
-    BTN_CYAN_ACTIVE, BTN_CYAN_BG, BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG,
+    BTN_REFRESH_ACTIVE, BTN_REFRESH_BG, BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG,
     BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, COLOR_BG, COLOR_MISSING_FG, COLOR_STATUS_FG,
     EXT_CATEGORIES, FONT_FAMILY, SCAN_HARD_LIMIT, SCAN_SOFT_LIMIT,
 )
+from file_search_app.services.import_service import path_key
 from file_search_app.services.scan_service import ScanService
 from file_search_app.ui.styles import lighten, styled_button
 from file_search_app.ui.widgets.scan_widgets import render_category_counts, run_scan_with_progress
@@ -30,7 +31,7 @@ class ImportFolderDialog(tk.Toplevel):
 
         self._scan_service = scan_service
         self._folder = folder
-        self._existing_paths = existing_paths  # set，已用 str(Path(...)) 正規化過
+        self._existing_paths = existing_paths  # set，已用 import_service.path_key() 正規化過
         self._on_confirm = on_confirm
         self._scanned_new = []  # 上次掃描結果裡，尚未在索引中的檔案清單
         self._selected_types = set()  # 目前點選的類型標籤（對應 EXT_CATEGORIES 的第一個欄位）
@@ -86,7 +87,7 @@ class ImportFolderDialog(tk.Toplevel):
 
         scan_row = tk.Frame(pad, bg=COLOR_BG)
         scan_row.pack(fill="x", pady=(4, 0))
-        styled_button(scan_row, "掃描", self._do_scan, BTN_CYAN_BG, BTN_CYAN_ACTIVE, font_label).pack(side="left")
+        styled_button(scan_row, "掃描", self._do_scan, BTN_REFRESH_BG, BTN_REFRESH_ACTIVE, font_label).pack(side="left")
         self._result_var = tk.StringVar(value="按「掃描」看看會匯入哪些檔案")
         self._result_label = tk.Label(
             scan_row, textvariable=self._result_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint,
@@ -189,7 +190,7 @@ class ImportFolderDialog(tk.Toplevel):
                 )
             self._confirm_btn.config(state="disabled")
             return
-        new_files = [p for p in found if str(p) not in self._existing_paths]
+        new_files = [p for p in found if path_key(p) not in self._existing_paths]
         skipped = len(found) - len(new_files)
         self._scanned_new = new_files
         self._result_var.set(f"找到 {len(found)} 個檔案，{skipped} 個已在索引中略過，將新增 {len(new_files)} 筆")

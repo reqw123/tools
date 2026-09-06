@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
+
+# 原子寫入的暫存檔（正常會被 rename 掉，崩潰時可能殘留）
+*.sticky_notes.json.*.tmp
+
+# 編輯器 / 系統
+.DS_Store
+*.log

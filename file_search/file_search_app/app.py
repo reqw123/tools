@@ -43,7 +43,7 @@ def build_app() -> MainWindow:
     search_service = SearchService()
     scan_service = ScanService()
     import_service = ImportService(index_service)
-    duplicate_service = DuplicateService(index_repo, cache_repo, cache_service, index_service)
+    duplicate_service = DuplicateService(index_repo, cache_repo, index_service)
     description_service = DescriptionService(preview_service, index_service)
     transcription_service = TranscriptionService()
     ai_description_service = AIDescriptionService(ai_settings_repo, preview_service, transcription_service, ai_usage_repo)

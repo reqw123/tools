@@ -12,8 +12,8 @@ import tkinter as tk
 from tkinter import font as tkfont, messagebox, ttk
 
 from file_search_app.config import (
-    BTN_BLUE_ACTIVE, BTN_BLUE_BG, BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG,
-    BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, BTN_TEAL_ACTIVE, BTN_TEAL_BG,
+    BTN_CREATE_ACTIVE, BTN_CREATE_BG, BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG,
+    BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, BTN_IMPORT_ACTIVE, BTN_IMPORT_BG,
     COLOR_BG, COLOR_HEADER_BG, COLOR_PREVIEW_BG, COLOR_PREVIEW_BORDER, COLOR_STATUS_FG, FONT_FAMILY,
 )
 from file_search_app.ui.styles import bind_wheel_recursive, icon_for, styled_button
@@ -73,13 +73,13 @@ class BatchDescribeDialog(tk.Toplevel):
         ).pack(side="left", padx=(8, 4))
         styled_button(
             select_row, "A＋", lambda: self._change_desc_font(2),
-            BTN_BLUE_BG, BTN_BLUE_ACTIVE, font_label,
+            BTN_CREATE_BG, BTN_CREATE_ACTIVE, font_label,
         ).pack(side="left")
         styled_button(
             select_row, "全部取消", self._uncheck_all, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_hint,
         ).pack(side="right")
         styled_button(
-            select_row, "全部套用", self._check_all, BTN_TEAL_BG, BTN_TEAL_ACTIVE, font_hint,
+            select_row, "全部套用", self._check_all, BTN_IMPORT_BG, BTN_IMPORT_ACTIVE, font_hint,
         ).pack(side="right", padx=(0, 8))
 
         list_outer = tk.Frame(
@@ -103,7 +103,7 @@ class BatchDescribeDialog(tk.Toplevel):
         self._page_var = tk.StringVar()
         tk.Label(page_row, textvariable=self._page_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint).pack(side="left")
         self._next_btn = styled_button(
-            page_row, "下一頁 ▶", lambda: self._change_page(1), BTN_BLUE_BG, BTN_BLUE_ACTIVE, font_hint,
+            page_row, "下一頁 ▶", lambda: self._change_page(1), BTN_CREATE_BG, BTN_CREATE_ACTIVE, font_hint,
         )
         self._next_btn.pack(side="right")
         self._prev_btn = styled_button(

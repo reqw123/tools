@@ -11,14 +11,19 @@ from pathlib import Path
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
 from file_search_app.config import (
-    BTN_BLUE_ACTIVE, BTN_BLUE_BG, BTN_CYAN_ACTIVE, BTN_CYAN_BG, BTN_DANGER_ACTIVE, BTN_DANGER_BG,
-    BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, BTN_TEAL_ACTIVE, BTN_TEAL_BG,
+    BTN_CREATE_ACTIVE, BTN_CREATE_BG, BTN_REFRESH_ACTIVE, BTN_REFRESH_BG, BTN_DANGER_ACTIVE, BTN_DANGER_BG,
+    BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, BTN_IMPORT_ACTIVE, BTN_IMPORT_BG,
     COLOR_BG, COLOR_MISSING_FG, COLOR_PREVIEW_BG, COLOR_PREVIEW_BORDER, COLOR_STATUS_FG,
     FONT_FAMILY, SCAN_HARD_LIMIT, SCAN_SOFT_LIMIT,
 )
 from file_search_app.services.scan_service import ScanService
 from file_search_app.ui.styles import bind_wheel_recursive, icon_for, styled_button
 from file_search_app.ui.widgets.scan_widgets import render_category_counts, run_scan_with_progress
+
+# 掃描結果最多實際畫出這麼多列（勾選用的 BooleanVar 仍是全部建好，「全部
+# 勾選」「收錄」都涵蓋沒畫出來的）。掃描結果本來就被軟上限 1000 擋住，這裡
+# 只是再降一階，避免掃完瞬間要建上千個 Checkbutton 卡一下。
+_MAX_VISIBLE_ROWS = 300
 
 
 class KnownFoldersDialog(tk.Toplevel):
@@ -60,7 +65,7 @@ class KnownFoldersDialog(tk.Toplevel):
         btn_row = tk.Frame(pad, bg=COLOR_BG)
         btn_row.pack(fill="x", pady=(10, 0))
         styled_button(
-            btn_row, "新增資料夾...", self._add_folder, BTN_BLUE_BG, BTN_BLUE_ACTIVE, font_label,
+            btn_row, "新增資料夾...", self._add_folder, BTN_CREATE_BG, BTN_CREATE_ACTIVE, font_label,
         ).pack(side="left")
         styled_button(
             btn_row, "移除選取", self._remove_selected, BTN_DANGER_BG, BTN_DANGER_ACTIVE, font_label,
@@ -122,9 +127,9 @@ class UnindexedScanDialog(tk.Toplevel):
         self._existing_paths_all = existing_paths_all  # set，全部索引集已收錄路徑聯集
         self._on_confirm = on_confirm
         self._on_manage_folders = on_manage_folders
-        self._found = []  # 上次掃描結果裡，尚未被任何索引集收錄的檔案
+        self._unindexed_paths = []  # 上次掃描結果裡，尚未被任何索引集收錄的檔案
         self._scan_folder_count = 0  # 上次掃描涵蓋幾個資料夾，結果訊息文字要用
-        self._vars = {}
+        self._check_vars = {}
         self._extra_folder = None
 
         font_label = tkfont.Font(family=FONT_FAMILY, size=12)
@@ -156,7 +161,7 @@ class UnindexedScanDialog(tk.Toplevel):
         browse_row = tk.Frame(pad, bg=COLOR_BG)
         browse_row.pack(fill="x")
         styled_button(
-            browse_row, "臨時瀏覽其他資料夾...", self._browse_extra, BTN_BLUE_BG, BTN_BLUE_ACTIVE, font_hint,
+            browse_row, "臨時瀏覽其他資料夾...", self._browse_extra, BTN_CREATE_BG, BTN_CREATE_ACTIVE, font_hint,
         ).pack(side="left")
         self._extra_var = tk.StringVar(value="")
         tk.Label(
@@ -171,7 +176,7 @@ class UnindexedScanDialog(tk.Toplevel):
 
         scan_row = tk.Frame(pad, bg=COLOR_BG)
         scan_row.pack(fill="x", pady=(8, 4))
-        styled_button(scan_row, "掃描", self._do_scan, BTN_CYAN_BG, BTN_CYAN_ACTIVE, font_label).pack(side="left")
+        styled_button(scan_row, "掃描", self._do_scan, BTN_REFRESH_BG, BTN_REFRESH_ACTIVE, font_label).pack(side="left")
         self._result_var = tk.StringVar(value="按「掃描」看看有哪些檔案還沒收錄")
         self._result_label = tk.Label(
             scan_row, textvariable=self._result_var, bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font_hint,
@@ -218,7 +223,7 @@ class UnindexedScanDialog(tk.Toplevel):
             select_row, "全部取消勾選", self._uncheck_all, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_hint,
         ).pack(side="right")
         styled_button(
-            select_row, "全部勾選", self._check_all, BTN_TEAL_BG, BTN_TEAL_ACTIVE, font_hint,
+            select_row, "全部勾選", self._check_all, BTN_IMPORT_BG, BTN_IMPORT_ACTIVE, font_hint,
         ).pack(side="right", padx=(0, 8))
 
         # 固定底部操作列不放在 pad／Canvas 裡面，避免掃描結果或全部勾選後被遮擋。
@@ -264,7 +269,7 @@ class UnindexedScanDialog(tk.Toplevel):
         self._quick_confirm_btn.config(state=state)
 
     def _update_selected_count(self):
-        count = sum(1 for v in self._vars.values() if v.get())
+        count = sum(1 for v in self._check_vars.values() if v.get())
         self._selected_count_var.set(f"已勾選 {count} 筆")
 
     def _open_manage_folders(self):
@@ -313,7 +318,7 @@ class UnindexedScanDialog(tk.Toplevel):
             self._result_var.set("沒有選取任何資料夾，請先勾選常用清單裡的資料夾，或臨時瀏覽一個。")
             self._result_label.config(fg=COLOR_MISSING_FG, font=self._font_result_warning)
             return
-        self._found = []
+        self._unindexed_paths = []
         self._rebuild_checklist()
         self._update_category_counts([])
         self._set_confirm_state(False)
@@ -327,7 +332,7 @@ class UnindexedScanDialog(tk.Toplevel):
         found = result.files
         if result.write_blocked:
             self._result_label.config(fg=COLOR_MISSING_FG, font=self._font_result_warning)
-            self._found = []
+            self._unindexed_paths = []
             # 這種情況下沒有「未收錄」子集可看，改列出這次掃到的全部檔案依類別
             # 分布，幫使用者判斷是哪種類型的檔案把筆數撐爆的，好挑要不要縮小範圍。
             self._update_category_counts(found)
@@ -350,26 +355,28 @@ class UnindexedScanDialog(tk.Toplevel):
             self._rebuild_checklist()
             self._set_confirm_state(False)
             return
-        self._found = self._scan_service.find_unindexed(found, self._existing_paths_all)
-        self._update_category_counts(self._found)
+        self._unindexed_paths = self._scan_service.find_unindexed(found, self._existing_paths_all)
+        self._update_category_counts(self._unindexed_paths)
         self._result_var.set(
-            f"掃描 {self._scan_folder_count} 個資料夾，找到 {len(found)} 個檔案，其中 {len(self._found)} 個還沒被收錄"
+            f"掃描 {self._scan_folder_count} 個資料夾，找到 {len(found)} 個檔案，其中 {len(self._unindexed_paths)} 個還沒被收錄"
         )
-        skipped = len(found) - len(self._found)
+        skipped = len(found) - len(self._unindexed_paths)
         self._result_label.config(
             fg=COLOR_MISSING_FG if skipped else COLOR_STATUS_FG,
             font=self._font_result_warning if skipped else self._font_result_normal,
         )
         self._rebuild_checklist()
-        self._set_confirm_state(bool(self._found))
+        self._set_confirm_state(bool(self._unindexed_paths))
 
     def _rebuild_checklist(self):
         for w in self._inner.winfo_children():
             w.destroy()
-        self._vars = {}
-        for p in self._found:
+        self._check_vars = {}
+        for i, p in enumerate(self._unindexed_paths):
             var = tk.BooleanVar(value=False)
-            self._vars[str(p)] = var
+            self._check_vars[str(p)] = var
+            if i >= _MAX_VISIBLE_ROWS:
+                continue  # var 仍建好，只是不畫這一列
             row = tk.Frame(self._inner, bg=COLOR_PREVIEW_BG)
             row.pack(fill="x", pady=1, padx=2)
             tk.Checkbutton(
@@ -380,21 +387,29 @@ class UnindexedScanDialog(tk.Toplevel):
                 row, text=f"{icon_for(str(p))} {p}", bg=COLOR_PREVIEW_BG,
                 font=self._font_name, anchor="w",
             ).pack(side="left", fill="x", expand=True)
+        if len(self._unindexed_paths) > _MAX_VISIBLE_ROWS:
+            tk.Label(
+                self._inner,
+                text=f"⚠️ 共 {len(self._unindexed_paths)} 筆，畫面只列出前 {_MAX_VISIBLE_ROWS} 筆"
+                     "（「全部勾選」「收錄勾選項目」仍會涵蓋全部）。",
+                bg=COLOR_PREVIEW_BG, fg=COLOR_MISSING_FG, font=self._font_hint,
+                anchor="w", justify="left", wraplength=760,
+            ).pack(fill="x", padx=6, pady=6)
         bind_wheel_recursive(self._inner, lambda e: self._canvas.yview_scroll(int(-e.delta / 120), "units"))
         self._update_selected_count()
 
     def _check_all(self):
-        for v in self._vars.values():
+        for v in self._check_vars.values():
             v.set(True)
         self._update_selected_count()
 
     def _uncheck_all(self):
-        for v in self._vars.values():
+        for v in self._check_vars.values():
             v.set(False)
         self._update_selected_count()
 
     def _confirm(self):
-        checked = [p for p in self._found if self._vars.get(str(p)) and self._vars[str(p)].get()]
+        checked = [p for p in self._unindexed_paths if self._check_vars.get(str(p)) and self._check_vars[str(p)].get()]
         if not checked:
             messagebox.showinfo("找出未收錄檔案", "尚未勾選任何項目。")
             return
@@ -403,11 +418,13 @@ class UnindexedScanDialog(tk.Toplevel):
         if target is None:
             messagebox.showwarning("找出未收錄檔案", "請選擇要加入的索引集。")
             return
-        category = self.category_var.get().strip() or "未分類"
+        # 分類欄留白就寫入空分類（跟「匯入資料夾」一致，會被歸到搜尋列的
+        # 「未分類」篩選）——不要寫入字面「未分類」四個字變成一個真的分類名稱。
+        category = self.category_var.get().strip()
         if not messagebox.askyesno(
             "確認收錄到索引",
             f"確定要把勾選的 {len(checked)} 個檔案收錄到「{target.name}」嗎？\n\n"
-            f"分類：{category}\n說明：暫時留空，可稍後使用「批次補說明」補上。",
+            f"分類：{category or '（留空，歸為未分類）'}\n說明：暫時留空，可稍後使用「批次補說明」補上。",
         ):
             return
         self._on_confirm(checked, target, category)

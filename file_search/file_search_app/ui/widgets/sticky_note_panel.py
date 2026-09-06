@@ -11,29 +11,37 @@ StickyNoteService，不在這裡碰 JSON 或檔案路徑；呼叫 AI 的設定/�
 收合按鈕透過建構子傳入的 `on_collapse` 回呼，實際切換交還給呼叫端。"""
 
 import queue
-import threading
 import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
 from file_search_app.ai.base import AIProviderError
 from file_search_app.config import (
-    BTN_BLUE_ACTIVE, BTN_BLUE_BG, BTN_DANGER_ACTIVE, BTN_DANGER_BG, BTN_INDIGO_ACTIVE,
-    BTN_INDIGO_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, BTN_TEAL_ACTIVE, BTN_TEAL_BG,
+    BTN_AI_ACTIVE, BTN_AI_BG, BTN_CREATE_ACTIVE, BTN_CREATE_BG, BTN_DANGER_ACTIVE,
+    BTN_DANGER_BG, BTN_EDIT_ACTIVE, BTN_EDIT_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG,
+    BTN_IMPORT_ACTIVE, BTN_IMPORT_BG,
     COLOR_PREVIEW_BG, COLOR_PREVIEW_BORDER, COLOR_STATUS_FG, FONT_FAMILY,
     STICKY_AI_SEARCH_LARGE_NOTE_COUNT, STICKY_CARD_BORDER_DARKEN, STICKY_CARD_FOLD_DARKEN,
-    STICKY_CARD_FOLD_SIZE, STICKY_CARD_HOVER_DARKEN, STICKY_CARD_TEXT_COLOR,
-    STICKY_FILTER_BOX_BG, STICKY_FILTER_BOX_BORDER, STICKY_FILTER_BOX_FG,
+    STICKY_CARD_FOLD_SIZE, STICKY_CARD_HOVER_DARKEN, STICKY_CARD_META_COLOR,
+    STICKY_CARD_TEXT_COLOR, STICKY_FILTER_BOX_BG, STICKY_FILTER_BOX_BORDER, STICKY_FILTER_BOX_FG,
     STICKY_ICON_BUTTON_SIZE, STICKY_TOAST_BG, STICKY_TOAST_FG, STICKY_TOGGLE_SHORTCUT,
     STICKY_TOOLTIP_BG, STICKY_TOOLTIP_FG,
 )
+from file_search_app.models import format_added_at
 from file_search_app.platform import file_actions
+from file_search_app.services.sticky_note_service import preview_text
+from file_search_app.ui.async_task import poll_queue, start_worker
 from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
+from file_search_app.ui.dialogs.scrollable_message_dialog import show_scrollable_message
 from file_search_app.ui.dialogs.sticky_note_bulk_delete_dialog import StickyNoteBulkDeleteDialog
 from file_search_app.ui.dialogs.sticky_note_dialog import StickyNoteDialog
 from file_search_app.ui.styles import bind_wheel_recursive, darken, styled_button
 
 _ALL_TAGS_LABEL = "全部標籤"
+
+# 搜尋框每打一個字就整批砍掉重畫卡片清單會頓（便利貼一多更明顯），改成打完
+# 停頓這麼多毫秒才真的重畫；期間再按鍵就把上一個排程取消重排。
+_SEARCH_DEBOUNCE_MS = 150
 
 
 class _Tooltip:
@@ -112,9 +120,12 @@ class StickyNotePanel:
         self._font_title = tkfont.Font(family=FONT_FAMILY, size=12, weight="bold")
         self._font_icon = tkfont.Font(family=FONT_FAMILY, size=13)
         self._toast_after_id = None
+        self._refresh_after_id = None
         # AI 搜尋結果是「暫時覆蓋一般關鍵字搜尋」的狀態，不是永久模式：只要
         # 搜尋框的文字被改過（不等於送出當下那句問題），_refresh() 會自動
         # 判斷失效、退回一般的關鍵字比對，不需要另外一顆「清除 AI 搜尋」按鈕。
+        # 便利貼被新增／編輯／刪除時也會一併清掉（見各 _confirm_* 回呼）——那批
+        # 編號是對「送出當下那份清單」算的，清單一動就不再對得上。
         self._ai_result_ids = None
         self._ai_query_snapshot = None
 
@@ -129,7 +140,7 @@ class StickyNotePanel:
         tk.Label(
             header, text="📌 便利貼", bg=COLOR_PREVIEW_BG, font=self._font_title, anchor="w",
         ).pack(side="left")
-        add_btn = _icon_button(header, "➕", self._on_add, BTN_BLUE_BG, BTN_BLUE_ACTIVE, self._font_icon)
+        add_btn = _icon_button(header, "➕", self._on_add, BTN_CREATE_BG, BTN_CREATE_ACTIVE, self._font_icon)
         add_btn.pack(side="right")
         _Tooltip(add_btn, "新增便利貼", font_hint)
         collapse_btn = _icon_button(
@@ -147,11 +158,11 @@ class StickyNotePanel:
         )
         bulk_delete_btn.pack(side="right", padx=(0, 4))
         _Tooltip(bulk_delete_btn, "批次刪除便利貼", font_hint)
-        export_btn = _icon_button(header, "📤", self._on_export, BTN_TEAL_BG, BTN_TEAL_ACTIVE, self._font_icon)
+        export_btn = _icon_button(header, "📤", self._on_export, BTN_IMPORT_BG, BTN_IMPORT_ACTIVE, self._font_icon)
         export_btn.pack(side="right", padx=(0, 4))
         _Tooltip(export_btn, "匯出成 Markdown 文件（目前篩選出的清單）", font_hint)
         edit_file_btn = _icon_button(
-            header, "📝", self._on_edit_file, BTN_INDIGO_BG, BTN_INDIGO_ACTIVE, self._font_icon,
+            header, "📝", self._on_edit_file, BTN_EDIT_BG, BTN_EDIT_ACTIVE, self._font_icon,
         )
         edit_file_btn.pack(side="right", padx=(0, 4))
         _Tooltip(edit_file_btn, "編輯便利貼檔案（原始 JSON，進階用途）", font_hint)
@@ -173,9 +184,9 @@ class StickyNotePanel:
         self._search_var = tk.StringVar()
         search_entry = tk.Entry(search_row, textvariable=self._search_var, font=font_hint, relief="flat")
         search_entry.pack(side="left", fill="x", expand=True, padx=(4, 4), ipady=3)
-        self._search_var.trace_add("write", lambda *_a: self._refresh())
+        self._search_var.trace_add("write", lambda *_a: self._schedule_refresh())
         self._ai_search_btn = styled_button(
-            search_row, "🤖", self._on_ai_search, BTN_INDIGO_BG, BTN_INDIGO_ACTIVE, font_hint,
+            search_row, "🤖", self._on_ai_search, BTN_AI_BG, BTN_AI_ACTIVE, font_hint,
         )
         self._ai_search_btn.pack(side="left")
         _Tooltip(
@@ -230,9 +241,22 @@ class StickyNotePanel:
 
     # ── 清單重繪 ─────────────────────────────────────────────────────
 
+    def _schedule_refresh(self):
+        """搜尋框打字用的去抖動入口——把重畫延後 `_SEARCH_DEBOUNCE_MS`，期間
+        再進來就取消上一個排程重排。其他觸發點（標籤下拉、新增／編輯／刪除
+        之後）要的是立刻反映，直接呼叫 `_refresh()`。"""
+        if self._refresh_after_id is not None:
+            self.frame.after_cancel(self._refresh_after_id)
+        self._refresh_after_id = self.frame.after(_SEARCH_DEBOUNCE_MS, self._refresh)
+
     def _refresh(self):
+        # 有排程中的去抖動重畫就先取消，免得等一下又多跑一次一樣的重畫。
+        if self._refresh_after_id is not None:
+            self.frame.after_cancel(self._refresh_after_id)
+            self._refresh_after_id = None
+
         notes = self._service.list_notes()
-        known_tags = self._service.known_tags()
+        known_tags = self._service.known_tags(notes)
         values = [_ALL_TAGS_LABEL] + known_tags
         self._tag_filter_combo["values"] = values
         if self._tag_filter_var.get() not in values:
@@ -309,7 +333,7 @@ class StickyNotePanel:
         title_label.pack(fill="x", padx=8, pady=(8, 2))
 
         labels_to_wrap = [title_label]
-        preview = self._preview_text(note.body)
+        preview = preview_text(note.body)
         if preview:
             body_label = tk.Label(
                 card, text=preview, bg=color, fg=STICKY_CARD_TEXT_COLOR, font=self._font_hint,
@@ -318,14 +342,25 @@ class StickyNotePanel:
             body_label.pack(fill="x", padx=8, pady=(0, 4))
             labels_to_wrap.append(body_label)
 
+        # 底部一排：左邊「# 分類」（沒有分類就不放），右邊建立時間。時間因為
+        # 「編輯視同重新建立」（見 StickyNoteService.update_note），實際上是
+        # 「最後動過的時間」，剛編輯的便利貼會排到最上面。
+        footer = tk.Frame(card, bg=color)
+        footer.pack(fill="x", padx=8, pady=(0, 8))
+        footer_widgets = [footer]
         if note.tag:
             tag_label = tk.Label(
-                card, text=f"# {note.tag}", bg=color, fg=STICKY_CARD_TEXT_COLOR, font=self._font_hint,
+                footer, text=f"# {note.tag}", bg=color, fg=STICKY_CARD_TEXT_COLOR, font=self._font_hint,
                 anchor="w", cursor="hand2",
             )
-            tag_label.pack(fill="x", padx=8, pady=(0, 8))
-        else:
-            tk.Frame(card, bg=color, height=6).pack()
+            tag_label.pack(side="left")
+            footer_widgets.append(tag_label)
+        time_label = tk.Label(
+            footer, text=format_added_at(note.created_at), bg=color, fg=STICKY_CARD_META_COLOR,
+            font=self._font_hint, anchor="e", cursor="hand2",
+        )
+        time_label.pack(side="right")
+        footer_widgets.append(time_label)
 
         card.bind(
             "<Configure>",
@@ -340,22 +375,12 @@ class StickyNotePanel:
         def _hover_off(_e=None):
             card.configure(highlightbackground=border_color, highlightthickness=1)
 
-        clickable = [card, fold, title_label] + labels_to_wrap
+        clickable = [card, fold, title_label] + labels_to_wrap + footer_widgets
         for widget in clickable:
             widget.bind("<Button-1>", lambda _e, n=note: self._copy(n))
             widget.bind("<Button-3>", lambda e, n=note: self._popup_card_menu(e, n))
             widget.bind("<Enter>", _hover_on)
             widget.bind("<Leave>", _hover_off)
-
-    @staticmethod
-    def _preview_text(body: str) -> str:
-        lines = [line for line in body.splitlines() if line.strip()]
-        if not lines:
-            return ""
-        text = "\n".join(lines[:2])
-        if len(lines) > 2:
-            text += " …"
-        return text
 
     # ── 互動 ─────────────────────────────────────────────────────────
 
@@ -396,28 +421,43 @@ class StickyNotePanel:
         menu.tk_popup(event.x_root, event.y_root)
 
     def _on_add(self):
-        StickyNoteDialog(self.frame, self._service.known_tags(), self._confirm_add)
+        StickyNoteDialog(
+            self.frame, self._service.known_tags(), self._confirm_add,
+            self._ai_description, self._service,
+        )
+
+    def _invalidate_ai_results(self):
+        """便利貼清單一有增刪改就丟掉上一輪 AI 搜尋的編號結果——那批編號是對
+        「送出當下那份清單」算的，清單一動就對不上了（原本只在搜尋框文字被
+        改過時才失效，漏了這條）。"""
+        self._ai_result_ids = None
+        self._ai_query_snapshot = None
 
     def _confirm_add(self, title, body, tag):
         self._service.add_note(title, body, tag)
+        self._invalidate_ai_results()
         self._refresh()
 
     def _on_edit(self, note):
         StickyNoteDialog(
             self.frame, self._service.known_tags(),
             lambda title, body, tag: self._confirm_edit(note.id, title, body, tag),
+            self._ai_description, self._service,
             title="編輯便利貼", confirm_text="儲存",
             initial_title=note.title, initial_body=note.body, initial_tag=note.tag,
         )
 
     def _confirm_edit(self, note_id, title, body, tag):
-        self._service.update_note(note_id, title, body, tag)
+        if not self._service.update_note(note_id, title, body, tag):
+            messagebox.showinfo("編輯便利貼", "這則便利貼已經不存在了（可能在其他視窗被刪除），沒有任何變更。")
+        self._invalidate_ai_results()
         self._refresh()
 
     def _on_delete(self, note):
         if not messagebox.askyesno("刪除便利貼", f"確定要刪除「{note.title}」嗎？此動作無法復原。"):
             return
         self._service.delete_note(note.id)
+        self._invalidate_ai_results()
         self._refresh()
 
     def _on_bulk_delete(self):
@@ -431,6 +471,7 @@ class StickyNotePanel:
 
     def _confirm_bulk_delete(self, note_ids):
         self._service.delete_notes(note_ids)
+        self._invalidate_ai_results()
         self._refresh()
 
     def _on_export(self):
@@ -552,24 +593,28 @@ class StickyNotePanel:
                 result_queue.put(("done", response))
             except AIProviderError as exc:
                 result_queue.put(("error", str(exc)))
+            except Exception as exc:  # noqa: BLE001
+                # AIProviderError 以外的例外（連線層 timeout、JSON 解析…）也一定
+                # 要塞回佇列——poll_queue 的安全網會接住漏掉的，但這裡自己接才
+                # 能給出「型別: 訊息」這種對使用者友善一點的字串。
+                result_queue.put(("error", f"{type(exc).__name__}: {exc}"))
 
-        threading.Thread(target=_worker, daemon=True).start()
-
-        def _poll():
-            try:
-                kind, payload = result_queue.get_nowait()
-            except queue.Empty:
-                self.frame.after(100, _poll)
-                return
+        def _on_message(message):
+            kind, payload = message
             self._ai_search_btn.config(state="normal", text="🤖")
             if kind == "error":
                 self._refresh()  # 先把「AI 搜尋中…」的暫時字樣復原成正常的計數文字
                 messagebox.showerror("AI 搜尋", f"呼叫 AI 失敗：\n{payload}")
-                return
+                return True
             answer, matched = self._service.parse_ai_search_response(payload, notes)
             self._ai_result_ids = {note.id for note in matched}
             self._ai_query_snapshot = query
             self._refresh()  # 先把卡片清單篩選好，再跳答案視窗，關掉視窗後畫面已經是篩選好的樣子
-            messagebox.showinfo("🤖 AI 回答", answer)
+            # 用可捲動／可複製的視窗，不是 messagebox.showinfo()——answer 可能是
+            # 整段內容統整或程式接上去的完整編號標籤清單，原生 messagebox
+            # 不能捲動也不能選取，太長還會把視窗撐到超出螢幕。
+            show_scrollable_message(self.frame.winfo_toplevel(), "🤖 AI 回答", answer or "（AI 沒有提供文字說明）")
+            return True
 
-        self.frame.after(100, _poll)
+        start_worker(_worker, result_queue)
+        poll_queue(self.frame, result_queue, _on_message)

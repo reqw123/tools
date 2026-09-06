@@ -8,12 +8,11 @@
 from pathlib import Path
 
 from file_search_app.config import EXT_CATEGORIES, OTHER_CATEGORY_LABEL, SCAN_HARD_LIMIT, SCAN_SOFT_LIMIT
-
-SOFT_LIMIT = SCAN_SOFT_LIMIT
-HARD_LIMIT = SCAN_HARD_LIMIT
+from file_search_app.services.import_service import path_key
 
 
 class ScanService:
+    # 掃描進度視窗（scan_widgets.run_scan_with_progress）讀這兩個當軟／硬上限。
     soft_limit = SCAN_SOFT_LIMIT
     hard_limit = SCAN_HARD_LIMIT
 
@@ -23,8 +22,8 @@ class ScanService:
         需要邊掃邊更新進度、邊掃邊檢查數量門檻的呼叫端用。extensions 是一組小寫
         副檔名（含開頭的點，例如 {'.docx', '.pdf'}），空集合代表不篩選、收錄
         所有檔案。"""
-        it = folder.rglob("*") if recursive else folder.glob("*")
-        for p in it:
+        paths = folder.rglob("*") if recursive else folder.glob("*")
+        for p in paths:
             if not p.is_file():
                 continue
             if extensions and p.suffix.lower() not in extensions:
@@ -37,20 +36,6 @@ class ScanService:
         給進度視窗一小批一小批消費。"""
         for folder, recursive, extensions in jobs:
             yield from cls.iter_scan_files(folder, recursive, extensions)
-
-    @classmethod
-    def scan_folder(cls, folder: Path, recursive: bool, extensions, limit=None):
-        """一次掃完、直接回傳 (files, truncated) 清單版本，不顯示進度——給不需要
-        進度視窗的簡單場合用。limit 給定時，符合條件的檔案一旦超過這個數量就
-        提前停止，此時 truncated=True、files 內容不完整。"""
-        files = []
-        truncated = False
-        for p in cls.iter_scan_files(folder, recursive, extensions):
-            files.append(p)
-            if limit is not None and len(files) > limit:
-                truncated = True
-                break
-        return sorted(files), truncated
 
     @staticmethod
     def categorize_counts(files):
@@ -71,6 +56,9 @@ class ScanService:
         return result
 
     @staticmethod
-    def find_unindexed(found_files, existing_paths_all):
-        """從掃描結果裡篩出還沒被任何索引集收錄的檔案。"""
-        return [p for p in found_files if str(p) not in existing_paths_all]
+    def find_unindexed(found_files, existing_keys):
+        """從掃描結果裡篩出還沒被任何索引集收錄的檔案。`existing_keys` 必須是
+        用 import_service.path_key() 正規化過的集合（呼叫端負責），這裡也用
+        同一個 key 比對——不然 Windows 上大小寫／斜線不同的同一個檔案會被
+        當成「未收錄」重複列出。"""
+        return [p for p in found_files if path_key(p) not in existing_keys]

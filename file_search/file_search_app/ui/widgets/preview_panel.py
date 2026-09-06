@@ -12,16 +12,17 @@ Service 層）。mp3/mp4 播放另外委派給 MediaPanel。
 回呼觸發、透過 `get_cached_text` 查詢目前有沒有現成的轉錄文字——實際呼叫
 TranscriptionService、背景執行緒、寫入快取都是呼叫端（MainWindow）的事。"""
 
+import queue
 import threading
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 
 from file_search_app.config import (
-    BTN_PURPLE_ACTIVE, BTN_PURPLE_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG,
+    BTN_AI_ACTIVE, BTN_AI_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG,
     COLOR_PREVIEW_BG, COLOR_STATUS_FG, FONT_FAMILY, IMAGE_EXTS, MEDIA_EXTS, MISSING_ICON,
     PREVIEW_TEXT_DEFAULT_SIZE, PREVIEW_TEXT_MAX_SIZE, PREVIEW_TEXT_MIN_SIZE,
 )
-from file_search_app.services.preview_service import HAS_PIL, PreviewService
+from file_search_app.services.preview_service import HAS_PIL, SLOW_EXTRACT_EXTS, PreviewService
 from file_search_app.ui.styles import icon_for, styled_button
 from file_search_app.ui.widgets.media_panel import MediaPanel
 
@@ -52,6 +53,11 @@ class PreviewPanel:
 
         self._font_text_size = PREVIEW_TEXT_DEFAULT_SIZE
         self._font_text = tkfont.Font(family=FONT_FAMILY, size=self._font_text_size)
+
+        # 每次 show_entry() 就 +1；背景擷取文字的結果回來時比對序號，選取已經
+        # 換過（或面板已經在顯示別的東西）就直接丟掉，不會把 A 檔的內容貼到
+        # 目前選的 B 檔上。
+        self._extract_seq = 0
 
         self.frame = tk.Frame(
             parent, bg=COLOR_PREVIEW_BG, width=width,
@@ -93,7 +99,7 @@ class PreviewPanel:
         # 這個功能存在，只是需要另外安裝套件」的做法。
         self._transcribe_row = tk.Frame(self.frame, bg=COLOR_PREVIEW_BG)
         self._transcribe_btn = styled_button(
-            self._transcribe_row, "🎙️ 轉錄", self._on_transcribe_click, BTN_PURPLE_BG, BTN_PURPLE_ACTIVE, font_hint,
+            self._transcribe_row, "🎙️ 轉錄", self._on_transcribe_click, BTN_AI_BG, BTN_AI_ACTIVE, font_hint,
         )
         self._transcribe_btn.pack(side="left")
         self._view_transcript_btn = styled_button(
@@ -247,6 +253,8 @@ class PreviewPanel:
         self._set_mode("media")
 
     def show_entry(self, entry) -> None:
+        # 序號 +1：任何還在背景跑的文字擷取，結果回來時都會因序號對不上而作廢。
+        self._extract_seq += 1
         # 換選取項目時，除非新選到的剛好就是目前正在背景轉錄的那個檔案，否則
         # 上一筆殘留的轉錄狀態文字（進度／錯誤）不該繼續顯示在不相干的檔案上。
         if entry is None or entry.path != self._transcribing_path:
@@ -294,9 +302,58 @@ class PreviewPanel:
             self._set_mode("icon")
             return
 
-        text = self._preview_service.extract_preview_text(p)
+        if p.suffix.lower() in SLOW_EXTRACT_EXTS:
+            # docx/pptx/xlsx/pdf/zip/7z、以及走 COM 子行程（逾時 30 秒）的
+            # .doc/.ppt/.xls——擷取可能很慢，丟背景執行緒，先顯示「讀取中…」，
+            # 不讓「在清單點一下」把整個介面凍住。
+            self._begin_async_extract(p)
+            return
+        # 純文字／原始碼那類只讀開頭 200KB 再解碼，快到不值得閃一下載入畫面，
+        # 維持同步。
+        self._render_extracted_text(p, self._preview_service.extract_preview_text(p))
+
+    def _begin_async_extract(self, p) -> None:
+        seq = self._extract_seq
+        self._text.configure(state="normal")
+        self._text.delete("1.0", "end")
+        self._text.insert("1.0", "讀取內容中…")
+        self._text.configure(state="disabled")
+        self._set_mode("text")
+        # 延一小段時間才真的開工——用方向鍵連續掃過好幾個 .doc（走 COM 子行程）
+        # 時，若每次選取變化都馬上起一條擷取執行緒，會同時冒出好幾個
+        # WINWORD.EXE；停在某一筆超過這個時間才擷取，中途掃過的都不會啟動。
+        self.frame.after(120, lambda: self._spawn_extract(p, seq))
+
+    def _spawn_extract(self, p, seq) -> None:
+        if seq != self._extract_seq:
+            return  # 這段等待期間使用者又切走了，這一筆根本不用擷取
+        result_q = queue.Queue()
+
+        def _work():
+            try:
+                result_q.put(self._preview_service.extract_preview_text(p))
+            except Exception:  # noqa: BLE001
+                result_q.put(None)
+
+        threading.Thread(target=_work, daemon=True).start()
+        self._poll_async_extract(p, seq, result_q)
+
+    def _poll_async_extract(self, p, seq, result_q) -> None:
+        if seq != self._extract_seq:
+            return  # 使用者已經切到別的項目，這批結果作廢
+        try:
+            text = result_q.get_nowait()
+        except queue.Empty:
+            self.frame.after(80, lambda: self._poll_async_extract(p, seq, result_q))
+            return
+        if seq != self._extract_seq:
+            return
+        self._render_extracted_text(p, text)
+
+    def _render_extracted_text(self, p, text) -> None:
         if text:
             self._text.configure(state="normal")
+            self._text.delete("1.0", "end")
             self._text.insert("1.0", text)
             self._text.configure(state="disabled")
             self._set_mode("text")

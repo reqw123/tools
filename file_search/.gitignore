@@ -1,5 +1,22 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
 # PyInstaller 打包產物（見 packaging/README.md）
 /dist/
 /build/
 /packaging/build/
 /packaging/.build-venv/
+
+# 網頁分流（sticky-wall-web / index-wall-web）＋根目錄 dev 啟動器
+node_modules/
+*.log
+
+# 使用者執行期資料——.md 索引、AI 設定、偏好、內容快取、便利貼、圖片、縮圖。
+# 全部由 app 首次執行時自建（每個 Repository 都會 mkdir）。不是測試 fixture
+# （測試一律在 pytest tmp_path 下自建，見 tests/conftest.py），所以不進版控。
+/indexes/
+
+# 手動備份殘留
+*.bak
+*.bak-*

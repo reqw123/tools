@@ -163,40 +163,30 @@ class IndexRepository:
     def append_row(self, md_path: Path, path_str: str, category: str, desc: str) -> None:
         """把一列新資料附加到指定索引檔案的表格最後一行。只負責寫 Markdown；
         加入時間紀錄由呼叫端（Service）另外透過 MetadataRepository 處理。"""
+        self.append_rows(md_path, [(path_str, category, desc)])
+
+    def append_rows(self, md_path: Path, rows) -> None:
+        """一次附加多列——`rows` 是 (path_str, category, desc) 的可迭代物。
+        整份檔案只讀一次、只寫一次，不是每列各自 read+write（資料夾匯入一次
+        上千筆時，逐列重寫整份成長中的 .md 是 O(n²)，會明顯拖慢）。"""
+        lines = "".join(
+            f"| {_format_path_code(p)} | {_sanitize_cell(c)} | {_sanitize_cell(d)} |\n"
+            for p, c, d in rows
+        )
+        if not lines:
+            return
         existing = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
         if existing and not existing.endswith("\n"):
             existing += "\n"
-        line = f"| {_format_path_code(path_str)} | {_sanitize_cell(category)} | {_sanitize_cell(desc)} |\n"
-        atomic_write_text(md_path, existing + line)
-
-    def update_row_by_path(self, md_path: Path, path_str: str, category: str, desc: str) -> int:
-        """把索引檔案裡「路徑完全等於 path_str」的資料列，分類／說明換成新的值；
-        其餘所有內容（包含這一列在表格裡的相對位置）不變。回傳實際更新了幾列——
-        正常應該剛好 1，0 代表在檔案裡找不到這個路徑（可能索引檔案被外部改過），
-        大於 1 代表原本就有重複列（不是這個函式造成的，是既有資料本身重複），
-        這種情況全部一起更新，不會留下一部分沒改到的舊值。"""
-        text = md_path.read_text(encoding="utf-8")
-        new_line = f"| {_format_path_code(path_str)} | {_sanitize_cell(category)} | {_sanitize_cell(desc)} |\n"
-        out_lines = []
-        updated = 0
-        for line in text.splitlines(keepends=True):
-            m = _ROW_RE.match(line.strip())
-            if m and m.group("path") == path_str:
-                out_lines.append(new_line)
-                updated += 1
-            else:
-                out_lines.append(line)
-        if updated:
-            atomic_write_text(md_path, "".join(out_lines))
-        return updated
+        atomic_write_text(md_path, existing + lines)
 
     def update_row_by_occurrence(self, md_path: Path, occurrence_index: int, category: str, desc: str) -> bool:
         """精確更新指定「索引資料列序號」（0-based，只計算可解析的資料列，跟
         remove_rows_by_occurrences() 用同一套編號）那一列的分類／說明，路徑本身
-        不變。跟 update_row_by_path() 的差別：那個是依路徑比對，同一路徑在同一份
-        索引重複出現時會把全部符合的列一起改掉；這個只改序號對上的那一列，就算
-        有其他列路徑完全相同也不會被連帶動到。回傳 True 代表確實改到那一列，
-        False 代表序號超出目前檔案範圍（可能索引檔案剛好被外部修改過，行數變少）。"""
+        不變。用序號而不是路徑定位：同一路徑在同一份索引重複出現時，只改序號
+        對上的那一列，其他路徑完全相同的列不會被連帶動到。回傳 True 代表確實
+        改到那一列，False 代表序號超出目前檔案範圍（可能索引檔案剛好被外部
+        修改過，行數變少）。"""
         text = md_path.read_text(encoding="utf-8")
         out_lines = []
         occurrence = 0
@@ -228,21 +218,6 @@ class IndexRepository:
         for line in text.splitlines(keepends=True):
             m = _ROW_RE.match(line.strip())
             if m and not Path(m.group("path")).exists():
-                removed += 1
-                continue
-            kept.append(line)
-        return removed, "".join(kept)
-
-    def remove_rows_by_paths(self, md_path: Path, paths_to_remove) -> tuple:
-        """回傳 (刪除筆數, 完整新內容字串)——只移除路徑落在 paths_to_remove 集合裡的
-        資料列，其餘所有內容（說明文字、格式規定、表頭分隔線）原封不動保留。跟
-        remove_missing_rows() 的差別：那個是自動判斷「檔案已不存在」，這個是由
-        呼叫端指定要刪哪幾筆，不管檔案還在不在。"""
-        text = md_path.read_text(encoding="utf-8")
-        kept, removed = [], 0
-        for line in text.splitlines(keepends=True):
-            m = _ROW_RE.match(line.strip())
-            if m and m.group("path") in paths_to_remove:
                 removed += 1
                 continue
             kept.append(line)

@@ -1,0 +1,137 @@
+import { Bot, CopyPlus, Download, Plus, Search, Settings2, Sparkles, Trash2 } from 'lucide-react'
+import type { AiTarget } from '../lib/ai'
+import type { TagCount } from './TagBar'
+import { TagBar } from './TagBar'
+
+export function Toolbar({
+  query,
+  onQuery,
+  tag,
+  onTag,
+  tags,
+  total,
+  onAdd,
+  aiMode,
+  onToggleAiMode,
+  onAiSearch,
+  aiTarget,
+  aiSearching,
+  aiError,
+  sendCount,
+  onOpenAiSettings,
+  onExport,
+  exportCount,
+  onBatchCreate,
+  onBatchDelete,
+  onGenerateNotes,
+}: {
+  query: string
+  onQuery: (v: string) => void
+  tag: string | null
+  onTag: (t: string | null) => void
+  tags: TagCount[]
+  total: number
+  onAdd: () => void
+  aiMode: boolean
+  onToggleAiMode: () => void
+  onAiSearch: (q: string) => void
+  aiTarget: AiTarget | undefined
+  aiSearching: boolean
+  aiError: string | null
+  sendCount: number
+  onOpenAiSettings: () => void
+  onExport: () => void
+  exportCount: number
+  onBatchCreate: () => void
+  onBatchDelete: () => void
+  onGenerateNotes: () => void
+}) {
+  return (
+    <div className="bar">
+      <div className="bar-inner">
+        <div className="bar-row">
+          <label className={`field${aiMode ? ' ai' : ''}`}>
+            {aiMode ? (
+              <Bot size={16} strokeWidth={2.2} aria-hidden />
+            ) : (
+              <Search size={15} strokeWidth={2.4} aria-hidden />
+            )}
+            <input
+              type={aiMode ? 'text' : 'search'}
+              value={query}
+              placeholder={
+                aiMode
+                  ? '問問題：有哪些跟○○有關、○○有幾個、目前有哪些分類…'
+                  : '搜尋標題、內容、分類…'
+              }
+              onChange={(e) => onQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (aiMode && e.key === 'Enter') {
+                  e.preventDefault()
+                  onAiSearch(query)
+                }
+              }}
+            />
+          </label>
+          <button
+            className={`btn ghost icon${aiMode ? ' on' : ''}`}
+            onClick={onToggleAiMode}
+            aria-pressed={aiMode}
+            title={aiMode ? '切回一般搜尋' : 'AI 搜尋（用一般語句問問題）'}
+          >
+            <Bot size={16} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button className="btn ghost icon" onClick={onOpenAiSettings} title="AI 設定">
+            <Settings2 size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button
+            className="btn ghost icon"
+            onClick={onExport}
+            disabled={exportCount === 0}
+            title={`匯出目前顯示的 ${exportCount} 則為 HTML`}
+          >
+            <Download size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button className="btn ghost icon" onClick={onBatchCreate} title="批次新增">
+            <CopyPlus size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button
+            className="btn ghost icon"
+            onClick={onGenerateNotes}
+            title="AI 生成便利貼——選檔案讓 AI 分析、生成草稿"
+          >
+            <Sparkles size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button className="btn ghost icon" onClick={onBatchDelete} title="批次刪除">
+            <Trash2 size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button className="btn" onClick={onAdd}>
+            <Plus size={16} strokeWidth={2.6} aria-hidden />
+            新增便利貼
+          </button>
+        </div>
+
+        <TagBar tags={tags} active={tag} total={total} onPick={onTag} />
+
+        {aiMode && (
+          <p className="ai-disclose mono">
+            {aiSearching
+              ? '🤖 詢問中…'
+              : aiError
+                ? `❌ ${aiError}`
+                : !aiTarget || !aiTarget.configured
+                  ? '⚠️ 尚未設定 AI '
+                  : `會把 ${sendCount} 則送到 ${aiTarget.label}（${aiTarget.model}）· ${
+                      aiTarget.leaves_machine ? '內容會離開這台電腦' : '內容不離開這台電腦'
+                    } · 累計第 ${aiTarget.call_count + 1} 次 · Enter 送出`}
+            {!aiSearching && (
+              <button className="link" onClick={onOpenAiSettings}>
+                設定
+              </button>
+            )}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -3,13 +3,12 @@
 同時放筆記清單跟面板目前的展開/收合狀態。內容本身不含機密，不需要比照
 AI API Key 額外搬到本機快取目錄。"""
 
-import json
 from datetime import datetime
 from pathlib import Path
 
 from file_search_app.config import INDEXES_DIR
 from file_search_app.models import StickyNote
-from file_search_app.repositories.atomic_io import atomic_write_text
+from file_search_app.repositories.json_store import read_json, write_json
 
 _DEFAULT_PANEL_STATE = {"visible": True}
 
@@ -21,9 +20,24 @@ class StickyNoteRepository:
     def load_notes(self) -> list:
         return self._read_raw()["notes"]
 
-    def save_notes(self, notes: list) -> None:
+    def mutate(self, fn) -> None:
+        """讀「目前磁碟上最新的」便利貼清單、交給 `fn` 改、再寫回——所有新增／
+        編輯／刪除都走這條路，不是「先 load_notes() 一份、慢慢改、最後整包
+        寫回」。後者的「讀」跟「寫」中間隔了對話框往返、使用者打字的時間，
+        這段期間如果同一支程式又開了第二個視窗、或另一個行程也動了同一個
+        檔案，晚存的那次會把對方的變更整包蓋掉。這裡把讀→改→寫縮到同一個
+        同步呼叫內，同支程式的併發完全消除，跨行程也只剩幾毫秒的空窗（桌面
+        單人使用實務上夠了；真的要滴水不漏得上檔案鎖，不值得為這個輔助功能
+        加相依）。
+
+        `fn(notes)` 回傳新的清單就寫回；回傳 `None` 代表「看過了但沒有要改」
+        （例如編輯時給的 id 根本不存在），直接跳過寫檔，不做無謂的 IO。
+        """
         raw = self._read_raw()
-        raw["notes"] = notes
+        result = fn(raw["notes"])
+        if result is None:
+            return
+        raw["notes"] = result
         self._write_raw(raw)
 
     def load_panel_state(self) -> dict:
@@ -39,28 +53,22 @@ class StickyNoteRepository:
         可選的輔助功能，資料有問題不該連帶讓主視窗開不起來。"""
         notes = []
         panel = dict(_DEFAULT_PANEL_STATE)
-        if self.path.exists():
-            try:
-                data = json.loads(self.path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                data = None
-            if isinstance(data, dict):
-                for item in data.get("notes", []):
-                    note = self._parse_note(item)
-                    if note is not None:
-                        notes.append(note)
-                panel_data = data.get("panel")
-                if isinstance(panel_data, dict) and isinstance(panel_data.get("visible"), bool):
-                    panel["visible"] = panel_data["visible"]
+        data = read_json(self.path, None)
+        if isinstance(data, dict):
+            for item in data.get("notes", []):
+                note = self._parse_note(item)
+                if note is not None:
+                    notes.append(note)
+            panel_data = data.get("panel")
+            if isinstance(panel_data, dict) and isinstance(panel_data.get("visible"), bool):
+                panel["visible"] = panel_data["visible"]
         return {"notes": notes, "panel": panel}
 
     def _write_raw(self, raw: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        on_disk = {
+        write_json(self.path, {
             "notes": [self._serialize_note(note) for note in raw["notes"]],
             "panel": raw["panel"],
-        }
-        atomic_write_text(self.path, json.dumps(on_disk, ensure_ascii=False, indent=1))
+        })
 
     @staticmethod
     def _parse_note(item) -> StickyNote:
@@ -72,6 +80,7 @@ class StickyNoteRepository:
             return None
         body = item.get("body", "")
         tag = item.get("tag", "")
+        image = item.get("image", "")
         created_raw = item.get("created_at", "")
         try:
             created_at = datetime.fromisoformat(created_raw)
@@ -83,6 +92,7 @@ class StickyNoteRepository:
             body=body if isinstance(body, str) else "",
             tag=tag if isinstance(tag, str) else "",
             created_at=created_at,
+            image=image if isinstance(image, str) else "",
         )
 
     @staticmethod
@@ -92,5 +102,6 @@ class StickyNoteRepository:
             "title": note.title,
             "body": note.body,
             "tag": note.tag,
+            "image": note.image,
             "created_at": note.created_at.isoformat(),
         }

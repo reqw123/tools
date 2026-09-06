@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<title>桌面牆設定</title>
+<style>
+  :root {
+    --bg: #eef1ec; --card: #fff; --ink: #14181b; --soft: #5b6570;
+    --line: #c8cfc6; --marker: #0b7cb2; --marker-ink: #06557a;
+    --ok: #1f7a4d; --bad: #b5372a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161a; --card: #1d242a; --ink: #e6eae6; --soft: #98a2a9;
+      --line: #333c44; --marker: #4bb4dc; --marker-ink: #bfe4f2;
+      --ok: #5bc48c; --bad: #e2725f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 18px; background: var(--bg); color: var(--ink);
+    font: 14px/1.55 "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  /* 捲軸——跟拉桿同一套視覺：明顯的鋼藍色圓角膠囊。::-webkit-scrollbar 的
+     pseudo 在 Chromium 對 var() 不可靠，顏色寫死、深色另外覆寫。 */
+  ::-webkit-scrollbar { width: 13px; height: 13px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(11, 124, 178, 0.7);
+    border: 3px solid transparent; background-clip: padding-box;
+    border-radius: 999px; min-height: 40px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: #0b7cb2; }
+  ::-webkit-scrollbar-corner { background: transparent; }
+  @media (prefers-color-scheme: dark) {
+    ::-webkit-scrollbar-thumb { background-color: rgba(75, 180, 220, 0.58); }
+    ::-webkit-scrollbar-thumb:hover { background-color: #4bb4dc; }
+  }
+  h1 { font-size: 15px; margin: 0 0 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  .card h2 {
+    font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--soft); margin: 0 0 8px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row + .row { margin-top: 8px; }
+  label.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button {
+    font: inherit; border: none; background: var(--card); color: var(--soft);
+    padding: 6px 12px; cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--marker); color: #fff; font-weight: 600; }
+  /* 牆面透明度拉桿——把手做高一點（26px），點擊區也加高到 30px，好抓好點。 */
+  input[type=range] {
+    flex: 1;
+    height: 30px;
+    margin: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--marker) 0 var(--fill, 55%),
+      var(--line) var(--fill, 55%) 100%
+    );
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 26px;
+    margin-top: -9px; /* (8 - 26) / 2，讓把手垂直置中在 8px 軌道上 */
+    border-radius: 6px;
+    background: var(--marker);
+    border: 3px solid var(--card);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  }
+  input[type=range]:hover::-webkit-slider-thumb { background: var(--marker-ink); }
+  input[type=range]:active::-webkit-slider-thumb { transform: scaleY(1.06); }
+  input[type=range]:focus-visible { outline: none; }
+  input[type=range]:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px rgba(11, 124, 178, 0.35);
+  }
+  input[type=range]::-moz-range-track { height: 8px; border-radius: 999px; background: var(--line); }
+  input[type=range]::-moz-range-progress { height: 8px; border-radius: 999px; background: var(--marker); }
+  input[type=range]::-moz-range-thumb {
+    width: 18px; height: 26px; border: 3px solid var(--card); border-radius: 6px; background: var(--marker);
+  }
+  select {
+    font: inherit; padding: 5px 8px; border: 1px solid var(--line);
+    border-radius: 7px; background: var(--card); color: var(--ink); flex: 1;
+  }
+  .val { font-variant-numeric: tabular-nums; color: var(--marker-ink); font-weight: 600; min-width: 3ch; text-align: right; }
+  .status b { color: var(--marker-ink); }
+  .muted { color: var(--soft); font-size: 12px; }
+  .path {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px;
+    color: var(--soft); word-break: break-all; margin: 4px 0 6px;
+  }
+  button.link {
+    font: inherit; background: none; border: none; color: var(--marker);
+    cursor: pointer; padding: 0; text-decoration: underline;
+  }
+  .btn {
+    font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    border-radius: 8px; padding: 6px 12px; cursor: pointer; font-weight: 500;
+  }
+  .btn:hover { border-color: var(--marker); }
+  .chk { display: flex; align-items: center; gap: 8px; }
+  .chk input { width: 16px; height: 16px; accent-color: var(--marker); }
+  kbd {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+  }
+  /* 快捷鍵編輯 */
+  .sc-row { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; padding: 6px 0; }
+  .sc-row + .sc-row { border-top: 1px solid var(--line); }
+  .sc-label { font-weight: 500; }
+  .sc-key {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; min-width: 130px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+    border-radius: 6px; padding: 5px 10px; cursor: pointer; text-align: center;
+  }
+  .sc-key:hover { border-color: var(--marker); }
+  .sc-key.capturing { border-color: var(--marker); color: var(--marker-ink); font-weight: 700; }
+  .sc-note { grid-column: 1 / -1; font-size: 12px; margin: 0; }
+  .sc-note.ok { color: var(--ok); }
+  .sc-note.bad { color: var(--bad); }
+  .sc-note.muted { color: var(--soft); }
+</style>
+</head>
+<body>
+  <h1>桌面牆設定</h1>
+
+  <div class="card status">
+    <h2>目前狀態</h2>
+    <div class="row" id="statusRow">載入中…</div>
+  </div>
+
+  <div class="card">
+    <h2>這面牆</h2>
+    <label class="seg" id="wall">
+      <button data-v="sticky">便利貼</button>
+      <button data-v="index">檔案索引</button>
+    </label>
+  </div>
+
+  <div class="card">
+    <h2>目前模式</h2>
+    <label class="seg" id="mode">
+      <button data-v="background">背景（穿透）</button>
+      <button data-v="interactive">互動</button>
+    </label>
+    <div class="row" style="margin-top:8px">
+      <span class="muted">每次啟動時：</span>
+      <label class="seg" id="startMode">
+        <button data-v="background">背景</button>
+        <button data-v="interactive">互動</button>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>牆面透明度</h2>
+    <div class="row">
+      <input type="range" id="opacity" min="0" max="1" step="0.05" />
+      <span class="val" id="opacityVal">–</span>
+    </div>
+    <div class="muted">0 = 只剩卡片；1 = 完整牆面蓋在桌布上</div>
+  </div>
+
+  <div class="card">
+    <h2>快捷鍵</h2>
+    <div id="shortcuts"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="resetSc">↺ 全部回復預設</button>
+    </div>
+    <p class="muted" style="margin:8px 0 0">
+      點右邊的鍵，然後直接按你要的組合（至少含一個 <kbd>Ctrl</kbd> / <kbd>Alt</kbd> /
+      <kbd>Shift</kbd>）。<kbd>Esc</kbd> 取消。註冊失敗（跟別的程式衝突）會標紅，那個動作
+      改用系統匣選單，或換一組鍵。
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>顯示在哪個螢幕</h2>
+    <div class="row"><select id="display"></select></div>
+  </div>
+
+  <div class="card">
+    <h2>開機自動啟動</h2>
+    <label class="chk"><input type="checkbox" id="autostart" /> 登入 Windows 後自動貼上桌面牆</label>
+  </div>
+
+  <div class="card">
+    <h2>設定檔</h2>
+    <div class="path" id="settingsPath">–</div>
+    <button class="link" id="openUserData">開啟所在資料夾</button>
+  </div>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  let state = null;
+  let capturing = null; // action id | null
+
+  const STATUS_TEXT = {
+    ok: ['ok', '已生效'],
+    failed: ['bad', '註冊失敗（可能被其他程式佔用）'],
+    invalid: ['bad', '無法使用這組鍵'],
+    conflict: ['bad', '和其他動作綁到同一組鍵'],
+    unset: ['muted', '未設定'],
+  };
+
+  // 跟 main.js validateAccelerator 的保留鍵清單一致——client 端先擋一次，紅字馬上出來。
+  const RESERVED = new Set([
+    'Control+C', 'Control+V', 'Control+X', 'Control+A', 'Control+Z', 'Control+Y',
+    'Control+S', 'Control+P', 'Control+F',
+    'Alt+F4', 'Alt+Tab', 'Alt+Escape', 'Alt+Space',
+    'Control+Escape', 'Control+Alt+Delete', 'Control+Shift+Escape',
+    'Super+L', 'Super+D', 'Super+E', 'Super+R',
+  ]);
+
+  function paintSeg(id, value) {
+    document.querySelectorAll('#' + id + ' button').forEach((b) => {
+      b.classList.toggle('on', b.dataset.v === value);
+    });
+  }
+
+  function accelDisplay(a) {
+    return (a || '').replace(/CommandOrControl|Command|Cmd|Meta/gi, 'Ctrl').replace(/Control/gi, 'Ctrl');
+  }
+
+  function renderShortcuts(s) {
+    const { settings, shortcutStatus, shortcutLabels, shortcutErrors = {} } = s;
+    const box = $('#shortcuts');
+    box.innerHTML = '';
+    for (const action of Object.keys(shortcutLabels)) {
+      const st = shortcutStatus[action] || 'unset';
+      const [cls, defText] = STATUS_TEXT[st] || STATUS_TEXT.unset;
+      const text = shortcutErrors[action] || defText;
+      const row = document.createElement('div');
+      row.className = 'sc-row';
+      row.innerHTML =
+        `<span class="sc-label">${shortcutLabels[action]}</span>` +
+        `<button class="sc-key" data-action="${action}">${accelDisplay(settings.shortcuts[action]) || '（未設定）'}</button>` +
+        `<p class="sc-note ${cls}">${text}</p>`;
+      box.appendChild(row);
+    }
+    box.querySelectorAll('.sc-key').forEach((btn) =>
+      btn.addEventListener('click', () => beginCapture(btn)));
+  }
+
+  function beginCapture(btn) {
+    if (capturing) return;
+    capturing = btn.dataset.action;
+    btn.classList.add('capturing');
+    btn.textContent = '按下按鍵…';
+  }
+
+  function endCapture() {
+    capturing = null;
+    if (state) renderShortcuts(state);
+  }
+
+  function keyName(e) {
+    const c = e.code || '';
+    if (/^Key[A-Z]$/.test(c)) return c.slice(3);
+    if (/^Digit[0-9]$/.test(c)) return c.slice(5);
+    if (/^Numpad[0-9]$/.test(c)) return 'num' + c.slice(6);
+    if (/^F([1-9]|1[0-9]|2[0-4])$/.test(c)) return c;
+    const M = {
+      ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+      Space: 'Space', Enter: 'Return', Tab: 'Tab', Backspace: 'Backspace',
+      Delete: 'Delete', Insert: 'Insert', Home: 'Home', End: 'End',
+      PageUp: 'PageUp', PageDown: 'PageDown',
+      Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Backslash: '\\',
+      Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backquote: '`',
+    };
+    return M[c] || null;
+  }
+
+  function toAccelerator(e) {
+    const mods = [];
+    if (e.ctrlKey) mods.push('Control');
+    if (e.altKey) mods.push('Alt');
+    if (e.shiftKey) mods.push('Shift');
+    if (e.metaKey) mods.push('Super');
+    const key = keyName(e);
+    if (!key) return { err: '需要一個實際按鍵' };
+    const isFKey = /^F([1-9]|1[0-9]|2[0-4])$/.test(key);
+    if (mods.length === 0 && !isFKey) {
+      return { err: '字母 / 數字 / 符號鍵要至少加一個 Ctrl / Alt / Shift（F1–F24 可單獨用）' };
+    }
+    const accel = [...mods, key].join('+');
+    if (RESERVED.has(accel)) {
+      return { err: '這是系統 / 通用快捷鍵（剪貼簿、視窗切換等），綁了會蓋掉全系統的功能，換一組' };
+    }
+    return { accel };
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (!capturing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') { endCapture(); return; }
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return; // 等真正的鍵
+    const action = capturing;
+    capturing = null;
+    const r = toAccelerator(e);
+    if (r.err) {
+      renderShortcuts(state);
+      noteFor(action, 'bad', r.err);
+      return;
+    }
+    window.dw.setShortcut(action, r.accel).then((res) => {
+      if (res.state) render(res.state);
+      if (!res.ok && res.error) noteFor(action, 'bad', res.error);
+    });
+  }, true);
+
+  function noteFor(action, cls, text) {
+    const row = document.querySelector(`.sc-key[data-action="${action}"]`)?.closest('.sc-row');
+    if (!row) return;
+    const note = row.querySelector('.sc-note');
+    note.className = 'sc-note ' + cls;
+    note.textContent = text;
+  }
+
+  function render(s) {
+    state = s;
+    const { settings, mode, visible, displays, settingsPath } = s;
+    $('#statusRow').innerHTML =
+      `<span>模式 <b>${mode === 'background' ? '背景（穿透）' : '互動'}</b></span>` +
+      `<span>·</span><span>${visible ? '顯示中' : '已隱藏'}</span>` +
+      `<span>·</span><span>牆：<b>${settings.wall === 'sticky' ? '便利貼' : '檔案索引'}</b></span>`;
+    paintSeg('wall', settings.wall);
+    paintSeg('mode', mode);
+    paintSeg('startMode', settings.startMode);
+    $('#opacity').value = settings.wallOpacity;
+    paintOpacity(settings.wallOpacity);
+    $('#autostart').checked = settings.autostart;
+    $('#settingsPath').textContent = settingsPath;
+    renderShortcuts(s);
+
+    const sel = $('#display');
+    sel.innerHTML = '<option value="">主螢幕（跟隨系統）</option>' +
+      displays.map((d) => `<option value="${d.id}">${d.label}</option>`).join('');
+    sel.value = settings.displayId == null ? '' : String(settings.displayId);
+  }
+
+  document.querySelectorAll('#wall button').forEach((b) =>
+    b.addEventListener('click', () => window.dw.setWall(b.dataset.v).then(render)));
+  document.querySelectorAll('#mode button').forEach((b) =>
+    b.addEventListener('click', () => window.dw.setMode(b.dataset.v).then(render)));
+  document.querySelectorAll('#startMode button').forEach((b) =>
+    b.addEventListener('click', () => window.dw.setStartMode(b.dataset.v).then(render)));
+
+  // 拉桿：更新數值文字 + 讓軌道左側「已填」顏色跟著把手走（--fill）。
+  function paintOpacity(v) {
+    const el = $('#opacity');
+    const lo = Number(el.min || 0);
+    const hi = Number(el.max || 1);
+    const pct = hi > lo ? ((Number(v) - lo) / (hi - lo)) * 100 : 0;
+    el.style.setProperty('--fill', pct + '%');
+    $('#opacityVal').textContent = Number(v).toFixed(2);
+  }
+  $('#opacity').addEventListener('input', (e) => {
+    paintOpacity(e.target.value);
+    window.dw.setOpacity(Number(e.target.value));
+  });
+  $('#autostart').addEventListener('change', (e) => window.dw.setAutostart(e.target.checked).then(render));
+  $('#display').addEventListener('change', (e) =>
+    window.dw.setDisplay(e.target.value === '' ? null : Number(e.target.value)).then(render));
+  $('#openUserData').addEventListener('click', () => window.dw.openUserData());
+  $('#resetSc').addEventListener('click', () => window.dw.resetShortcuts().then(render));
+
+  window.dw.onState(render);
+  window.dw.getState().then(render);
+</script>
+</body>
+</html>

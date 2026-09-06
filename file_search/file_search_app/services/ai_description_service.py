@@ -83,9 +83,6 @@ class AIDescriptionService:
             return False, "尚未選擇 AI Provider"
         return True, ""
 
-    def is_cloud_provider(self) -> bool:
-        return self._settings_repo.load().get("provider") == "openai"
-
     def current_provider_label(self) -> str:
         settings = self._settings_repo.load()
         if settings.get("provider") == "openai":
@@ -125,17 +122,17 @@ class AIDescriptionService:
     def target_confirm_title(self) -> str:
         """AI 送出前確認視窗的標題——不管本機還是雲端，都在標題就講明是哪個
         Provider（先前只有 OpenAI 會這樣，Ollama 是通用標題）。"""
-        t = self.current_target_summary()
-        return f"確認送出到 {t['label']}"
+        target = self.current_target_summary()
+        return f"確認送出到 {target['label']}"
 
     def target_disclosure_lines(self) -> str:
         """AI 送出前確認視窗共用的「去向」段落——Provider、模型、位址、內容
         會不會離開這台電腦，本機與雲端都寫清楚，措辭一致。"""
-        t = self.current_target_summary()
-        lines = [f"送往：{t['label']}", f"模型：{t['model']}", f"位址：{t['endpoint']}"]
-        if t["provider"] == "openai":
+        target = self.current_target_summary()
+        lines = [f"送往：{target['label']}", f"模型：{target['model']}", f"位址：{target['endpoint']}"]
+        if target["provider"] == "openai":
             lines.append("⚠️ 這是雲端服務，內容會離開這台電腦，且每次呼叫可能計費。")
-        elif t.get("lan"):
+        elif target.get("lan"):
             lines.append("這是區網內另一台電腦上的 Ollama，內容會透過區域網路傳到那台電腦，但不會上網際網路、也不會計費。")
         else:
             lines.append("這是本機服務，內容不會離開這台電腦。")
@@ -222,9 +219,20 @@ class AIDescriptionService:
         text, _error, _cancelled = self._transcription_service.transcribe(p)
         return text or ""
 
-    def _generate_one(self, provider, entry, cache: dict):
+    def _generate_one(self, provider, entry, cache: dict, prompt_builder=None, image_prompt_builder=None):
         """回傳 (suggestion_or_None, error_or_None)，給 generate_suggestions()
-        迴圈裡每一筆共用。"""
+        迴圈裡每一筆共用。
+
+        `prompt_builder(entry, text) -> str` / `image_prompt_builder(entry) -> str`
+        預設是 `self.build_prompt` / `self.build_image_prompt`（批次補說明用的
+        那組），呼叫端可以換成別的 prompt 契約重用整套內容擷取／逐筆呼叫／
+        計次／錯誤處理——例如便利貼「AI 生成便利貼」用的是
+        `StickyNoteService.build_document_to_note_prompt`，回傳的是
+        標題/標籤/內容 JSON 而不是一段說明文字，但檔案內容怎麼變成送給
+        AI 的東西（文字擷取／圖片縮圖／音訊轉錄）跟這裡完全一樣，不用
+        重寫一份。"""
+        prompt_builder = prompt_builder or self.build_prompt
+        image_prompt_builder = image_prompt_builder or self.build_image_prompt
         p = Path(entry.path)
         if not p.exists():
             return None, None
@@ -234,7 +242,7 @@ class AIDescriptionService:
                 return None, None  # 沒裝 Pillow、或讀圖失敗，沒有內容可以送
             image_bytes, mime_type = image
             try:
-                prompt = self.build_image_prompt(entry)
+                prompt = image_prompt_builder(entry)
                 self.record_call()
                 suggestion = provider.generate_image_description(prompt, image_bytes, mime_type)
             except AIProviderError as exc:
@@ -246,14 +254,17 @@ class AIDescriptionService:
             if not text:
                 return None, None
             try:
-                prompt = self.build_prompt(entry, text)
+                prompt = prompt_builder(entry, text)
                 self.record_call()
                 suggestion = provider.generate_description(prompt)
             except AIProviderError as exc:
                 return None, str(exc)
         return (suggestion, None) if suggestion else (None, "AI 回應是空的")
 
-    def generate_suggestions(self, entries, cache: dict, progress_cb=None, cancel_check=None):
+    def generate_suggestions(
+        self, entries, cache: dict, progress_cb=None, cancel_check=None,
+        prompt_builder=None, image_prompt_builder=None,
+    ):
         """entries: list[IndexEntry]。回傳 (results, cancelled)：
 
         results 是 [(IndexEntry, suggestion, error), ...]，跟 entries 一一對應：
@@ -262,6 +273,10 @@ class AIDescriptionService:
             不算失敗，不會覆蓋掉原本的建議；圖片沒裝 Pillow、音訊／影片目前
             沒有轉錄能力，都會落在這一類）
           suggestion 是 None、error 有值   → 呼叫 AI 失敗（原本的建議不受影響）
+
+        `prompt_builder`／`image_prompt_builder` 見 `_generate_one`——省略時
+        沿用批次補說明原本的 prompt，換一組就能重用整套流程給別的 AI 生成
+        功能用（見便利貼「AI 生成便利貼」）。
 
         可在背景執行緒安全呼叫，不接觸任何 Tkinter 物件。
         """
@@ -274,7 +289,7 @@ class AIDescriptionService:
         for done, entry in enumerate(entries, start=1):
             if cancel_check and cancel_check():
                 return results, True
-            suggestion, error = self._generate_one(provider, entry, cache)
+            suggestion, error = self._generate_one(provider, entry, cache, prompt_builder, image_prompt_builder)
             results.append((entry, suggestion, error))
             if progress_cb:
                 progress_cb(done, entry.name)

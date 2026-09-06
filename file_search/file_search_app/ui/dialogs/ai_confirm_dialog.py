@@ -14,7 +14,7 @@ from file_search_app.config import (
     BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG,
     COLOR_BG, COLOR_HEADER_BG, COLOR_STATUS_FG, FONT_FAMILY,
 )
-from file_search_app.ui.styles import styled_button
+from file_search_app.ui.styles import make_modal, run_modal, styled_button
 
 _MESSAGE_FONT_SIZE = 14
 _BUTTON_FONT_SIZE = 13
@@ -27,16 +27,10 @@ def ask_ai_confirm(parent, title: str, message: str, confirm_text: str = "確定
     屬於「使用者一定要看清楚才能決定」的內容，不該被系統預設的小字忽略。"""
     result = {"value": False}
 
-    dlg = tk.Toplevel(parent)
-    dlg.title(title)
-    dlg.configure(bg=COLOR_BG)
-    dlg.transient(parent)
-    dlg.grab_set()
-    # 可調整大小（不是 resizable(False, False)）——這裡的 message 是呼叫端
-    # 組出來的動態文字（費用/用量提示，長度會隨便利貼或選取檔案數量變動），
-    # 固定死大小、又不給捲動的話，萬一某次文字特別長，視窗有可能比螢幕還
-    # 高，使用者會被卡住按不到按鈕；至少留可調整大小這個退路。
-    dlg.resizable(True, True)
+    # 可調整大小——message 是呼叫端組出來的動態文字（費用/用量提示，長度會隨
+    # 便利貼或選取檔案數量變動），固定死大小、又不給捲動的話，萬一某次特別長
+    # 視窗有可能比螢幕還高、按不到按鈕；至少留可調整大小這個退路。
+    dlg = make_modal(parent, title, bg=COLOR_BG)
 
     font_title = tkfont.Font(family=FONT_FAMILY, size=_MESSAGE_FONT_SIZE, weight="bold")
     font_msg = tkfont.Font(family=FONT_FAMILY, size=_MESSAGE_FONT_SIZE)
@@ -72,14 +66,5 @@ def ask_ai_confirm(parent, title: str, message: str, confirm_text: str = "確定
     ).pack(side="right", padx=(0, 8))
     dlg.protocol("WM_DELETE_WINDOW", _cancel)
 
-    dlg.update_idletasks()
-    # 盡量置中在呼叫端視窗上，不是螢幕正中央——跟其他對話框一致的習慣。
-    try:
-        x = parent.winfo_rootx() + max(0, (parent.winfo_width() - dlg.winfo_width()) // 2)
-        y = parent.winfo_rooty() + max(0, (parent.winfo_height() - dlg.winfo_height()) // 2)
-        dlg.geometry(f"+{x}+{y}")
-    except tk.TclError:
-        pass  # 量不到 parent 幾何資訊就用系統預設位置，不影響功能
-
-    parent.wait_window(dlg)
+    run_modal(dlg, parent)
     return result["value"]

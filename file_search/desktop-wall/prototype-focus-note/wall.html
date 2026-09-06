@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<title>PROTOTYPE — focus note</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: "Microsoft JhengHei", system-ui, sans-serif;
+    background: #efe8dc;
+  }
+  body:not(.cropped) { cursor: crosshair; } /* 空白處提示「可以拉框」 */
+  #banner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 8px 14px;
+    background: #2a241c;
+    color: #fff;
+    font-size: 13px;
+    z-index: 50;
+    -webkit-app-region: drag; /* 沒有原生標題列，靠這個拖動整個原型視窗 */
+  }
+  #board { position: absolute; inset: 0; }
+  .note {
+    position: absolute;
+    width: 220px;
+    min-height: 110px;
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, .18);
+    font-size: 13px;
+    box-sizing: border-box;
+    color: #23201a;
+    cursor: grab;
+    transition: box-shadow .15s, transform .15s;
+  }
+  .note h3 { margin: 0 0 6px; font-size: 14px; }
+  .note p { margin: 0; opacity: .8; white-space: pre-wrap; }
+  .note.hidden-by-float { display: none; }
+  .note.dragging {
+    cursor: grabbing;
+    z-index: 45;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, .32);
+    transform: scale(1.04);
+  }
+  /* 拖到快超出邊界時變色提示「再放開就會彈出去」 */
+  .note.will-pop { outline: 3px solid #d9534f; outline-offset: 2px; }
+
+  /* 邊緣熱區——拖曳時淡淡亮起，提示「拖到這裡會彈出去變懸浮視窗」 */
+  .edge-hint {
+    position: fixed;
+    background: rgba(217, 83, 79, 0);
+    z-index: 30;
+    pointer-events: none;
+    transition: background .1s;
+  }
+  #edge-l { left: 0; top: 0; bottom: 0; width: var(--edge, 24px); }
+  #edge-r { right: 0; top: 0; bottom: 0; width: var(--edge, 24px); }
+  #edge-t { left: 0; top: 0; right: 0; height: var(--edge, 24px); }
+  #edge-b { left: 0; bottom: 0; right: 0; height: var(--edge, 24px); }
+  body.note-dragging .edge-hint { background: rgba(217, 83, 79, .16); }
+
+  /* 🅰 裁切模式：拉框選完之後，banner 收起、#board 用 transform 位移，讓
+     選取範圍的左上角對齊視窗（0,0）——真正「看得到內容」的部分交給視窗
+     本身縮小/搬移到剛好貼合那個範圍（見 main.js 的 crop-to），這裡的
+     transform 只負責把畫面內容「對」到新視窗的座標系統上，不是靠 CSS
+     藏東西模擬出裁切的樣子。 */
+  body.cropped #banner { display: none; }
+  body.cropped { cursor: default; }
+
+  #marquee {
+    position: fixed;
+    border: 2px dashed #2a241c;
+    background: rgba(42, 36, 28, .12);
+    z-index: 40;
+    pointer-events: none;
+  }
+
+  #restore {
+    position: fixed;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: none;
+    background: #2a241c;
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+    display: none;
+  }
+  body.cropped #restore { display: block; }
+</style>
+</head>
+<body>
+  <div id="banner">🅰 在空白處拖拉框選 = 裁切主視窗只顯示框住的範圍（可以框到好幾則）　　🅱 把便利貼拖到視窗邊緣放開 = 彈出成獨立懸浮視窗</div>
+  <div id="board"></div>
+  <div id="marquee" style="display:none"></div>
+  <div class="edge-hint" id="edge-l"></div>
+  <div class="edge-hint" id="edge-r"></div>
+  <div class="edge-hint" id="edge-t"></div>
+  <div class="edge-hint" id="edge-b"></div>
+  <button id="restore">⬅ 恢復完整畫面</button>
+
+<script>
+  const EDGE_MARGIN = 24; // 拖到離視窗邊緣多近算「要彈出去」
+
+  const notes = [
+    { id: 'n1', title: '買菜清單', body: '牛奶\n雞蛋\n洗衣精', color: '#f6d6a8', x: 60, y: 80 },
+    { id: 'n2', title: '會議紀錄', body: '3點跟設計討論新版介面', color: '#c9e3c1', x: 340, y: 140 },
+    { id: 'n3', title: '常用網址', body: 'https://example.com', color: '#bcd7ec', x: 600, y: 90 },
+    { id: 'n4', title: '靈感筆記', body: '桌面牆可以加天氣小工具？', color: '#eab8c4', x: 380, y: 380 },
+  ];
+
+  const board = document.getElementById('board');
+  const restoreBtn = document.getElementById('restore');
+  const marqueeEl = document.getElementById('marquee');
+
+  function render() {
+    board.innerHTML = '';
+    for (const n of notes) {
+      const el = document.createElement('div');
+      el.className = 'note' + (n.floated ? ' hidden-by-float' : '');
+      el.style.background = n.color;
+      el.style.left = n.x + 'px';
+      el.style.top = n.y + 'px';
+      el.innerHTML = `<h3>${n.title}</h3><p>${n.body}</p>`;
+      el.addEventListener('mousedown', (e) => startNoteDrag(e, n, el));
+      board.appendChild(el);
+    }
+  }
+
+  proto.onFloatClosed((id) => {
+    const n = notes.find((x) => x.id === id);
+    if (n) n.floated = false;
+    render();
+  });
+
+  // ── 🅱 拖出邊緣＝彈成懸浮視窗 ──────────────────────────────────────
+  // 拿不到「滑鼠真的離開這個視窗之後」的座標（Chromium 的 mousemove 一旦
+  // 游標跑出視窗範圍就不會再送進來，這是瀏覽器層級的限制，不是這裡沒接好），
+  // 所以簡化成「拖到離視窗邊緣一小段距離內」就當作「要拖出去了」直接觸發，
+  // 體感上很接近「拖出牆外」，但不是真的追蹤到牆外的游標位置。要做到完全
+  // 無縫（像 Chrome 分頁拖出變新視窗那種），需要主行程用
+  // `screen.getCursorScreenPoint()` 搭配某種「滑鼠鍵是否還按著」的全域偵測
+  // 持續輪詢，那是另一層工程量，先確認這個簡化版的手感對不對再說。
+  let noteDrag = null; // { note, el }
+
+  function startNoteDrag(e, n, el) {
+    e.preventDefault();
+    const r = el.getBoundingClientRect();
+    noteDrag = {
+      note: n,
+      el,
+      offsetX: e.clientX - r.left,
+      offsetY: e.clientY - r.top,
+    };
+    el.style.position = 'fixed';
+    el.style.left = r.left + 'px';
+    el.style.top = r.top + 'px';
+    el.classList.add('dragging');
+    document.body.classList.add('note-dragging');
+  }
+
+  function isNearEdge(cx, cy) {
+    return cx < EDGE_MARGIN || cy < EDGE_MARGIN
+      || cx > window.innerWidth - EDGE_MARGIN
+      || cy > window.innerHeight - EDGE_MARGIN;
+  }
+
+  function finishNoteDrag(popOut) {
+    const { note: n, el } = noteDrag;
+    const r = el.getBoundingClientRect();
+    noteDrag = null;
+    document.body.classList.remove('note-dragging');
+    if (popOut) {
+      n.floated = true;
+      proto.spawnFloat(
+        { id: n.id, title: n.title, body: n.body, color: n.color },
+        { x: r.left, y: r.top, width: r.width, height: r.height },
+      );
+    }
+    render(); // 不管有沒有彈出去，都用乾淨的 state 重畫一次（沒彈出去＝彈回原位）
+  }
+
+  // ── 🅰 拖框裁切：在空白處按下拖曳，畫出選取框；放開時把框的範圍送給
+  //    主行程去縮放/搬移視窗，同時把 #board 的內容位移，讓選取範圍的
+  //    左上角對齊新視窗的 (0,0)。────────────────────────────────────
+  let dragStart = null;
+
+  function rectOf(a, b) {
+    return {
+      x: Math.min(a.x, b.x),
+      y: Math.min(a.y, b.y),
+      width: Math.abs(a.x - b.x),
+      height: Math.abs(a.y - b.y),
+    };
+  }
+
+  document.addEventListener('mousedown', (e) => {
+    if (document.body.classList.contains('cropped')) return; // 已經裁切中，先恢復才能再拉一次
+    if (e.target.closest('.note') || e.target.closest('#restore') || e.target.closest('#banner')) return;
+    dragStart = { x: e.clientX, y: e.clientY };
+    marqueeEl.style.display = 'block';
+    paintMarquee(e.clientX, e.clientY);
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (dragStart) {
+      paintMarquee(e.clientX, e.clientY);
+      return;
+    }
+    if (!noteDrag) return;
+    noteDrag.el.style.left = (e.clientX - noteDrag.offsetX) + 'px';
+    noteDrag.el.style.top = (e.clientY - noteDrag.offsetY) + 'px';
+    noteDrag.el.classList.toggle('will-pop', isNearEdge(e.clientX, e.clientY));
+    if (isNearEdge(e.clientX, e.clientY)) finishNoteDrag(true);
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (dragStart) {
+      const r = rectOf(dragStart, { x: e.clientX, y: e.clientY });
+      dragStart = null;
+      marqueeEl.style.display = 'none';
+      if (r.width < 24 || r.height < 24) return; // 太小＝誤觸（單純點一下），忽略
+      board.style.transform = `translate(${-r.x}px, ${-r.y}px)`;
+      document.body.classList.add('cropped');
+      proto.cropTo(r);
+      return;
+    }
+    if (noteDrag) finishNoteDrag(false);
+  });
+
+  function paintMarquee(cx, cy) {
+    const r = rectOf(dragStart, { x: cx, y: cy });
+    marqueeEl.style.left = r.x + 'px';
+    marqueeEl.style.top = r.y + 'px';
+    marqueeEl.style.width = r.width + 'px';
+    marqueeEl.style.height = r.height + 'px';
+  }
+
+  restoreBtn.onclick = () => {
+    board.style.transform = '';
+    document.body.classList.remove('cropped');
+    proto.restoreCrop();
+  };
+
+  render();
+</script>
+</body>
+</html>

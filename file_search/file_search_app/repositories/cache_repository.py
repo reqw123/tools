@@ -12,11 +12,10 @@ PreviewService 依內容判斷，不是這裡的事）。
 """
 
 import hashlib
-import json
 from pathlib import Path
 
 from file_search_app.config import INDEXES_DIR
-from file_search_app.repositories.atomic_io import atomic_write_text
+from file_search_app.repositories.json_store import read_json, write_json
 
 HASH_ALGO = "sha256"
 _HASH_CHUNK = 4 * 1024 * 1024
@@ -36,20 +35,14 @@ class CacheRepository:
         否則後續刷新快取時對它呼叫 .get() 會直接丟未接住的例外。合法 JSON 但形狀
         不對（例如手動改壞、被其他程式寫入、磁碟寫壞留下 [] 或字串）一律當作沒有
         可用快取，不拋例外。"""
-        cache_path = self.cache_path_for(md_path)
-        if not cache_path.exists():
-            return {}
-        try:
-            data = json.loads(cache_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}  # 快取檔案損毀/格式不對就當作沒有快取，下次更新會重建，不影響其餘功能
+        # 損毀／格式不對就當作沒有快取，下次更新會重建，不影響其餘功能。
+        data = read_json(self.cache_path_for(md_path), None)
         if not isinstance(data, dict):
             return {}
         return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, dict)}
 
     def save(self, md_path: Path, cache: dict) -> None:
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(self.cache_path_for(md_path), json.dumps(cache, ensure_ascii=False, indent=1))
+        write_json(self.cache_path_for(md_path), cache)
 
     def delete(self, md_path: Path) -> None:
         cache_path = self.cache_path_for(md_path)

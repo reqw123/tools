@@ -11,7 +11,9 @@ import base64
 import ipaddress
 from urllib.parse import urlparse
 
-from file_search_app.ai.base import AIProvider, AIProviderError, get_json, post_json
+from file_search_app.ai.base import (
+    AIProvider, AIProviderError, get_json, post_json, unexpected_response_error,
+)
 
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "llama3.1"
@@ -88,16 +90,21 @@ def model_in_list(name: str, names) -> bool:
     return want in {_with_latest(n) for n in names} or name in set(names)
 
 
+def parse_model_names(tags: dict) -> list:
+    """從 `/api/tags` 的回應裡抽出模型名稱清單（保留原順序、不去重）。清單版
+    `list_models()` 跟 `OllamaProvider.test_connection()` 共用同一套解析。"""
+    models = tags.get("models") if isinstance(tags, dict) else None
+    if not isinstance(models, list):
+        return []
+    return [m.get("name", "") for m in models if isinstance(m, dict) and m.get("name")]
+
+
 def list_models(base_url: str, timeout: float = 8.0) -> list:
     """回傳那台 Ollama 已下載的模型名稱清單（依名稱排序，不重複）。連不上／
     回應看不懂時拋 AIProviderError（沿用 get_json 既有的錯誤包裝）。設定視窗
     的模型下拉選單用這個。"""
     data = get_json(f"{normalize_base_url(base_url)}/api/tags", timeout=timeout)
-    models = data.get("models") if isinstance(data, dict) else None
-    if not isinstance(models, list):
-        return []
-    names = [m.get("name", "") for m in models if isinstance(m, dict) and m.get("name")]
-    return sorted(set(names), key=str.lower)
+    return sorted(set(parse_model_names(data)), key=str.lower)
 
 
 def is_local_endpoint(base_url: str) -> bool:
@@ -155,8 +162,12 @@ class OllamaProvider(AIProvider):
         if "error" in data:
             raise AIProviderError(str(data["error"]))
         response = data.get("response")
-        if response is None:
-            raise AIProviderError(f"回應格式不是預期的樣子：{data!r}"[:300])
+        if not isinstance(response, str):
+            # response 缺漏、是 null，或被中繼代理／壞掉的端點改成數字/物件——
+            # 一律當成回應格式不對，包成 AIProviderError；不要讓 .strip() 對
+            # 非字串丟出 AttributeError，那會穿過呼叫端「只接 AIProviderError」
+            # 的防護、把背景執行緒打死。
+            raise unexpected_response_error(data)
         return response.strip()
 
     def generate_description(self, prompt: str) -> str:
@@ -190,7 +201,7 @@ class OllamaProvider(AIProvider):
         # 是純文字模型，之後真的用起來還是會失敗，而且「連線成功」的綠字會讓
         # 人以為一切就緒。這裡多做兩個檢查，把問題在設定當下就講出來（回傳一
         # 段警語字串，不是拋例外——連線本身是成功的）。
-        installed = self._installed_model_names(tags)
+        installed = parse_model_names(tags)
         if installed and not self._model_installed(installed):
             sample = "、".join(installed[:8]) + ("…" if len(installed) > 8 else "")
             return (
@@ -204,13 +215,6 @@ class OllamaProvider(AIProvider):
                 "（例如 llava、llama3.2-vision、qwen2.5vl）。"
             )
         return None
-
-    @staticmethod
-    def _installed_model_names(tags: dict) -> list:
-        models = tags.get("models") if isinstance(tags, dict) else None
-        if not isinstance(models, list):
-            return []
-        return [m.get("name", "") for m in models if isinstance(m, dict) and m.get("name")]
 
     def _model_installed(self, installed: list) -> bool:
         return model_in_list(self._model, installed)

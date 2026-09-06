@@ -24,9 +24,9 @@ class MediaPanel:
         self._font_hint = font_hint
         self._on_space_shortcut = on_space_shortcut
         self._on_seek_shortcut = on_seek_shortcut
-        # 方向鍵跳轉秒數：讀目前值 / 回報使用者改動，都由呼叫端（MainWindow）處理，
-        # 這裡只負責顯示跟收集輸入。沒接這兩個 callback 時就不顯示調整欄位。
-        self._get_seek_seconds = get_seek_seconds
+        # 方向鍵跳轉秒數：初始值由 get_seek_seconds() 取得（只在建構時讀一次），
+        # 使用者改動時透過 on_seek_seconds_change 回報給呼叫端（MainWindow）夾範圍
+        # ＋存檔。兩個 callback 都沒接時就不顯示調整欄位。
         self._on_seek_seconds_change = on_seek_seconds_change
         self._seeking = False
         self._large_window = None
@@ -258,6 +258,3 @@ class MediaPanel:
         self._large_hint = None
         self._surface.update_idletasks()
         self._controller.resume_after_surface_change(snapshot, self._surface.winfo_id())
-
-    def has_open_large_window(self) -> bool:
-        return self._large_window is not None and self._large_window.winfo_exists()

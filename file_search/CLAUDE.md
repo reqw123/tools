@@ -6,6 +6,10 @@ panel (`file_search_app/ui/widgets/help_bar.py`). Line numbers are as of
 2026-08-24; if they've drifted, grep the function name — it's the durable
 anchor, the line number is a shortcut on top of it.
 
+For the recurring patterns this codebase uses (three-layer split, atomic
+write, worker→queue→poll, JSON-contract + layered fallback parsing, lazy row
+building, …) and their names, see `docs/PATTERNS.md`.
+
 ## Sticky notes (便利貼) — file map
 
 | Concern | File |

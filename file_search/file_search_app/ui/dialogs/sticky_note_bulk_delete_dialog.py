@@ -6,11 +6,13 @@ import tkinter as tk
 from tkinter import font as tkfont, messagebox, ttk
 
 from file_search_app.config import (
-    BTN_CYAN_ACTIVE, BTN_CYAN_BG, BTN_DANGER_ACTIVE, BTN_DANGER_BG,
+    BTN_REFRESH_ACTIVE, BTN_REFRESH_BG, BTN_DANGER_ACTIVE, BTN_DANGER_BG,
     BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, COLOR_BG, COLOR_PREVIEW_BG,
     COLOR_PREVIEW_BORDER, COLOR_STATUS_FG, FONT_FAMILY, STICKY_CARD_BORDER_DARKEN,
-    STICKY_CARD_TEXT_COLOR,
+    STICKY_CARD_META_COLOR, STICKY_CARD_TEXT_COLOR,
 )
+from file_search_app.models import format_added_at
+from file_search_app.services.sticky_note_service import preview_text
 from file_search_app.ui.styles import bind_wheel_recursive, darken, styled_button
 
 
@@ -62,7 +64,7 @@ class StickyNoteBulkDeleteDialog(tk.Toplevel):
             select_row, "全部取消勾選", self._uncheck_all, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_hint,
         ).pack(side="right")
         styled_button(
-            select_row, "勾選目前顯示", self._check_visible, BTN_CYAN_BG, BTN_CYAN_ACTIVE, font_hint,
+            select_row, "勾選目前顯示", self._check_visible, BTN_REFRESH_BG, BTN_REFRESH_ACTIVE, font_hint,
         ).pack(side="right", padx=(0, 8))
 
         list_outer = tk.Frame(
@@ -94,16 +96,18 @@ class StickyNoteBulkDeleteDialog(tk.Toplevel):
                 text_col, text=note.title, bg=color, fg=STICKY_CARD_TEXT_COLOR, font=font_name,
                 anchor="w", justify="left",
             ).pack(fill="x")
-            preview = " ／ ".join(line.strip() for line in note.body.splitlines() if line.strip())
+            preview = preview_text(note.body)
             if preview:
                 tk.Label(
-                    text_col, text=preview[:80], bg=color, fg=STICKY_CARD_TEXT_COLOR, font=font_hint,
+                    text_col, text=preview, bg=color, fg=STICKY_CARD_TEXT_COLOR, font=font_hint,
                     anchor="w", justify="left",
                 ).pack(fill="x")
+            meta = format_added_at(note.created_at)
             if note.tag:
-                tk.Label(
-                    text_col, text=f"# {note.tag}", bg=color, fg=STICKY_CARD_TEXT_COLOR, font=font_hint, anchor="w",
-                ).pack(fill="x")
+                meta = f"# {note.tag}　·　{meta}"
+            tk.Label(
+                text_col, text=meta, bg=color, fg=STICKY_CARD_META_COLOR, font=font_hint, anchor="w",
+            ).pack(fill="x")
             haystack = f"{note.title}\n{note.body}\n{note.tag}".lower()
             self._row_records.append((note, var, row, haystack))
 

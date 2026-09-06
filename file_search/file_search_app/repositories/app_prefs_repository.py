@@ -6,14 +6,13 @@
 比照 AI API Key 搬到本機快取目錄。
 """
 
-import json
 from pathlib import Path
 
 from file_search_app.config import (
     HELP_FONT_DELTA_MAX, HELP_FONT_DELTA_MIN, INDEXES_DIR,
     MEDIA_SEEK_SECONDS_DEFAULT, MEDIA_SEEK_SECONDS_MAX, MEDIA_SEEK_SECONDS_MIN,
 )
-from file_search_app.repositories.atomic_io import atomic_write_text
+from file_search_app.repositories.json_store import read_json, write_json
 
 
 class AppPrefsRepository:
@@ -23,8 +22,7 @@ class AppPrefsRepository:
     def load_seek_seconds(self) -> int:
         """影片左右鍵一次跳轉幾秒。檔案不存在／損毀／值超出範圍都回傳預設值，
         不拋例外——這是可有可無的偏好，壞掉不該影響主視窗。"""
-        raw = self._read().get("media", {})
-        value = raw.get("seek_seconds")
+        value = self._section("media").get("seek_seconds")
         if not isinstance(value, int) or isinstance(value, bool):
             return MEDIA_SEEK_SECONDS_DEFAULT
         return max(MEDIA_SEEK_SECONDS_MIN, min(MEDIA_SEEK_SECONDS_MAX, value))
@@ -32,14 +30,15 @@ class AppPrefsRepository:
     def save_seek_seconds(self, seconds: int) -> None:
         seconds = max(MEDIA_SEEK_SECONDS_MIN, min(MEDIA_SEEK_SECONDS_MAX, int(seconds)))
         data = self._read()
-        data.setdefault("media", {})["seek_seconds"] = seconds
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=1))
+        if not isinstance(data.get("media"), dict):
+            data["media"] = {}
+        data["media"]["seek_seconds"] = seconds
+        write_json(self.path, data)
 
     def load_help_font_delta(self) -> int:
         """功能介紹面板的字級增減量。檔案不存在／損毀／值超出範圍都回傳 0
         （＝預設字級），不拋例外——可有可無的偏好，壞掉不該影響主視窗。"""
-        value = self._read().get("help", {}).get("font_delta")
+        value = self._section("help").get("font_delta")
         if not isinstance(value, int) or isinstance(value, bool):
             return 0
         return max(HELP_FONT_DELTA_MIN, min(HELP_FONT_DELTA_MAX, value))
@@ -47,15 +46,18 @@ class AppPrefsRepository:
     def save_help_font_delta(self, delta: int) -> None:
         delta = max(HELP_FONT_DELTA_MIN, min(HELP_FONT_DELTA_MAX, int(delta)))
         data = self._read()
-        data.setdefault("help", {})["font_delta"] = delta
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=1))
+        if not isinstance(data.get("help"), dict):
+            data["help"] = {}
+        data["help"]["font_delta"] = delta
+        write_json(self.path, data)
 
     def _read(self) -> dict:
-        if not self.path.exists():
-            return {}
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+        data = read_json(self.path, {})
         return data if isinstance(data, dict) else {}
+
+    def _section(self, name: str) -> dict:
+        """取出某一組設定的子 dict。手動改壞的檔案裡這個 key 可能對到字串／
+        數字／null 而不是 dict——一律當成空的，不要讓呼叫端對非 dict 呼叫
+        .get() 時炸在 MainWindow.__init__ 讓整個程式開不起來。"""
+        section = self._read().get(name)
+        return section if isinstance(section, dict) else {}

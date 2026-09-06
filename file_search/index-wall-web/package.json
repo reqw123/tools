@@ -1,0 +1,38 @@
+{
+  "name": "index-wall-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "file_search_app 檔案索引的唯讀網頁檢視器——一次挑一份 indexes/*.md，用網頁 UI 呈現裡面的索引項目（搜尋、依分類／資料夾篩選、標示遺失檔案）。跟 sticky-wall-web 同層的獨立分流。",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "tsx watch server/index.ts",
+    "dev:web": "vite",
+    "build": "tsc -b && vite build",
+    "start": "cross-env NODE_ENV=production tsx server/index.ts",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@fastify/static": "^8",
+    "@tanstack/react-query": "^5",
+    "fastify": "^5",
+    "lucide-react": "^1.30.0",
+    "marked": "^14",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "concurrently": "^9",
+    "cross-env": "^7.0.3",
+    "oxlint": "^1.75.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0"
+  }
+}

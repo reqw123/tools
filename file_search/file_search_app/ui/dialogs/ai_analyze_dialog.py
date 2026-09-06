@@ -9,11 +9,11 @@ import tkinter as tk
 from tkinter import font as tkfont, ttk
 
 from file_search_app.config import (
-    BTN_PINK_ACTIVE, BTN_PINK_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG,
+    BTN_COPY_ACTIVE, BTN_COPY_BG, BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG,
     COLOR_BG, COLOR_HEADER_BG, COLOR_PREVIEW_BG, COLOR_STATUS_FG, FONT_FAMILY,
 )
 from file_search_app.platform import file_actions
-from file_search_app.ui.styles import icon_for, styled_button
+from file_search_app.ui.styles import center_over_parent, icon_for, styled_button
 
 
 class AIAnalyzeResultDialog(tk.Toplevel):
@@ -81,18 +81,13 @@ class AIAnalyzeResultDialog(tk.Toplevel):
         ).pack(side="left")
         styled_button(btn_row, "關閉", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_btn).pack(side="right")
         self._copy_btn = styled_button(
-            btn_row, "複製內容", self._copy, BTN_PINK_BG, BTN_PINK_ACTIVE, font_btn,
+            btn_row, "複製內容", self._copy, BTN_COPY_BG, BTN_COPY_ACTIVE, font_btn,
         )
         self._copy_btn.pack(side="right", padx=(0, 8))
 
         self.bind("<Escape>", lambda _e: self.destroy())
         self.update_idletasks()
-        try:
-            x = parent.winfo_rootx() + max(0, (parent.winfo_width() - self.winfo_width()) // 2)
-            y = parent.winfo_rooty() + max(0, (parent.winfo_height() - self.winfo_height()) // 2)
-            self.geometry(f"+{x}+{y}")
-        except tk.TclError:
-            pass
+        center_over_parent(self, parent)
 
     def _copy(self):
         file_actions.copy_to_clipboard(self, self._text.get("1.0", "end-1c"))

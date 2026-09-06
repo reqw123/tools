@@ -1,7 +1,7 @@
 """AI 服務設定（要用 OpenAI 還是 Ollama、API Key、模型名稱、位址）的讀寫。
 
 非敏感設定（provider、model、base_url、ollama 設定）跟 `.added_times.json`／
-`known_folders.txt` 一樣存在 `indexes/` 底下、檔名前面加點——這個工具本來就把
+`.known_folders.txt` 一樣存在 `indexes/` 底下、檔名前面加點——這個工具本來就把
 「非使用者手動維護的表格資料，但要跨次執行保留」的輔助狀態都放在同一個地方，
 這份資料夾本身就是設計成「可以整包搬到別台電腦、同步到雲端硬碟、跟別人共用」
 的可攜資料。
@@ -25,7 +25,7 @@ import os
 from pathlib import Path
 
 from file_search_app.config import INDEXES_DIR
-from file_search_app.repositories.atomic_io import atomic_write_text
+from file_search_app.repositories.json_store import read_json, write_json
 
 DEFAULT_SETTINGS = {
     "provider": "openai",
@@ -56,25 +56,21 @@ class AISettingsRepository:
         settings = json.loads(json.dumps(DEFAULT_SETTINGS))  # 深複製，避免呼叫端改到共用的預設值
         legacy_key_to_migrate = None
 
-        if self.path.exists():
-            try:
-                data = json.loads(self.path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                data = None
-            if isinstance(data, dict):
-                if data.get("provider") in ("openai", "ollama"):
-                    settings["provider"] = data["provider"]
-                for key in ("openai", "ollama"):
-                    section = data.get(key)
-                    if isinstance(section, dict):
-                        for field, value in section.items():
-                            if field in settings[key] and isinstance(value, str):
-                                settings[key][field] = value
-                # 舊版殘留的明碼 key（來自遷移前寫下的檔案）——搬走後不再信任
-                # 這裡的值，一律以本機快取檔案的內容為準。
-                legacy_key = data.get("openai", {}).get("api_key") if isinstance(data.get("openai"), dict) else None
-                if isinstance(legacy_key, str) and legacy_key.strip():
-                    legacy_key_to_migrate = legacy_key.strip()
+        data = read_json(self.path, None)
+        if isinstance(data, dict):
+            if data.get("provider") in ("openai", "ollama"):
+                settings["provider"] = data["provider"]
+            for key in ("openai", "ollama"):
+                section = data.get(key)
+                if isinstance(section, dict):
+                    for field, value in section.items():
+                        if field in settings[key] and isinstance(value, str):
+                            settings[key][field] = value
+            # 舊版殘留的明碼 key（來自遷移前寫下的檔案）——搬走後不再信任
+            # 這裡的值，一律以本機快取檔案的內容為準。
+            legacy_key = data.get("openai", {}).get("api_key") if isinstance(data.get("openai"), dict) else None
+            if isinstance(legacy_key, str) and legacy_key.strip():
+                legacy_key_to_migrate = legacy_key.strip()
 
         settings["openai"]["api_key"] = self._load_secret_api_key()
 
@@ -92,23 +88,16 @@ class AISettingsRepository:
         self._save_non_secret_settings(settings)
 
     def _save_non_secret_settings(self, settings: dict) -> None:
-        self._indexes_dir.mkdir(parents=True, exist_ok=True)
         on_disk = json.loads(json.dumps(settings))  # 深複製，不動到呼叫端手上的 dict
         on_disk["openai"]["api_key"] = ""  # 明碼永遠不落地到這個可攜檔案
-        atomic_write_text(self.path, json.dumps(on_disk, ensure_ascii=False, indent=1))
+        write_json(self.path, on_disk)
 
     def _load_secret_api_key(self) -> str:
-        if not self._secrets_path.exists():
-            return ""
-        try:
-            data = json.loads(self._secrets_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return ""
+        data = read_json(self._secrets_path, {})
         if not isinstance(data, dict):
             return ""
         value = data.get("openai_api_key", "")
         return value if isinstance(value, str) else ""
 
     def _save_secret_api_key(self, api_key: str) -> None:
-        self._secrets_dir.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(self._secrets_path, json.dumps({"openai_api_key": api_key}, ensure_ascii=False, indent=1))
+        write_json(self._secrets_path, {"openai_api_key": api_key})

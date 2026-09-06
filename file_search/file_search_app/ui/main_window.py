@@ -16,11 +16,11 @@ except ImportError:
     _HAS_DND = False
 
 from file_search_app.config import (
-    ALL_INDEXES_LABEL, BTN_BLUE_ACTIVE, BTN_BLUE_BG, BTN_CYAN_ACTIVE, BTN_CYAN_BG,
-    BTN_DANGER_ACTIVE, BTN_DANGER_BG, BTN_INDIGO_ACTIVE, BTN_INDIGO_BG,
-    BTN_ORANGE_ACTIVE, BTN_ORANGE_BG, BTN_PINK_ACTIVE, BTN_PINK_BG,
-    BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG, BTN_PURPLE_ACTIVE, BTN_PURPLE_BG,
-    BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, BTN_TEAL_ACTIVE, BTN_TEAL_BG,
+    ALL_INDEXES_LABEL, BTN_CREATE_ACTIVE, BTN_CREATE_BG, BTN_REFRESH_ACTIVE, BTN_REFRESH_BG,
+    BTN_DANGER_ACTIVE, BTN_DANGER_BG, BTN_EDIT_ACTIVE, BTN_EDIT_BG,
+    BTN_DETECT_ACTIVE, BTN_DETECT_BG, BTN_COPY_ACTIVE, BTN_COPY_BG,
+    BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG, BTN_AI_ACTIVE, BTN_AI_BG,
+    BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, BTN_IMPORT_ACTIVE, BTN_IMPORT_BG,
     BTN_WARN_ACTIVE, BTN_WARN_BG, COLOR_BG, COLOR_HEADER_BG, COLOR_HEADER_FG,
     COLOR_HEADER_SUB_FG, COLOR_MISSING_FG, COLOR_STATUS_FG, FONT_FAMILY, IMAGE_EXTS,
     INDEXES_DIR, MEDIA_EXTS, MEDIA_SEEK_SECONDS_MAX, MEDIA_SEEK_SECONDS_MIN,
@@ -30,7 +30,9 @@ from file_search_app.config import (
 )
 from file_search_app.media.media_controller import MediaController
 from file_search_app.platform import file_actions
+from file_search_app.services.import_service import path_key
 from file_search_app.repositories.cache_repository import CACHE_TEXT_CHARS
+from file_search_app.ui.async_task import poll_queue, start_worker
 from file_search_app.ui.dialogs.delete_dialogs import BulkDeleteDialog
 from file_search_app.ui.dialogs.ai_analyze_dialog import AIAnalyzeResultDialog
 from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
@@ -123,6 +125,9 @@ class MainWindow(_BaseTk):
 
         self._all_entries = []       # list[IndexEntry]，_reload_index() 填入
         self._filtered_entries = []  # 目前檢視範圍（分類／資料夾／搜尋文字套用後）：_apply_filter() 填入
+        # 搜尋框打字用的去抖動計時器——每個按鍵都重跑 filter_entries（掃全部
+        # entries）＋整個 Treeview 砍掉重建，索引一大就頓；停頓一下才真的重篩。
+        self._filter_after_id = None
         self._entry_cache = {}       # path_str -> {mtime,size,hash,text}，牽涉到的索引集內容快取合併
         self._current_index_path = None  # None 且選單顯示「全部索引」＝聚合模式；None 且選單是空的＝沒有任何索引可用
         self._preview_width = PREVIEW_DEFAULT_WIDTH
@@ -188,7 +193,7 @@ class MainWindow(_BaseTk):
         self._index_combo.pack(side="left")
         self._index_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_index_selected())
         styled_button(
-            index_picker, "➕ 新增索引集...", self._on_create_index, BTN_BLUE_BG, BTN_BLUE_ACTIVE, self._font_hint,
+            index_picker, "➕ 新增索引集...", self._on_create_index, BTN_CREATE_BG, BTN_CREATE_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(10, 0))
         styled_button(
             index_picker, "🗑️ 刪除索引集", self._on_delete_index,
@@ -203,7 +208,7 @@ class MainWindow(_BaseTk):
         self._search_var = tk.StringVar()
         self._search_entry = tk.Entry(toolbar, textvariable=self._search_var, font=self._font_search, relief="flat")
         self._search_entry.pack(side="left", fill="x", expand=True, ipady=6)
-        self._search_var.trace_add("write", lambda *_a: self._apply_filter())
+        self._search_var.trace_add("write", lambda *_a: self._schedule_apply_filter())
 
         combo_style = ttk.Style(self)
         combo_style.configure("Medium.TCombobox", font=self._font_label)
@@ -240,22 +245,22 @@ class MainWindow(_BaseTk):
         # Provider，只把回覆顯示出來供查看，不寫回索引。放在資料夾篩選正下方。
         styled_button(
             folder_box, "🔬 選檔案問 AI...", self._on_ask_ai_about_file,
-            BTN_PURPLE_BG, BTN_PURPLE_ACTIVE, self._font_hint,
+            BTN_AI_BG, BTN_AI_ACTIVE, self._font_hint,
         ).pack(side="top", anchor="w", pady=(5, 0))
 
         toolbar2 = tk.Frame(self, bg=COLOR_BG)
         toolbar2.pack(fill="x", padx=16, pady=(0, 6))
         styled_button(
-            toolbar2, "新增檔案...", self._on_add_file_dialog, BTN_BLUE_BG, BTN_BLUE_ACTIVE, self._font_hint,
+            toolbar2, "新增檔案...", self._on_add_file_dialog, BTN_CREATE_BG, BTN_CREATE_ACTIVE, self._font_hint,
         ).pack(side="left")
         styled_button(
-            toolbar2, "匯入資料夾...", self._on_import_folder, BTN_TEAL_BG, BTN_TEAL_ACTIVE, self._font_hint,
+            toolbar2, "匯入資料夾...", self._on_import_folder, BTN_IMPORT_BG, BTN_IMPORT_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
         styled_button(
-            toolbar2, "編輯索引檔案", self._open_index_file, BTN_INDIGO_BG, BTN_INDIGO_ACTIVE, self._font_hint,
+            toolbar2, "編輯索引檔案", self._open_index_file, BTN_AI_BG, BTN_AI_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
         styled_button(
-            toolbar2, "重新載入索引", self._reload_index, BTN_CYAN_BG, BTN_CYAN_ACTIVE, self._font_hint,
+            toolbar2, "重新載入索引", self._reload_index, BTN_REFRESH_BG, BTN_REFRESH_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
         styled_button(
             toolbar2, "⚠️ 清除失效項目", self._cleanup_missing, BTN_WARN_BG, BTN_WARN_ACTIVE, self._font_hint,
@@ -269,19 +274,19 @@ class MainWindow(_BaseTk):
         toolbar3 = tk.Frame(self, bg=COLOR_BG)
         toolbar3.pack(fill="x", padx=16, pady=(0, 6))
         styled_button(
-            toolbar3, "🔄 更新內容快取", self._on_update_cache, BTN_CYAN_BG, BTN_CYAN_ACTIVE, self._font_hint,
+            toolbar3, "🔄 更新內容快取", self._on_update_cache, BTN_REFRESH_BG, BTN_REFRESH_ACTIVE, self._font_hint,
         ).pack(side="left")
         styled_button(
             toolbar3, "🔎 找出未收錄檔案...", self._on_find_unindexed, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
         styled_button(
-            toolbar3, "🧬 重複偵測...", self._on_find_duplicates, BTN_ORANGE_BG, BTN_ORANGE_ACTIVE, self._font_hint,
+            toolbar3, "🧬 重複偵測...", self._on_find_duplicates, BTN_DETECT_BG, BTN_DETECT_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
         styled_button(
-            toolbar3, "✍️ 批次補說明...", self._on_batch_describe, BTN_PURPLE_BG, BTN_PURPLE_ACTIVE, self._font_hint,
+            toolbar3, "✍️ 批次補說明...", self._on_batch_describe, BTN_AI_BG, BTN_AI_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
         styled_button(
-            toolbar3, "🤖 AI 批次說明...", self._on_ai_batch_describe, BTN_INDIGO_BG, BTN_INDIGO_ACTIVE, self._font_hint,
+            toolbar3, "🤖 AI 批次說明...", self._on_ai_batch_describe, BTN_AI_BG, BTN_AI_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
 
         # 「AI 設定」沒有自己的按鈕——要先開「🤖 AI 批次說明...」，視窗裡才有
@@ -402,10 +407,10 @@ class MainWindow(_BaseTk):
             action_bar, "🗂️ 顯示於檔案總管", self._reveal_selected, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_label,
         ).pack(side="left", padx=(8, 0))
         styled_button(
-            action_bar, "📋 複製路徑", self._copy_selected_path, BTN_PINK_BG, BTN_PINK_ACTIVE, self._font_label,
+            action_bar, "📋 複製路徑", self._copy_selected_path, BTN_COPY_BG, BTN_COPY_ACTIVE, self._font_label,
         ).pack(side="left", padx=(8, 0))
         styled_button(
-            action_bar, "✏️ 編輯所選列", self._on_edit_selected, BTN_INDIGO_BG, BTN_INDIGO_ACTIVE, self._font_label,
+            action_bar, "✏️ 編輯所選列", self._on_edit_selected, BTN_EDIT_BG, BTN_EDIT_ACTIVE, self._font_label,
         ).pack(side="left", padx=(8, 0))
         styled_button(
             action_bar, "⤒ 第一筆", lambda: self._tree.jump_to_edge(False),
@@ -413,7 +418,7 @@ class MainWindow(_BaseTk):
         ).pack(side="left", padx=(8, 0))
         styled_button(
             action_bar, "⤓ 最後一筆", lambda: self._tree.jump_to_edge(True),
-            BTN_BLUE_BG, BTN_BLUE_ACTIVE, self._font_hint,
+            BTN_CREATE_BG, BTN_CREATE_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
 
         status_bar = tk.Frame(self, bg=COLOR_BG)
@@ -521,7 +526,17 @@ class MainWindow(_BaseTk):
 
         self._apply_filter()
 
+    def _schedule_apply_filter(self):
+        """只給搜尋框打字用——分類／資料夾下拉、重新載入那些要即時反映的
+        觸發點仍然直接呼叫 _apply_filter()。"""
+        if self._filter_after_id is not None:
+            self.after_cancel(self._filter_after_id)
+        self._filter_after_id = self.after(180, self._apply_filter)
+
     def _apply_filter(self):
+        if self._filter_after_id is not None:
+            self.after_cancel(self._filter_after_id)
+            self._filter_after_id = None
         typed = self._search_var.get().strip()
         wanted_category = self._category_var.get()
         wanted_folder = self._folder_var.get()
@@ -717,38 +732,46 @@ class MainWindow(_BaseTk):
         result_queue = queue.Queue()
 
         def _worker():
-            text, error, cancelled = self._transcription.transcribe(
-                Path(entry.path),
-                progress_cb=lambda fraction: result_queue.put(("progress", fraction)),
-                cancel_check=cancel_event.is_set,
-            )
+            try:
+                text, error, cancelled = self._transcription.transcribe(
+                    Path(entry.path),
+                    progress_cb=lambda fraction: result_queue.put(("progress", fraction)),
+                    cancel_check=cancel_event.is_set,
+                )
+            except Exception as exc:  # noqa: BLE001
+                # transcribe() 正常都回傳三元組、不拋例外，但真的出了未預期
+                # 的錯也要送回佇列——否則 _poll 無限空轉，而且 PreviewPanel
+                # 的 _transcribing 會永遠卡在 True，轉錄鈕再也按不動。
+                text, error, cancelled = None, f"轉錄時發生未預期的錯誤：{exc}", False
             result_queue.put(("done", text, error, cancelled))
 
-        threading.Thread(target=_worker, daemon=True).start()
+        def _on_message(message):
+            if message[0] == "progress":
+                on_progress(message[1])
+                return False
+            if message[0] == "error":  # poll_queue 安全網（_worker 正常會自己接住）
+                on_done(None, f"轉錄時發生未預期的錯誤：{message[1]}", False)
+                return True
+            text, error, cancelled = message[1], message[2], message[3]
+            if text is not None:
+                updated_cache = self._cache.write_transcript_text(entry, text)
+                self._entry_cache[entry.path] = updated_cache[entry.path]
+            on_done(text, error, cancelled)
+            return True
 
-        def _poll():
-            try:
-                while True:
-                    message = result_queue.get_nowait()
-                    if message[0] == "progress":
-                        on_progress(message[1])
-                    elif message[0] == "done":
-                        text, error, cancelled = message[1], message[2], message[3]
-                        if text is not None:
-                            updated_cache = self._cache.write_transcript_text(entry, text)
-                            self._entry_cache[entry.path] = updated_cache[entry.path]
-                        on_done(text, error, cancelled)
-                        return
-            except queue.Empty:
-                pass
-            self.after(100, _poll)
-
-        self.after(100, _poll)
+        start_worker(_worker, result_queue)
+        poll_queue(self, result_queue, _on_message)
 
     def _on_close(self):
         """關閉視窗前先把播放器停掉、釋放 libvlc 資源，避免留下背景播放中的
         音訊或殘留的 libvlc 執行緒。"""
         self._cancel_media_load_schedule()
+        if self._filter_after_id is not None:
+            try:
+                self.after_cancel(self._filter_after_id)
+            except tk.TclError:
+                pass
+            self._filter_after_id = None
         self._media.release()
         self.destroy()
 
@@ -810,7 +833,7 @@ class MainWindow(_BaseTk):
         folder = filedialog.askdirectory(title="選擇要匯入的資料夾")
         if not folder:
             return
-        existing_paths = {str(Path(e.path)) for e in self._all_entries}
+        existing_paths = {path_key(e.path) for e in self._all_entries}
         existing_categories = self._search.distinct_categories(self._all_entries)
 
         def _on_confirm(new_files, category):
@@ -1037,7 +1060,7 @@ class MainWindow(_BaseTk):
             messagebox.showinfo("找出未收錄檔案", "目前沒有任何索引檔案可以加入，請先建立一份 .md。")
             return
         all_entries = self._index.all_entries_in(files)
-        existing_paths_all = {str(Path(e.path)) for e in all_entries}
+        existing_paths_all = {path_key(e.path) for e in all_entries}
         existing_categories = self._search.distinct_categories(all_entries)
         default_index = self._current_index_path or files[0]
 
@@ -1135,12 +1158,15 @@ class MainWindow(_BaseTk):
         cache_snapshot = self._entry_cache  # 目前已載入的內容快取，背景執行緒只讀不寫
 
         def _worker():
-            suggestions, cancelled = self._description.generate_suggestions(
-                blanks, cache_snapshot,
-                progress_cb=lambda done, name: result_queue.put(("progress", done, name)),
-                cancel_check=cancel_event.is_set,
-            )
-            result_queue.put(("cancelled" if cancelled else "done", suggestions))
+            try:
+                suggestions, cancelled = self._description.generate_suggestions(
+                    blanks, cache_snapshot,
+                    progress_cb=lambda done, name: result_queue.put(("progress", done, name)),
+                    cancel_check=cancel_event.is_set,
+                )
+                result_queue.put(("cancelled" if cancelled else "done", suggestions))
+            except Exception as exc:  # noqa: BLE001
+                result_queue.put(("failed", str(exc)))
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -1153,6 +1179,10 @@ class MainWindow(_BaseTk):
                         done, name = message[1], message[2]
                         progress_bar["value"] = done
                         status_var.set(f"正在擷取文字：{done} / {len(blanks)}\n{name}")
+                    elif kind == "failed":
+                        progress.destroy()
+                        messagebox.showerror("批次補齊說明", f"擷取內容時發生未預期的錯誤：\n{message[1]}")
+                        return
                     elif kind in ("done", "cancelled"):
                         suggestions = message[1]
                         progress.destroy()
@@ -1184,31 +1214,31 @@ class MainWindow(_BaseTk):
         cx1, cy1, cx2, cy2, r = 18, 12, w - 10, h - 12, 12
         self._ai_hint_box = (cx1, cy1, cx2, cy2, r)
         tail = [cx1 + 2, h // 2 - 9, 4, h // 2, cx1 + 2, h // 2 + 9]
-        cv = tk.Canvas(parent, width=w, height=h, bg=COLOR_BG, highlightthickness=0, cursor="hand2")
+        canvas = tk.Canvas(parent, width=w, height=h, bg=COLOR_BG, highlightthickness=0, cursor="hand2")
         # 外圈光暈：只有描邊，靠改座標（往外脹）＋改顏色（淡出到工具列底色）做出呼吸感。
-        self._ai_hint_halo = cv.create_polygon(
+        self._ai_hint_halo = canvas.create_polygon(
             _round_rect_points(cx1 - 1, cy1 - 1, cx2 + 1, cy2 + 1, r + 1),
             smooth=True, fill="", outline=_AI_HINT_BORDER_HI, width=3,
         )
-        cv.create_polygon(tail, fill=_AI_HINT_BG, outline=_AI_HINT_BORDER, width=2)
-        self._ai_hint_body = cv.create_polygon(
+        canvas.create_polygon(tail, fill=_AI_HINT_BG, outline=_AI_HINT_BORDER, width=2)
+        self._ai_hint_body = canvas.create_polygon(
             _round_rect_points(cx1, cy1, cx2, cy2, r),
             smooth=True, fill=_AI_HINT_BG, outline=_AI_HINT_BORDER, width=2,
         )
-        cv.create_text(
+        canvas.create_text(
             (cx1 + cx2) // 2 + 1, (cy1 + cy2) // 2, text="AI 設定\n點這裡",
             fill=_AI_HINT_FG, font=self._font_warning, justify="center",
         )
-        cv.tag_bind("all", "<Button-1>", lambda _e: self._on_ai_batch_describe())
-        self._ai_hint_canvas = cv
+        canvas.tag_bind("all", "<Button-1>", lambda _e: self._on_ai_batch_describe())
+        self._ai_hint_canvas = canvas
         self._ai_hint_phase = 0.0
         self._ai_hint_dir = 1
         self._animate_ai_settings_hint()
-        return cv
+        return canvas
 
     def _animate_ai_settings_hint(self):
-        cv = self._ai_hint_canvas
-        if not cv.winfo_exists():
+        canvas = self._ai_hint_canvas
+        if not canvas.winfo_exists():
             return
         self._ai_hint_phase += self._ai_hint_dir * (_AI_HINT_FPS_MS / _AI_HINT_PERIOD_MS)
         if self._ai_hint_phase >= 1:
@@ -1219,17 +1249,17 @@ class MainWindow(_BaseTk):
         t = self._ai_hint_phase
         ease = t * t * (3 - 2 * t)
         cx1, cy1, cx2, cy2, r = self._ai_hint_box
-        d = 1 + _AI_HINT_GLOW_MAX * ease  # 光暈往外脹的距離
-        cv.coords(
+        glow = 1 + _AI_HINT_GLOW_MAX * ease  # 光暈往外脹的距離
+        canvas.coords(
             self._ai_hint_halo,
-            *_round_rect_points(cx1 - d, cy1 - d, cx2 + d, cy2 + d, r + d),
+            *_round_rect_points(cx1 - glow, cy1 - glow, cx2 + glow, cy2 + glow, r + glow),
         )
-        cv.itemconfigure(
+        canvas.itemconfigure(
             self._ai_hint_halo,
             outline=_lerp_color(_AI_HINT_BORDER_HI, COLOR_BG, ease),  # 脹大時淡出
             width=max(1, round(4 - 3 * ease)),
         )
-        cv.itemconfigure(
+        canvas.itemconfigure(
             self._ai_hint_body,
             outline=_lerp_color(_AI_HINT_BORDER, _AI_HINT_BORDER_HI, ease),
             fill=_lerp_color(_AI_HINT_BG, _AI_HINT_BG_HI, ease),
@@ -1374,7 +1404,7 @@ class MainWindow(_BaseTk):
 
         BatchDescribeDialog(self, succeeded, _on_confirm)
 
-    def _on_ai_regenerate_batch(self, entries, on_progress, on_done):
+    def _on_ai_regenerate_batch(self, entries, on_progress, on_done, cancel_event):
         """AISelectDialog 送出勾選項目時呼叫——先確認設定齊全、跳出確認視窗
         （OpenAI 這種內容會離開本機的情況一定要問過），確認後才在背景執行緒
         逐筆呼叫 AI；背景執行緒只呼叫 Service、把結果放進 Queue，Tkinter
@@ -1422,29 +1452,33 @@ class MainWindow(_BaseTk):
         result_queue = queue.Queue()
 
         def _worker():
-            results, _cancelled = self._ai_description.generate_suggestions(
-                entries, self._entry_cache,
-                progress_cb=lambda done, name: result_queue.put(("progress", done, name)),
-            )
-            result_queue.put(("done", results))
-
-        threading.Thread(target=_worker, daemon=True).start()
-
-        def _poll():
             try:
-                while True:
-                    message = result_queue.get_nowait()
-                    if message[0] == "progress":
-                        done, name = message[1], message[2]
-                        on_progress(done, n, name)
-                    elif message[0] == "done":
-                        on_done(message[1])
-                        return
-            except queue.Empty:
-                pass
-            self.after(100, _poll)
+                results, _cancelled = self._ai_description.generate_suggestions(
+                    entries, self._entry_cache,
+                    progress_cb=lambda done, name: result_queue.put(("progress", done, name)),
+                    cancel_check=cancel_event.is_set,
+                )
+                result_queue.put(("done", results))
+            except Exception as exc:  # noqa: BLE001
+                # generate_suggestions 內部只攔 AIProviderError；任何其他未預期
+                # 例外（Provider 回應格式怪、第三方套件自己的錯…）都要送回佇列，
+                # 否則 _poll 每 100ms 空轉、AISelectDialog 的送出鈕永遠停用。
+                result_queue.put(("failed", str(exc)))
 
-        self.after(100, _poll)
+        def _on_message(message):
+            if message[0] == "progress":
+                on_progress(message[1], n, message[2])
+                return False
+            if message[0] == "done":
+                on_done(message[1])
+                return True
+            # "failed"（_worker 自己包的）或 "error"（poll_queue 安全網）
+            messagebox.showerror("AI 批次產生說明", f"產生說明時發生未預期的錯誤：\n{message[1]}")
+            on_done(None)
+            return True
+
+        start_worker(_worker, result_queue)
+        poll_queue(self, result_queue, _on_message)
 
     # ── 結果操作 ─────────────────────────────────────────────────────
 

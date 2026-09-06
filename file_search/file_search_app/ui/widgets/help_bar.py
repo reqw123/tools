@@ -15,8 +15,8 @@ import tkinter as tk
 from tkinter import font as tkfont, ttk
 
 from file_search_app.config import (
-    BTN_BLUE_BG, BTN_CYAN_BG, BTN_DANGER_BG, BTN_INDIGO_BG, BTN_ORANGE_BG, BTN_PINK_BG,
-    BTN_PRIMARY_BG, BTN_PURPLE_BG, BTN_SECONDARY_BG, BTN_TEAL_BG, BTN_WARN_BG,
+    BTN_CREATE_BG, BTN_REFRESH_BG, BTN_DANGER_BG, BTN_EDIT_BG, BTN_DETECT_BG, BTN_COPY_BG,
+    BTN_PRIMARY_BG, BTN_AI_BG, BTN_SECONDARY_BG, BTN_IMPORT_BG, BTN_WARN_BG,
     COLOR_HEADER_BG, COLOR_HELP_BAR_BG, COLOR_HELP_BAR_FG, COLOR_HELP_BAR_HOVER_BG,
     COLOR_PREVIEW_BG, COLOR_PREVIEW_BORDER, COLOR_STATUS_FG, FONT_FAMILY,
     HELP_FONT_DELTA_MAX, HELP_FONT_DELTA_MIN, INDEXES_DIR,
@@ -55,7 +55,7 @@ _HELP_SECTIONS = [
          "切換要搜尋哪一份索引檔案；選「🗂 全部索引（跨檔案）」可以同時檢視／搜尋全部索引集，"
          "清單會多一欄「來源索引集」標出每筆屬於哪一份。全部索引模式不能直接新增／匯入資料，"
          "要先切回某一份單一索引集。"),
-        (BTN_BLUE_BG, "➕ 新增索引集...",
+        (BTN_CREATE_BG, "➕ 新增索引集...",
          f"在 {INDEXES_DIR.name}/ 底下建立一份新的空白索引集（.md 檔案），取名後自動切換過去；"
          "可使用旁邊的刪除按鈕移除目前索引集。"),
         (BTN_DANGER_BG, "🗑️ 刪除索引集",
@@ -68,21 +68,21 @@ _HELP_SECTIONS = [
          "位於淺藍色篩選容器中，只顯示指定分類；選項依目前索引實際內容自動組成。"),
         (None, "資料夾（下拉選單）",
          "位於淺藍色篩選容器中，只顯示指定父資料夾下的索引項目。"),
-        (BTN_PURPLE_BG, "🔬 選檔案問 AI...",
+        (BTN_AI_BG, "🔬 選檔案問 AI...",
          "在資料夾篩選正下方。跟索引無關的即席分析：自選任何一個檔案，送目前「AI 設定」的 Provider "
          "（Ollama 本機／區網電腦，或 OpenAI 雲端）分析，回覆只顯示出來供你查看、可複製，不會寫進任何索引。"
          "送出前的確認視窗會清楚寫明這次送去哪個 Provider／模型、內容會不會離開這台電腦。"),
     ]),
     ("🛠️ 索引管理", [
-        (BTN_BLUE_BG, "新增檔案...",
+        (BTN_CREATE_BG, "新增檔案...",
          "可挑選一或多個檔案，逐筆填寫分類／說明後加入目前索引；會排除不存在、重複或已收錄路徑，並記錄加入時間。"),
-        (BTN_TEAL_BG, "匯入資料夾...",
+        (BTN_IMPORT_BG, "匯入資料夾...",
          f"選一整個資料夾，可勾選是否包含子資料夾、依副檔名類型篩選，整批加入索引；已收錄過的檔案會自動略過。"
          f"掃描途中超過 {SCAN_SOFT_LIMIT:,} 筆會先詢問要不要繼續（最多掃到 {SCAN_HARD_LIMIT:,} 筆），"
          f"這種情況下這次掃描結果不能直接匯入。"),
-        (BTN_INDIGO_BG, "編輯索引檔案",
+        (BTN_EDIT_BG, "編輯索引檔案",
          "用系統預設程式開啟目前索引集的 .md 檔案，直接手動編輯格式或內容。"),
-        (BTN_CYAN_BG, "重新載入索引",
+        (BTN_REFRESH_BG, "重新載入索引",
          "索引 .md 檔案在外部被手動改過時，重新讀取內容，不用重開程式。"),
         (BTN_WARN_BG, "⚠️ 清除失效項目",
          "掃描目前索引，把指向的檔案已經不存在的資料列整批移除。"),
@@ -90,18 +90,18 @@ _HELP_SECTIONS = [
          "開啟顯示原始流水號與項目名稱的清單，可用序號或名稱搜尋、勾選目前結果並批次移除；只刪索引紀錄，不刪硬碟檔案。"),
     ]),
     ("🧭 進階工具（批次作業；快取／未收錄／重複偵測會跨全部索引集）", [
-        (BTN_CYAN_BG, "🔄 更新內容快取",
+        (BTN_REFRESH_BG, "🔄 更新內容快取",
          "重新擷取可讀取的文件內文，供全文搜尋使用；內容雜湊也會一併更新。"),
         (BTN_PRIMARY_BG, "🔎 找出未收錄檔案...",
          f"掃描「常用資料夾清單」（可管理／臨時新增），列出還沒被任何索引集收錄的檔案，勾選後整批加入指定索引集。"
          f"掃描途中超過 {SCAN_SOFT_LIMIT:,} 筆會先詢問要不要繼續（最多掃到 {SCAN_HARD_LIMIT:,} 筆），"
          f"這種情況下這次掃描結果不能直接加入索引；目標索引、分類與收錄按鈕固定在視窗底部。"),
-        (BTN_ORANGE_BG, "🧬 重複偵測...",
+        (BTN_DETECT_BG, "🧬 重複偵測...",
          "按下後會自動重新驗證全部檔案的 SHA-256，再跨索引分組；每組選一筆保留後，只移除其餘索引列，不會刪除實體檔案。"),
-        (BTN_PURPLE_BG, "✍️ 批次補說明...",
+        (BTN_AI_BG, "✍️ 批次補說明...",
          "純本機、不呼叫 AI：在背景擷取缺少說明的檔案內容並顯示進度，直接拿內文前段當建議說明；"
          "審核視窗每頁 8 筆，可編輯、調整 14–28pt 字級後批次套用。"),
-        (BTN_INDIGO_BG, "🤖 AI 批次說明...",
+        (BTN_EDIT_BG, "🤖 AI 批次說明...",
          "跟上面那顆不同，這顆會把檔案內容送給 AI 產生說明。先開一個可搜尋、可勾選的清單"
          "（預設全部不勾選），自己決定要花時間／額度送哪幾筆；送出前一律跳視窗說明這次送幾筆、"
          "粗估內容量、這是全部 AI 功能累計第幾次呼叫。跑完的建議一樣進審核視窗逐筆確認才寫入。"
@@ -117,11 +117,11 @@ _HELP_SECTIONS = [
          "用系統預設程式開啟目前選取的檔案（雙擊清單項目或按 Enter 效果一樣）。"),
         (BTN_SECONDARY_BG, "🗂️ 顯示於檔案總管",
          "打開檔案總管視窗並跳到、選取這個檔案。"),
-        (BTN_PINK_BG, "📋 複製路徑",
+        (BTN_COPY_BG, "📋 複製路徑",
          "把完整路徑複製到剪貼簿。"),
-        (BTN_INDIGO_BG, "✏️ 編輯所選列",
+        (BTN_EDIT_BG, "✏️ 編輯所選列",
          "修改這一筆資料的分類／說明文字。"),
-        (BTN_BLUE_BG, "⤒ 第一筆／⤓ 最後一筆",
+        (BTN_CREATE_BG, "⤒ 第一筆／⤓ 最後一筆",
          "直接選取並捲動到目前結果的第一筆或最後一筆；Home／End、Ctrl+Home／Ctrl+End 也可操作。"),
         (BTN_DANGER_BG, "Delete 刪除所選列",
          "選取列會以藍色標記；按 Delete 後需再次確認，只移除索引紀錄，不刪除硬碟上的實體檔案。"),
@@ -129,25 +129,25 @@ _HELP_SECTIONS = [
     ("📌 便利貼（常駐左側面板，記常用指令／網站／備忘）", [
         (None, f"開關面板 {STICKY_TOGGLE_SHORTCUT}", "隨時開關左側便利貼面板；面板上也有「◀」按鈕可以收合。收合後左邊界會留一個「▶」小把手，"
          "點一下即可重新展開，收合狀態會跨次啟動記住。"),
-        (BTN_BLUE_BG, "➕ 新增便利貼",
+        (BTN_CREATE_BG, "➕ 新增便利貼",
          "標題、內容（可多行，例如一串指令步驟，超過看得到的範圍可以捲動）、標籤（可留空）；"
          "標籤相同的便利貼會自動套用同一個顏色，不用手動選色。"),
         (None, "單擊卡片／右鍵選單",
          "單擊卡片直接把內容複製到剪貼簿；右鍵選單可以複製、編輯、刪除；空白處右鍵也能新增。"),
         (None, "搜尋框與標籤篩選",
          "關鍵字比對標題／內容／標籤（直接打標籤名稱也搜得到）；標籤下拉選單可精確只顯示指定標籤，兩者可以疊加使用。"),
-        (BTN_INDIGO_BG, "🤖 AI 搜尋",
+        (BTN_EDIT_BG, "🤖 AI 搜尋",
          "在搜尋框打一般語句（例如「每日必做有哪些事項」「youtube 相關的有幾個」"
          "「目前有哪些分類」），不用打精確關鍵字；會先套用目前的標籤篩選再送出。"
          f"送出前一律先跳視窗顯示「這次送幾則、粗略大小、這是全部 AI 功能累計第幾次呼叫」"
          f"（不管雲端或本機 Provider 都會顯示，便利貼超過 {STICKY_AI_SEARCH_LARGE_NOTE_COUNT} 則"
          "會額外提醒先用標籤篩選縮小範圍）——這是粗略的字元數與次數估計，不是精確 token 數，"
          "實際費用/額度以你的 AI Provider 帳單為準。"),
-        (BTN_TEAL_BG, "📤 匯出",
+        (BTN_IMPORT_BG, "📤 匯出",
          "把目前篩選出的清單匯出成 Markdown 文件（標題／標籤／內容各自成段，內容保留原始換行）。"),
         (BTN_DANGER_BG, "🗑️ 批次刪除",
          "跳出可搜尋、可勾選的清單批次刪除便利貼；預設全部不勾選，需再次確認才會真的刪除。"),
-        (BTN_INDIGO_BG, "📝 編輯便利貼檔案",
+        (BTN_EDIT_BG, "📝 編輯便利貼檔案",
          "用文字編輯器直接開啟底層的 .sticky_notes.json（進階用途，原始格式，手動編輯請留意別打壞 JSON 結構）。"),
     ]),
     ("💡 其他小技巧", [

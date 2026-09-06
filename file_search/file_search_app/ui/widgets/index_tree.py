@@ -135,11 +135,6 @@ class IndexTree:
             return None
         return self._entries_by_iid.get(sel[0])
 
-    def select_entry_by_iid(self, iid) -> None:
-        self._tree.selection_set(iid)
-        self._tree.focus(iid)
-        self._tree.see(iid)
-
     def jump_to_edge(self, last: bool = False) -> str:
         """選取並確實捲到目前清單的第一筆或最後一筆。"""
         items = self._tree.get_children("")

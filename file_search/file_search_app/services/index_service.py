@@ -5,7 +5,6 @@ CacheRepository（刪索引集時一併清快取）、MetadataRepository（加�
 from collections import defaultdict
 from pathlib import Path
 
-from file_search_app.config import ALL_INDEXES_LABEL
 from file_search_app.models import IndexEntry
 
 
@@ -106,6 +105,18 @@ class IndexService:
         except OSError:
             pass  # 時間附加資料寫入失敗不應回滾已成功加入的索引列
 
+    def add_entries(self, md_path: Path, path_strs, category: str, desc: str) -> int:
+        """批次新增——整批共用同一個分類／說明，索引 .md 跟加入時間紀錄各只
+        寫一次（資料夾匯入、「找出未收錄檔案」都走這條，不是逐筆 add_entry()
+        那樣重寫整份檔案 N 次）。回傳新增筆數。"""
+        path_strs = list(path_strs)
+        self._index_repo.append_rows(md_path, [(p, category, desc) for p in path_strs])
+        try:
+            self._metadata_repo.record_added_times(md_path, path_strs)
+        except OSError:
+            pass
+        return len(path_strs)
+
     def update_entry(self, entry: IndexEntry, category: str, desc: str) -> bool:
         """精確更新指定那一列（用 row_index 定位），路徑本身不變。"""
         return self._index_repo.update_row_by_occurrence(entry.source_index, entry.row_index, category, desc)
@@ -162,6 +173,3 @@ class IndexService:
             if self.update_entry(entry, category, desc):
                 total += 1
         return total
-
-    def is_aggregate_choice(self, choice: str) -> bool:
-        return choice == ALL_INDEXES_LABEL

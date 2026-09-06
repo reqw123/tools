@@ -11,6 +11,12 @@ class AIProviderError(Exception):
     urllib/json 各自的例外型別。"""
 
 
+def unexpected_response_error(data) -> AIProviderError:
+    """回應 JSON 缺少預期欄位、或欄位型別不對時的統一錯誤——OpenAI／Ollama
+    兩邊的解析失敗路徑都用這個，訊息長度截在 300 字元避免把整包回應洗版。"""
+    return AIProviderError(f"回應格式不是預期的樣子：{data!r}"[:300])
+
+
 class AIProvider:
     """OpenAI／Ollama 都實作這個介面，DescriptionService 才能用同一套邏輯
     呼叫，不用另外 if/else 判斷是哪一種 Provider。"""

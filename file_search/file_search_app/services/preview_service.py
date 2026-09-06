@@ -34,6 +34,13 @@ except ImportError:
 # COM 自動化（見 _legacy_office_worker.py）；沒裝 pywin32／沒裝 Office 都會
 # 安靜失敗退回 None，不需要在這裡另外偵測可不可用。
 _LEGACY_OFFICE_EXTS = {".doc", ".ppt", ".xls"}
+
+# 這些副檔名的內容擷取「可能很慢」——.doc/.ppt/.xls 走 COM 自動化子行程
+# （逾時上限 30 秒），docx/pptx/xlsx 要解 zip＋parse XML，pdf 走 pypdf，
+# 壓縮檔要列 namelist。呼叫端（預覽面板）據此決定要不要把擷取丟到背景執行緒，
+# 避免在清單上點一下就整個介面凍住。純文字／原始碼那類只讀開頭 200KB 再解碼，
+# 快到不需要背景化，不列進來（避免每次選取都閃一下「讀取中」）。
+SLOW_EXTRACT_EXTS = _LEGACY_OFFICE_EXTS | {".docx", ".pptx", ".xlsx", ".pdf", ".zip", ".7z"}
 # COM 自動化偶爾會卡在一個沒人會去點的彈出視窗（巨集警告、受保護的檢視…），
 # 逾時就直接放棄這一筆，不要讓「更新內容快取」或「AI 批次說明」整批卡死；
 # 一般檔案開啟通常幾秒內就完成，30 秒已經是相當寬鬆的上限。

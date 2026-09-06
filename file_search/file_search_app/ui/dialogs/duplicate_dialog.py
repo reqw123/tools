@@ -13,6 +13,11 @@ from file_search_app.config import (
 from file_search_app.ui.styles import bind_wheel_recursive, icon_for, styled_button
 from tkinter import ttk
 
+# 一次最多實際畫出這麼多組——每組要建一個群組框＋數個 Radiobutton，重複組
+# 多到幾千時會卡。沒畫出來的組維持「未選＝整組保留」，不會被誤刪；使用者
+# 處理完前面幾組、套用、再重跑一次偵測就會看到下一批。
+_MAX_VISIBLE_GROUPS = 200
+
 
 class DuplicateDialog(tk.Toplevel):
     def __init__(self, parent, groups, on_confirm):
@@ -70,6 +75,8 @@ class DuplicateDialog(tk.Toplevel):
             keep_var = tk.IntVar(value=-1)  # -1＝這組還沒選；其餘值是群組內唯一位置
             self._keep_vars.append(keep_var)
             keep_var.trace_add("write", lambda *_a: self._update_progress())
+            if gi >= _MAX_VISIBLE_GROUPS:
+                continue  # keep_var 仍建好（維持 -1＝整組保留），只是不畫這一組
             group_frame = tk.Frame(
                 inner, bg=COLOR_PREVIEW_BG, highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
             )
@@ -93,6 +100,15 @@ class DuplicateDialog(tk.Toplevel):
                 tk.Label(
                     row, text=label_text, bg=COLOR_PREVIEW_BG, font=font_hint, anchor="w", justify="left",
                 ).pack(side="left", fill="x", expand=True)
+
+        if len(groups) > _MAX_VISIBLE_GROUPS:
+            tk.Label(
+                inner,
+                text=f"⚠️ 共 {len(groups)} 組，畫面只列出前 {_MAX_VISIBLE_GROUPS} 組。"
+                     "處理完這些、按下方按鈕套用後，再按一次「🧬 重複偵測」就會看到剩下的。",
+                bg=COLOR_PREVIEW_BG, fg=COLOR_MISSING_FG, font=font_warning,
+                anchor="w", justify="left", wraplength=650,
+            ).pack(fill="x", padx=6, pady=8)
 
         bind_wheel_recursive(inner, lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
 

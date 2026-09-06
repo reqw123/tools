@@ -18,6 +18,21 @@ from file_search_app.repositories.sticky_note_repository import StickyNoteReposi
 AI_SEARCH_BODY_SNIPPET_CHARS = 200
 
 
+def preview_text(body: str, max_lines: int = 2) -> str:
+    """卡片／清單列上顯示的內容摘要——取前 `max_lines` 行非空白內容，超出的
+    行數用「 …」帶過。面板卡片跟批次刪除對話框共用同一個函式，同一則便利貼
+    在兩個畫面看到的摘要才會長一樣（先前面板取 2 行、批次刪除把整份內容用
+    「／」串一行又各自截字，屬於同一份資料兩種呈現）。純字串處理，不碰
+    Tkinter。"""
+    lines = [line for line in body.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    text = "\n".join(lines[:max_lines])
+    if len(lines) > max_lines:
+        text += " …"
+    return text
+
+
 class StickyNoteService:
     def __init__(self, repo: StickyNoteRepository):
         self._repo = repo
@@ -43,9 +58,12 @@ class StickyNoteService:
             ]
         return result
 
-    def known_tags(self) -> list:
-        tags = {n.tag for n in self._repo.load_notes() if n.tag}
-        return sorted(tags)
+    def known_tags(self, notes: list = None) -> list:
+        """既有標籤清單（排序、去重、去空字串）。呼叫端如果手邊已經有一份
+        便利貼清單（例如面板 `_refresh()` 剛 `list_notes()` 過），就傳進來
+        直接算，不用為了列標籤再讀一次檔；沒傳就自己讀。"""
+        source = notes if notes is not None else self._repo.load_notes()
+        return sorted({n.tag for n in source if n.tag})
 
     def color_for_tag(self, tag: str) -> str:
         """同一個標籤要跨次啟動、跨行程都對到同一個顏色——不能用內建 hash()，
@@ -67,37 +85,55 @@ class StickyNoteService:
         return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
 
     def add_note(self, title: str, body: str, tag: str) -> StickyNote:
-        notes = self._repo.load_notes()
         note = StickyNote(
             id=uuid.uuid4().hex, title=title.strip(), body=body.strip(), tag=tag.strip(),
             created_at=datetime.now(),
         )
-        notes.append(note)
-        self._repo.save_notes(notes)
+        self._repo.mutate(lambda notes: notes + [note])
         return note
 
-    def update_note(self, note_id: str, title: str, body: str, tag: str) -> None:
-        notes = self._repo.load_notes()
-        for note in notes:
-            if note.id == note_id:
-                note.title = title.strip()
-                note.body = body.strip()
-                note.tag = tag.strip()
-                break
-        self._repo.save_notes(notes)
+    def update_note(self, note_id: str, title: str, body: str, tag: str) -> bool:
+        """回傳有沒有真的改到——`note_id` 不在清單裡（例如卡片在別的視窗剛被
+        刪掉）就回 False 且完全不寫檔，不會白白重寫一份一模一樣的內容。
+
+        編輯視同「重新建立」：`created_at` 一併更新成現在。便利貼沒有另外的
+        「最後修改時間」欄位，這樣 list_notes() 依 created_at 由新到舊排時，
+        剛動過的便利貼就會浮到最上面（跟網頁版行為一致，也讓共用同一份
+        .sticky_notes.json 時不用多存一個欄位）。"""
+        found = False
+
+        def apply(notes):
+            nonlocal found
+            for note in notes:
+                if note.id == note_id:
+                    note.title = title.strip()
+                    note.body = body.strip()
+                    note.tag = tag.strip()
+                    note.created_at = datetime.now()
+                    found = True
+                    return notes
+            return None  # 沒找到 → 交給 repo.mutate() 跳過寫檔
+
+        self._repo.mutate(apply)
+        return found
 
     def delete_note(self, note_id: str) -> None:
-        notes = [n for n in self._repo.load_notes() if n.id != note_id]
-        self._repo.save_notes(notes)
+        self._repo.mutate(lambda notes: [n for n in notes if n.id != note_id])
 
     def delete_notes(self, note_ids) -> int:
         """批次刪除——一次讀寫，不是逐筆呼叫 delete_note()（逐筆呼叫等於重複
         讀寫同一份檔案 N 次，數量一多沒必要）。回傳實際刪掉幾筆。"""
         wanted = set(note_ids)
-        notes = self._repo.load_notes()
-        remaining = [n for n in notes if n.id not in wanted]
-        self._repo.save_notes(remaining)
-        return len(notes) - len(remaining)
+        removed = 0
+
+        def apply(notes):
+            nonlocal removed
+            remaining = [n for n in notes if n.id not in wanted]
+            removed = len(notes) - len(remaining)
+            return remaining
+
+        self._repo.mutate(apply)
+        return removed
 
     def export_markdown(self, notes: list) -> str:
         """把便利貼組成一份可讀的 Markdown 文件——標題當二級標題、有標籤就用
@@ -116,13 +152,23 @@ class StickyNoteService:
             if note.tag:
                 lines.append(f"🏷️ {note.tag}")
             lines.append("")
-            lines.append("```")
+            fence = self._code_fence_for(note.body)
+            lines.append(fence)
             lines.append(note.body)
-            lines.append("```")
+            lines.append(fence)
             lines.append("")
             lines.append("---")
             lines.append("")
         return "\n".join(lines).rstrip() + "\n"
+
+    @staticmethod
+    def _code_fence_for(body: str) -> str:
+        """圍住內容用的 backtick 圍欄——一般是三個，但內容本身若含有 ``` 之類
+        的連續 backtick，固定用三個會被 Markdown 提早收掉程式碼區塊、後面的
+        內容跑到區塊外。CommonMark 的規則是圍欄的 backtick 數要比內容裡最長
+        的一段還多，這裡就照最長那段 +1。"""
+        longest = max((len(m) for m in re.findall(r"`+", body)), default=0)
+        return "`" * max(3, longest + 1)
 
     def build_ai_search_prompt(self, notes: list, query: str) -> str:
         """把便利貼清單編號、連同使用者的問題一起組成 prompt。
@@ -252,6 +298,71 @@ class StickyNoteService:
             return json.loads(match.group(0))
         except ValueError:
             return None
+
+    def build_document_to_note_prompt(self, entry, text: str) -> str:
+        """從檔案內容生成一則便利貼草稿（標題／標籤／內容）——跟
+        `build_ai_search_prompt` 一樣走 JSON 契約，但方向相反：那個是「從
+        便利貼找答案」，這個是「從文件生出一則新便利貼」。標籤請模型優先
+        從既有 `known_tags()` 挑，不是自由生成，避免批次跑幾十筆一次冒出
+        幾十個新標籤、標籤清單迅速失控。
+
+        簽章刻意跟 `AIDescriptionService.build_prompt(entry, text)` 一致，
+        才能原封不動當那邊 `generate_suggestions()` 的 `prompt_builder`
+        參數傳進去，共用同一套內容擷取／逐筆呼叫／計次／錯誤處理，不用
+        重寫一份幾乎一樣的迴圈。"""
+        known = self.known_tags()
+        tag_hint = "、".join(known) if known else "（目前沒有任何既有標籤）"
+        return (
+            "你是一個便利貼小助手。以下是這份文件擷取到的部分內容，請幫忙"
+            "生成一則便利貼草稿，摘要成方便之後快速回顧的筆記。\n\n"
+            "請只回覆一個 JSON 物件，不要加任何其他文字、不要用 Markdown "
+            "程式碼區塊（不要加 ```），格式如下（title／tag／body 都是"
+            "字串，三個欄位都要出現）：\n"
+            '{"title": "<適合當便利貼標題的主題，一句話，不要加引號>", '
+            f'"tag": "<單一分類標籤；請優先從既有標籤挑一個最合適的：{tag_hint}；'
+            '真的沒有合適的才自己創一個簡短新標籤；判斷不需要分類就給空字串>", '
+            '"body": "<這份文件內容的摘要，適合直接當便利貼正文的一段文字；'
+            '純文字，不要用 Markdown 符號，需要分項時用換行字元分隔>"}\n\n'
+            f"檔名：{entry.name}\n內容節錄：\n{text}"
+        )
+
+    def build_document_to_note_image_prompt(self, entry) -> str:
+        """圖片版——簽章對齊 `AIDescriptionService.build_image_prompt(entry)`，
+        理由同上。"""
+        known = self.known_tags()
+        tag_hint = "、".join(known) if known else "（目前沒有任何既有標籤）"
+        return (
+            "你是一個便利貼小助手。這是一張圖片，請幫忙生成一則便利貼草稿，"
+            "摘要成方便之後快速回顧的筆記。\n\n"
+            "請只回覆一個 JSON 物件，不要加任何其他文字、不要用 Markdown "
+            "程式碼區塊（不要加 ```），格式如下（title／tag／body 都是"
+            "字串，三個欄位都要出現）：\n"
+            '{"title": "<適合當便利貼標題的主題，一句話，不要加引號>", '
+            f'"tag": "<單一分類標籤；請優先從既有標籤挑一個最合適的：{tag_hint}；'
+            '真的沒有合適的才自己創一個簡短新標籤；判斷不需要分類就給空字串>", '
+            '"body": "<描述圖片內容，適合直接當便利貼正文的一段文字；純文字，'
+            '不要用 Markdown 符號>"}\n\n'
+            f"檔名：{entry.name}"
+        )
+
+    def parse_document_to_note_response(self, response: str):
+        """回傳 `{"title", "tag", "body"}` 或 `None`（解析失敗，或缺少
+        title／body 這兩個必要欄位）。
+
+        跟 `parse_ai_search_response` 共用同一套「先整段當 JSON、失敗再抓
+        第一個大括號片段」的兩層 fallback（`_try_parse_json`），但**沒有
+        第三層舊格式備援**——這裡的 JSON 契約是新設計的，沒有「先前用純
+        文字格式」的歷史包袱，解析不出來就是這一筆失敗，呼叫端當成失敗
+        處理（不套用、不生成便利貼），不硬湊一則內容怪異的草稿。"""
+        data = self._try_parse_json(response.strip())
+        if not isinstance(data, dict):
+            return None
+        title = str(data.get("title", "")).strip()
+        body = str(data.get("body", "")).strip()
+        tag = str(data.get("tag", "")).strip()
+        if not title or not body:
+            return None
+        return {"title": title, "tag": tag, "body": body}
 
     def load_panel_visible(self) -> bool:
         return self._repo.load_panel_state()["visible"]

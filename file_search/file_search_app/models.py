@@ -49,13 +49,22 @@ class StickyNote:
     """便利貼——跟索引項目無關的獨立小筆記（常用指令、網站、工具等），全域共用、
     不綁定任何一份索引集。`tag` 可留空（代表沒有分類，卡片顯示中性色）；有填
     的話限定一個，色卡直接依這個字串配色，不用再另外解決「多標籤該顯示哪個
-    顏色」的問題。"""
+    顏色」的問題。
+
+    `created_at` 是唯一的時間欄位，且「編輯視同重新建立」——每次
+    StickyNoteService.update_note() 都會把它更新成現在，所以它實際上是
+    「最後動過的時間」，清單依它由新到舊排、剛編輯的浮到最上面。"""
 
     id: str
     title: str
     body: str
     tag: str
     created_at: datetime
+    # 網頁版（sticky-wall-web）的便利貼插圖檔名，存在 indexes/.sticky_note_images/
+    # 底下。桌面版目前不顯示也不編輯它，但存檔時要原樣保留——不然在桌面版
+    # 編輯過的便利貼會把網頁版加的圖弄丟（兩邊共用同一份 .sticky_notes.json，
+    # 序列化時只寫自己認得的欄位）。
+    image: str = ""
 
 
 @dataclass

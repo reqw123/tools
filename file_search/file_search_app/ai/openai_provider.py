@@ -4,7 +4,9 @@ Azure OpenAI 的相容模式、自架的 OpenAI-compatible 伺服器——只要
 
 import base64
 
-from file_search_app.ai.base import AIProvider, AIProviderError, get_json, post_json
+from file_search_app.ai.base import (
+    AIProvider, AIProviderError, get_json, post_json, unexpected_response_error,
+)
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -54,7 +56,7 @@ class OpenAIProvider(AIProvider):
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as e:
-            raise AIProviderError(f"回應格式不是預期的樣子：{data!r}"[:300]) from e
+            raise unexpected_response_error(data) from e
         return (content or "").strip()
 
     def generate_description(self, prompt: str) -> str:

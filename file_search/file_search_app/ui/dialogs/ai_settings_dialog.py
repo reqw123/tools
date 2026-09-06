@@ -22,7 +22,7 @@ from file_search_app.ai.ollama_provider import (
 from file_search_app.ai.openai_provider import DEFAULT_BASE_URL as OPENAI_DEFAULT_BASE_URL
 from file_search_app.ai.openai_provider import DEFAULT_MODEL as OPENAI_DEFAULT_MODEL
 from file_search_app.config import (
-    BTN_BLUE_ACTIVE, BTN_BLUE_BG, BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG,
+    BTN_CREATE_ACTIVE, BTN_CREATE_BG, BTN_PRIMARY_ACTIVE, BTN_PRIMARY_BG,
     BTN_SECONDARY_ACTIVE, BTN_SECONDARY_BG, COLOR_BG, COLOR_PREVIEW_BORDER,
     COLOR_STATUS_FG, FONT_FAMILY,
 )
@@ -151,7 +151,7 @@ class AISettingsDialog(tk.Toplevel):
         self._ollama_host_entry = tk.Entry(
             self._ollama_addr_row, textvariable=self._ollama_host_var, font=font_addr,
             relief="flat", bd=0, highlightthickness=2,
-            highlightcolor=BTN_BLUE_BG, highlightbackground="#ffffff",
+            highlightcolor=BTN_CREATE_BG, highlightbackground="#ffffff",
         )
         self._ollama_host_entry.pack(side="left", fill="x", expand=True, ipady=4)
         suffix = tk.Entry(
@@ -206,7 +206,7 @@ class AISettingsDialog(tk.Toplevel):
         self._ollama_models_loading = False
         self._ollama_refresh_btn = styled_button(
             model_row, "🔄 讀取清單", self._refresh_ollama_models,
-            BTN_BLUE_BG, BTN_BLUE_ACTIVE, font_hint,
+            BTN_CREATE_BG, BTN_CREATE_ACTIVE, font_hint,
         )
         self._ollama_refresh_btn.pack(side="left", padx=(6, 0))
         self._ollama_model_hint_var = tk.StringVar(
@@ -228,11 +228,13 @@ class AISettingsDialog(tk.Toplevel):
         )
         self._status_label.pack(fill="x", pady=(10, 0))
 
+        self._testing = False
         btn_row = tk.Frame(pad, bg=COLOR_BG)
         btn_row.pack(fill="x", pady=(10, 0))
         styled_button(btn_row, "取消", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
         styled_button(btn_row, "儲存", self._save, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, font_label).pack(side="right", padx=(0, 8))
-        styled_button(btn_row, "測試連線", self._test_connection, BTN_BLUE_BG, BTN_BLUE_ACTIVE, font_label).pack(side="left")
+        self._test_btn = styled_button(btn_row, "測試連線", self._test_connection, BTN_CREATE_BG, BTN_CREATE_ACTIVE, font_label)
+        self._test_btn.pack(side="left")
 
     def _sync_visible_section(self):
         self._openai_frame.pack_forget()
@@ -398,16 +400,43 @@ class AISettingsDialog(tk.Toplevel):
         return ollama_build_standard_url(self._ollama_host_var.get())
 
     def _test_connection(self):
+        """連線測試放背景執行緒跑——test_connection() 會實際打網路（OpenAI 端
+        逾時可達 90 秒、區網 Ollama 沒開也要等 ~15 秒），在主執行緒直接呼叫
+        會把這個 modal 視窗連同整個 App 一起凍住。跟旁邊的「讀取模型清單」
+        同一套 queue 交回主執行緒的做法。"""
+        if self._testing:
+            return
+        self._testing = True
+        self._test_btn.configure(state="disabled")
         self._status_var.set("測試中…")
-        self.update_idletasks()
+        settings = self._collect_settings()
+        result_q = queue.Queue()
+
+        def _work():
+            try:
+                result_q.put(("ok", self._service.test_connection(settings)))
+            except Exception as exc:  # noqa: BLE001
+                result_q.put(("err", exc))
+
+        threading.Thread(target=_work, daemon=True).start()
+        self.after(100, lambda: self._poll_test_connection(result_q))
+
+    def _poll_test_connection(self, result_q):
+        if not self.winfo_exists():
+            return
         try:
-            warning = self._service.test_connection(self._collect_settings())
-        except Exception as exc:
-            self._status_var.set(f"❌ 連線失敗：{exc}")
+            status, payload = result_q.get_nowait()
+        except queue.Empty:
+            self.after(100, lambda: self._poll_test_connection(result_q))
+            return
+        self._testing = False
+        self._test_btn.configure(state="normal")
+        if status == "err":
+            self._status_var.set(f"❌ 連線失敗：{payload}")
             return
         # 連線成功但有值得提醒的問題（例如 Ollama 連得上、但選的模型沒下載
         # 或不支援圖片）——照樣顯示，不要用綠字「成功」把問題蓋掉。
-        self._status_var.set(warning if warning else "✅ 連線成功！")
+        self._status_var.set(payload if payload else "✅ 連線成功！")
 
     def _save(self):
         settings = self._collect_settings()

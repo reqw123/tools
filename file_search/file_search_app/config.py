@@ -94,6 +94,9 @@ STICKY_TAG_SATURATION = 0.55
 STICKY_TAG_LIGHTNESS = 0.82
 STICKY_NEUTRAL_COLOR = "#e5e7eb"
 STICKY_CARD_TEXT_COLOR = "#1f2937"
+# 卡片底部那排「# 分類 ── 建立時間」的次要文字色——比正文淡，但在所有粉彩
+# 底色（亮度 0.82）上都還讀得清楚。
+STICKY_CARD_META_COLOR = "#4a5568"
 
 # 卡片邊框改成直接從卡片底色算深一階（見 ui/styles.py 的 darken()），跟著卡片
 # 本身的色相走，不用固定灰色；滑鼠移上去時邊框再更深一階＋加粗，當作「這裡
@@ -142,20 +145,21 @@ BTN_WARN_BG = "#d97706"          # 琥珀：警示／清理類
 BTN_WARN_ACTIVE = "#b45f04"
 BTN_DANGER_BG = "#dc2626"        # 紅：刪除等破壞性動作
 BTN_DANGER_ACTIVE = "#b91c1c"
-BTN_BLUE_BG = "#2563eb"          # 藍：新增／建立
-BTN_BLUE_ACTIVE = "#1d4ed8"
-BTN_TEAL_BG = "#0d9488"          # 青綠：匯入／批次匯入
-BTN_TEAL_ACTIVE = "#0b7a6f"
-BTN_CYAN_BG = "#0891b2"          # 青：重新整理／更新快取
-BTN_CYAN_ACTIVE = "#0e7a91"
-BTN_INDIGO_BG = "#4f46e5"        # 靛：編輯類
-BTN_INDIGO_ACTIVE = "#4038c7"
-BTN_PURPLE_BG = "#7c3aed"        # 紫：補充／生成類
-BTN_PURPLE_ACTIVE = "#6423c9"
-BTN_ORANGE_BG = "#ea580c"        # 橘：偵測／搜尋類警示
-BTN_ORANGE_ACTIVE = "#c2470a"
-BTN_PINK_BG = "#db2777"          # 桃紅：複製等次要強調行動
-BTN_PINK_ACTIVE = "#b91c5c"
+# 按語意命名，不按色相——換調色盤時名字才不會說謊。註解裡是目前的色相。
+BTN_CREATE_BG = "#2563eb"         # 藍：新增／建立（新增便利貼、新增索引集、新增檔案）
+BTN_CREATE_ACTIVE = "#1d4ed8"
+BTN_IMPORT_BG = "#0d9488"         # 青綠：資料進出（匯入資料夾、匯出）
+BTN_IMPORT_ACTIVE = "#0b7a6f"
+BTN_REFRESH_BG = "#0891b2"        # 青：重新整理／更新快取
+BTN_REFRESH_ACTIVE = "#0e7a91"
+BTN_EDIT_BG = "#4f46e5"           # 靛：編輯既有內容（編輯所選列、編輯索引檔案、編輯便利貼）
+BTN_EDIT_ACTIVE = "#4038c7"
+BTN_AI_BG = "#7c3aed"             # 紫：AI 相關（批次補說明、選檔案問 AI、AI 搜尋、用檔案生成）
+BTN_AI_ACTIVE = "#6423c9"
+BTN_DETECT_BG = "#ea580c"         # 橘：偵測／掃描（重複偵測）
+BTN_DETECT_ACTIVE = "#c2470a"
+BTN_COPY_BG = "#db2777"           # 桃紅：複製到剪貼簿
+BTN_COPY_ACTIVE = "#b91c5c"
 
 # 「匯入資料夾」「找出未收錄檔案」都是用 rglob 遞迴列出整個資料夾——使用者
 # 不小心選到磁碟機根目錄或有幾十萬檔案的資料夾時，掃描本身可能要跑很久。

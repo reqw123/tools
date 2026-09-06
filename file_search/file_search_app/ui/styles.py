@@ -45,6 +45,43 @@ def darken(hex_color: str, factor: float) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def make_modal(parent, title, *, bg, size=None, minsize=None, resizable=True):
+    """自刻 modal 對話框共用的 Toplevel 骨架——`transient` + `grab_set` + 標題
+    + 底色 + （選填）大小／最小大小。回傳建好的 Toplevel，呼叫端往裡面塞
+    內容，最後用 `run_modal()` 收尾。"""
+    dlg = tk.Toplevel(parent)
+    dlg.title(title)
+    dlg.configure(bg=bg)
+    dlg.transient(parent)
+    dlg.grab_set()
+    dlg.resizable(resizable, resizable)
+    if size:
+        dlg.geometry(f"{size[0]}x{size[1]}")
+    if minsize:
+        dlg.minsize(*minsize)
+    return dlg
+
+
+def run_modal(dlg, parent) -> None:
+    """置中在 parent 上、阻塞到 dlg 關閉——`make_modal()` 的收尾。"""
+    dlg.update_idletasks()
+    center_over_parent(dlg, parent)
+    parent.wait_window(dlg)
+
+
+def center_over_parent(dlg, parent) -> None:
+    """把 `dlg` 盡量擺在 `parent` 視窗的正中央（不是螢幕正中央）——所有自刻
+    Toplevel 對話框共用的收尾動作。呼叫前 `dlg` 要先 `update_idletasks()`
+    好，否則 `winfo_width()` 量到的還是 1x1。量不到 parent 幾何資訊（極少數
+    情況）就靜靜用系統預設位置，不影響功能。"""
+    try:
+        x = parent.winfo_rootx() + max(0, (parent.winfo_width() - dlg.winfo_width()) // 2)
+        y = parent.winfo_rooty() + max(0, (parent.winfo_height() - dlg.winfo_height()) // 2)
+        dlg.geometry(f"+{x}+{y}")
+    except tk.TclError:
+        pass
+
+
 def bind_wheel_recursive(widget, handler):
     """把滑鼠滾輪事件遞迴綁到 widget 跟它所有子孫元件上——Tk 的 MouseWheel 事件
     只會送給滑鼠指標正下方那一個元件，不會自動往上冒泡，所以清單裡每一列（含
