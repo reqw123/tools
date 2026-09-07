@@ -240,6 +240,78 @@ def test_sticky_panel_due_only_filters_and_sorts(tk_root, data_dir):
     assert {n.id for n in panel._last_shown} == {no_due.id, soon.id, overdue.id}
 
 
+def test_sticky_panel_pin_toggle_sorts_to_top(tk_root, data_dir):
+    import json
+    import tkinter.font as tkfont
+
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.widgets.sticky_note_panel import StickyNotePanel
+
+    (data_dir).mkdir(parents=True, exist_ok=True)
+    (data_dir / ".sticky_notes.json").write_text(json.dumps({
+        "notes": [
+            {"id": i, "title": i, "body": "", "tag": "", "image": "", "due_at": "",
+             "pinned": False, "created_at": f"2026-01-01T1{n}:00:00"}
+            for n, i in enumerate("ABC")
+        ],
+        "trash": [], "panel": {"visible": True},
+    }), encoding="utf-8")
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+
+    class FakeAIDesc:
+        def is_configured(self):
+            return True, ""
+
+    panel = StickyNotePanel(tk_root, svc, FakeAIDesc(), on_open_ai_settings=lambda e: None,
+                            font_hint=tkfont.Font(size=10), width=380, on_collapse=lambda: None)
+    tk_root.update()
+    assert [n.title for n in panel._last_shown] == ["C", "B", "A"]
+
+    b = next(n for n in svc.list_notes() if n.id == "B")
+    panel._on_toggle_pin(b)  # 釘選 B
+    assert [n.title for n in panel._last_shown] == ["B", "C", "A"]
+    assert svc.list_notes()[0].pinned is True
+
+    b_now = next(n for n in svc.list_notes() if n.id == "B")
+    panel._on_toggle_pin(b_now)  # 取消
+    assert [n.title for n in panel._last_shown] == ["C", "B", "A"]
+
+
+def test_sticky_panel_due_threshold_follows_notes_web_settings(tk_root, data_dir):
+    import json
+    import tkinter.font as tkfont
+    from datetime import datetime, timedelta
+
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService, parse_due_date
+    from file_search_app.ui.widgets.sticky_note_panel import StickyNotePanel
+
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    far = svc.add_note(
+        "Far", "", "",
+        parse_due_date((datetime.now() + timedelta(days=5)).strftime("%Y-%m-%d"), "09:00"),
+    )
+
+    class FakeAIDesc:
+        def is_configured(self):
+            return True, ""
+
+    panel = StickyNotePanel(tk_root, svc, FakeAIDesc(), on_open_ai_settings=lambda e: None,
+                            font_hint=tkfont.Font(size=10), width=380, on_collapse=lambda: None)
+    panel._due_only_var.set(True)
+    panel._refresh()
+    # 預設 48h 門檻 → 5 天後到期不算「快到期」
+    assert panel._last_shown == []
+
+    # notes-web 把門檻調寬到 10 天 → 桌面版下次重畫就跟上
+    (data_dir / ".notes_settings.json").write_text(
+        json.dumps({"dueSoonHours": 24 * 10}), encoding="utf-8"
+    )
+    panel._refresh()
+    assert [n.id for n in panel._last_shown] == [far.id]
+
+
 def test_sticky_note_dialog_tag_color_picker(tk_root, data_dir, monkeypatch):
     from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
     from file_search_app.services.sticky_note_service import StickyNoteService
@@ -262,9 +334,10 @@ def test_sticky_note_dialog_tag_color_picker(tk_root, data_dir, monkeypatch):
     # 模擬使用者用色盤選了紅色——colorchooser.askcolor 回傳 (rgb_tuple, hex_str)。
     monkeypatch.setattr(mod.colorchooser, "askcolor", lambda *_a, **_kw: ((255, 0, 0), "#ff0000"))
     dlg._pick_tag_color()
-    assert svc.get_tag_color_override("work") == "#ff0000"
+    # 色塊即時反映，但還沒真的寫進去——要等按「新增」/「儲存」（_confirm）。
     assert dlg._tag_swatch.cget("bg") == "#ff0000"
     assert str(dlg._reset_color_btn["state"]) == "normal"
+    assert svc.get_tag_color_override("work") == ""
 
     # 切換到別的標籤——色塊要跟著換成那個標籤自己的顏色（沒自訂過就是雜湊配色）。
     other_hashed = svc.color_for_tag("life")
@@ -273,13 +346,42 @@ def test_sticky_note_dialog_tag_color_picker(tk_root, data_dir, monkeypatch):
     assert dlg._tag_swatch.cget("bg") == other_hashed
     assert str(dlg._reset_color_btn["state"]) == "disabled"
 
-    # 切回 work，重設應該清掉剛剛設定的紅色，退回雜湊配色。
+    # 切回 work，剛剛選的紅色（暫存中）還在。
     dlg.tag_var.set("work")
     tk_root.update()
+    assert dlg._tag_swatch.cget("bg") == "#ff0000"
+    assert str(dlg._reset_color_btn["state"]) == "normal"
+
+    # 送出後才真的寫進去。
+    dlg._apply_pending_tag_colors()
+    assert svc.get_tag_color_override("work") == "#ff0000"
+
+    # 重設同樣是暫存、送出才生效，退回雜湊配色。
     dlg._reset_tag_color()
-    assert svc.get_tag_color_override("work") == ""
     assert dlg._tag_swatch.cget("bg") == hashed
+    assert svc.get_tag_color_override("work") == "#ff0000"
+    dlg._apply_pending_tag_colors()
+    assert svc.get_tag_color_override("work") == ""
     dlg.destroy()
+
+
+def test_sticky_note_dialog_tag_color_discarded_on_cancel(tk_root, data_dir, monkeypatch):
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.dialogs.sticky_note_dialog import StickyNoteDialog
+    import file_search_app.ui.dialogs.sticky_note_dialog as mod
+
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    dlg = StickyNoteDialog(
+        tk_root, known_tags=[], on_confirm=lambda *_a: None,
+        ai_description=None, sticky_service=svc, initial_tag="work",
+    )
+    tk_root.update()
+    monkeypatch.setattr(mod.colorchooser, "askcolor", lambda *_a, **_kw: ((0, 128, 255), "#0080ff"))
+    dlg._pick_tag_color()
+    # 直接關掉視窗（等同按「取消」）——暫存的顏色改動要被丟棄，不落地。
+    dlg.destroy()
+    assert svc.get_tag_color_override("work") == ""
 
 
 def test_sticky_note_dialog_pick_color_without_tag_shows_info(tk_root, data_dir, monkeypatch):
@@ -302,6 +404,59 @@ def test_sticky_note_dialog_pick_color_without_tag_shows_info(tk_root, data_dir,
     dlg.destroy()
 
 
+def test_sticky_note_dialog_due_time_field(tk_root, data_dir):
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService, parse_due_date
+    from file_search_app.ui.dialogs.sticky_note_dialog import StickyNoteDialog
+
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    captured = {}
+
+    # 帶時間的既有到期日 → 日期欄／時間欄都要正確帶入。
+    dlg = StickyNoteDialog(
+        tk_root, known_tags=[],
+        on_confirm=lambda t, b, tag, due: captured.update(due=due),
+        ai_description=None, sticky_service=svc,
+        title="編輯便利貼", initial_title="A",
+        initial_due_at=parse_due_date("2026-09-10", "09:30"),
+    )
+    tk_root.update()
+    assert dlg.due_var.get() == "2026-09-10"
+    assert dlg.due_time_var.get() == "09:30"
+
+    # 改時間後送出 → due_at 精確到分。
+    dlg.due_time_var.set("18:05")
+    dlg._confirm()
+    assert captured["due"] == "2026-09-10T18:05:00"
+
+    # 只填日期沒填時間 → 存 23:59:59（哨兵），時間欄顯示空。
+    captured.clear()
+    dlg2 = StickyNoteDialog(
+        tk_root, known_tags=[],
+        on_confirm=lambda t, b, tag, due: captured.update(due=due),
+        ai_description=None, sticky_service=svc, initial_title="B",
+        initial_due_at=parse_due_date("2026-09-10"),
+    )
+    tk_root.update()
+    assert dlg2.due_time_var.get() == ""
+    dlg2._confirm()
+    assert captured["due"] == "2026-09-10T23:59:59"
+
+    # 到期日整個清掉 → due_at 空字串。
+    captured.clear()
+    dlg3 = StickyNoteDialog(
+        tk_root, known_tags=[],
+        on_confirm=lambda t, b, tag, due: captured.update(due=due),
+        ai_description=None, sticky_service=svc, initial_title="C",
+        initial_due_at=parse_due_date("2026-09-10", "09:30"),
+    )
+    tk_root.update()
+    dlg3._clear_due()
+    assert dlg3.due_var.get() == "" and dlg3.due_time_var.get() == ""
+    dlg3._confirm()
+    assert captured["due"] == ""
+
+
 def test_sticky_trash_dialog_restore(tk_root, data_dir):
     from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
     from file_search_app.services.sticky_note_service import StickyNoteService
@@ -322,6 +477,33 @@ def test_sticky_trash_dialog_restore(tk_root, data_dir):
     dlg._on_restore(a.id)
     assert svc.list_trash() == []
     assert [n.title for n in svc.list_notes()] == ["Trashed"]
+    assert changed["n"] == 1
+    dlg.destroy()
+
+
+def test_sticky_history_dialog_lists_and_restores(tk_root, data_dir, monkeypatch):
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.dialogs.sticky_note_history_dialog import StickyNoteHistoryDialog
+    import file_search_app.ui.dialogs.sticky_note_history_dialog as mod
+
+    monkeypatch.setattr(mod.messagebox, "askyesno", lambda *_a, **_kw: True)
+    monkeypatch.setattr(mod.messagebox, "showinfo", lambda *_a, **_kw: None)
+
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    svc.add_note("A", "", "")
+    svc.add_note("B", "", "")          # 版本 2：兩則
+    oldest = svc.list_history()[-1]     # 版本 1：一則
+
+    changed = {"n": 0}
+    dlg = StickyNoteHistoryDialog(
+        tk_root, svc, on_change=lambda: changed.__setitem__("n", changed["n"] + 1),
+    )
+    tk_root.update()
+    assert len(dlg._inner.winfo_children()) == 2   # 兩個版本各一列
+
+    dlg._on_restore(oldest["id"], "當時")
+    assert [n.title for n in svc.list_notes()] == ["A"]
     assert changed["n"] == 1
     dlg.destroy()
 
@@ -504,6 +686,34 @@ def test_preview_panel_async_extract_stale_guard(tk_root, tmp_path):
     tk_root.update()
 
 
+def test_preview_panel_highlights_search_term(tk_root, tmp_path):
+    import tkinter.font as tkfont
+    from file_search_app.services.preview_service import PreviewService
+    from file_search_app.ui.widgets.preview_panel import PreviewPanel
+
+    txt = tmp_path / "doc.txt"
+    txt.write_text("前面一些字\n這裡有 KEYWORD 出現兩次 KEYWORD 就這樣\n後面", encoding="utf-8")
+
+    class FakeMedia:
+        available = False
+
+    pp = PreviewPanel(tk_root, PreviewService(), FakeMedia(),
+                      tkfont.Font(size=11), tkfont.Font(size=10), 320)
+    pp.set_search_term("keyword")          # 大小寫不敏感
+    pp.show_entry(entry(path=str(txt), serial=1))
+    _pump(tk_root, 0.3)
+    assert pp._mode == "text"
+    ranges = pp._text.tag_ranges("search_hit")
+    assert len(ranges) == 4                 # 兩處命中 → 各一組 (start, end)
+
+    pp.set_search_term("")                  # 清掉搜尋 → 標記也清掉
+    assert pp._text.tag_ranges("search_hit") == ()
+
+    pp.set_search_term("a")                 # 太短不標
+    assert pp._text.tag_ranges("search_hit") == ()
+    tk_root.update()
+
+
 # ── MainWindow 整體組裝煙霧 ──────────────────────────────────────
 
 def test_main_window_wiring_smoke(tk_root, data_dir, tmp_path, monkeypatch):
@@ -521,7 +731,7 @@ def test_main_window_wiring_smoke(tk_root, data_dir, tmp_path, monkeypatch):
     from file_search_app.services.cache_service import CacheService
     from file_search_app.services.description_service import DescriptionService
     from file_search_app.services.duplicate_service import DuplicateService
-    from file_search_app.services.import_service import ImportService
+    from file_search_app.services.import_service import ImportService, path_key
     from file_search_app.services.index_service import IndexService
     from file_search_app.services.preview_service import PreviewService
     from file_search_app.services.scan_service import ScanService
@@ -571,5 +781,29 @@ def test_main_window_wiring_smoke(tk_root, data_dir, tmp_path, monkeypatch):
         w.update()
         assert w._sticky_panel is not None
         assert (data_dir / "file_index.md").exists()  # ensure_default_index 建了一份
+
+        # 內文搜尋的接線：打字 → _apply_filter 會算內文命中片段、把關鍵字送進
+        # 預覽面板標色。這裡只確認整條路不炸、關鍵字有傳到。
+        w._search_var.set("關鍵字")
+        w._apply_filter()
+        assert w._preview._search_term == "關鍵字"
+
+        # 未收錄徽章：常用資料夾裡有沒被索引的檔案 → 背景掃完徽章亮起來。
+        watched = tmp_path / "watched"
+        watched.mkdir()
+        (watched / "未收錄的報告.docx").write_text("x", encoding="utf-8")
+        metadata_repo.save_known_folders([str(watched)])
+        w._maybe_check_unindexed(force=True)
+        _pump(w, 1.5)
+        # 視窗是 withdraw() 的，winfo_ismapped 一律 0——改看 _render_watch_badge
+        # 有沒有把文字設起來（count>0 才會）。
+        assert "1" in w._watch_badge.cget("text") and "未收錄" in w._watch_badge.cget("text")
+
+        # 收錄之後徽章數字歸零、收起來
+        all_files = index_svc.list_index_files()
+        w._import.import_folder(all_files[0], [watched / "未收錄的報告.docx"], "測試")
+        w._maybe_check_unindexed(force=True)
+        _pump(w, 1.8)
+        assert w._watch_badge.cget("text") == ""
     finally:
         w._on_close()

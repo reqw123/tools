@@ -34,7 +34,7 @@ function bodyHtml(body: string): string {
     .map((l) =>
       l.kind === 'field'
         ? `<li class="fld"><span>${esc(l.text)}</span><i></i></li>`
-        : `<li class="task"><b></b><span>${esc(l.text)}</span></li>`,
+        : `<li class="task${l.checked ? ' done' : ''}"><b></b><span>${esc(l.text)}</span></li>`,
     )
     .join('')
   return `<ul class="lines">${items}</ul>`
@@ -63,12 +63,19 @@ header .meta {
 }
 main {
   max-width: 1180px; margin: 0 auto; padding: 1rem 1.5rem;
-  columns: 4 250px; column-gap: 1.8rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--wall-min-col, 250px)), 1fr));
+  gap: 1.8rem; align-items: start;
 }
+/* JS 量完高度後加上——改成列 masonry（left/top/width 由 script 寫成 inline） */
+main.is-masonry { display: block; position: relative; gap: 0; }
+main.is-masonry > .note { position: absolute; }
+.pinned-row { display: flex; flex-wrap: wrap; gap: 1.8rem; align-items: flex-start; grid-column: 1 / -1; }
+.pinned-row .note { flex: 1 1 230px; max-width: 340px; }
 .note {
   break-inside: avoid;
   display: block; width: 100%;
-  margin: 0 0 1.8rem; padding: 1.1rem 1.15rem 1.25rem;
+  margin: 0; padding: 1.1rem 1.15rem 1.25rem;
   position: relative;
   background: var(--face); color: #1f2937;
   border-radius: 2px 2px 3px 3px;
@@ -102,6 +109,10 @@ main {
 .lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .32rem; font-size: .88rem; }
 .lines li { display: flex; gap: .5rem; align-items: baseline; line-height: 1.5; }
 .lines .task b { flex: none; width: 11px; height: 11px; margin-top: 2px; border: 1.5px solid rgba(31,41,55,.5); border-radius: 3px; }
+.lines .task.done b { background: rgba(31,41,55,.6); border-color: rgba(31,41,55,.6); }
+.lines .task.done span { text-decoration: line-through; opacity: .5; }
+.note .pinned { position: absolute; top: 8px; right: 10px; color: #e0a400; font-size: .95rem; }
+.note.is-pinned { box-shadow: 0 0 0 2px #e0a400 inset, 0 6px 18px rgba(0,0,0,.12); }
 .lines .fld span { flex: none; color: rgba(31,41,55,.82); }
 .lines .fld i { flex: 1; height: 0; border-bottom: 1.4px dotted rgba(31,41,55,.42); transform: translateY(-3px); }
 .foot {
@@ -153,7 +164,13 @@ main {
 }
 @media print {
   body { background: #fff; }
-  main { columns: 3 220px; }
+  /* 列印切回 CSS Grid——絕對定位的卡片會被硬切在分頁線上，grid + break-inside
+     才不會把單張便利貼切成兩半。script 寫的 inline left/top/width 在
+     position:static 下自動失效。 */
+  main.is-masonry { display: grid; position: static; height: auto !important; gap: 1.8rem; }
+  main.is-masonry > .note { position: static; left: auto; top: auto; width: auto; }
+  .pinned-row { grid-column: 1 / -1; }
+  main { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
   .note { box-shadow: none; border: 1px solid rgba(0,0,0,.18); }
   .note .curl { display: none; }
   .lb { display: none !important; }
@@ -203,6 +220,70 @@ const SCRIPT = `
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && lb.classList.contains('open')) close();
   });
+
+  // 版面跟牆上（Wall.tsx）同一套：釘選的排成頂端一列（.pinned-row），其餘
+  // 走 column-major「大致等高」——照 DOM 順序把第一欄從上疊到接近平均高度
+  // 才換下一欄，每欄內部完全緊貼不留空白。匯出當下若在「看全部」，便利貼
+  // 已依分類排好序，同色系因此落在同一直行。列印時 @media print 把 main
+  // 切回 CSS Grid（position:static），這裡寫的 inline 定位自動失效。
+  var MIN_COL_W = window.__WALL_MIN_COL__ || 250, GAP = 28;
+  function layout() {
+    var cs = getComputedStyle(wall);
+    var padL = parseFloat(cs.paddingLeft) || 0, padR = parseFloat(cs.paddingRight) || 0;
+    var padT = parseFloat(cs.paddingTop) || 0, padB = parseFloat(cs.paddingBottom) || 0;
+    var inner = wall.clientWidth - padL - padR;
+    var cards = [].slice.call(wall.children).filter(function (el) {
+      return el.classList.contains('note');
+    });
+    var pinnedRow = wall.querySelector('.pinned-row');
+    if (inner <= 1 || (!cards.length && !pinnedRow)) return;
+    var topOffset = pinnedRow ? pinnedRow.offsetHeight + GAP : 0;
+    var numCols = Math.max(1, Math.floor((inner + GAP) / (MIN_COL_W + GAP)));
+    var colW = (inner - GAP * (numCols - 1)) / numCols;
+    var colH = [];
+    for (var c = 0; c < numCols; c++) colH.push(0);
+    cards.forEach(function (el) { el.style.width = colW + 'px'; });
+    var hs = cards.map(function (el) { return el.offsetHeight; });
+    function place(el, c, h) {
+      el.style.left = (padL + c * (colW + GAP)) + 'px';
+      el.style.top = (padT + topOffset + colH[c]) + 'px';
+      colH[c] += h + GAP;
+    }
+    if (window.__COLUMN_PER_TAG__) {
+      // 一個分類一直行、不同分類由左到右：連續同 data-tag 的卡片當一整塊，
+      // 整塊塞進當下最矮的欄（前 numCols 個分類因此由左到右各佔一欄）。
+      var i = 0;
+      while (i < cards.length) {
+        var tg = cards[i].getAttribute('data-tag') || '';
+        var j = i;
+        while (j < cards.length && (cards[j].getAttribute('data-tag') || '') === tg) j++;
+        var c = 0;
+        for (var k = 1; k < numCols; k++) if (colH[k] < colH[c]) c = k;
+        for (var m = i; m < j; m++) place(cards[m], c, hs[m]);
+        i = j;
+      }
+    } else {
+      var totalH = 0;
+      for (var t = 0; t < hs.length; t++) totalH += hs[t] + GAP;
+      var target = totalH / numCols;
+      var col = 0;
+      cards.forEach(function (el, ix) {
+        if (col < numCols - 1 && colH[col] > 0 && colH[col] + hs[ix] / 2 > target) col += 1;
+        place(el, col, hs[ix]);
+      });
+    }
+    var bodyH = cards.length ? Math.max.apply(null, colH) - GAP : 0;
+    wall.style.height = (padT + topOffset + bodyH + padB) + 'px';
+    wall.classList.add('is-masonry');
+  }
+  var raf = 0;
+  function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(layout); }
+  layout();
+  window.addEventListener('resize', schedule);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
+  [].slice.call(wall.querySelectorAll('img')).forEach(function (img) {
+    if (!img.complete) img.addEventListener('load', schedule);
+  });
 })();
 `.trim()
 
@@ -211,28 +292,35 @@ const SCRIPT = `
 export async function buildStickyNotesHtml(
   notes: Note[],
   tagColors?: Record<string, string>,
+  defaultNoteColor?: string,
+  minColWidth?: number,
+  columnPerTag = false,
 ): Promise<string> {
+  const minCol = minColWidth && minColWidth > 0 ? Math.round(minColWidth) : 250
   const now = new Date()
   const p = (n: number) => String(n).padStart(2, '0')
   const when = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`
 
-  const cards = (
-    await Promise.all(
-      notes.map(async (n) => {
-        const face = colorForTag(n.tag, tagColors)
-        const fold = darken(face, 0.2)
-        const tag = n.tag ? `<span class="tag"># ${esc(n.tag)}</span>` : '<span></span>'
-        const dataUri = noteImageUrl(n) ? await imageDataUri(n.image) : null
-        const img = dataUri ? `\n      <img class="note-img" src="${dataUri}" alt="">` : ''
-        return `    <article class="note" tabindex="0" role="button" aria-label="便利貼：${esc(n.title || '(無標題)')}" style="--face:${face};--fold:${fold}">
-      <span class="curl" aria-hidden="true"></span>
+  const renderNote = async (n: Note) => {
+    const face = colorForTag(n.tag, tagColors, defaultNoteColor)
+    const fold = darken(face, 0.2)
+    const tag = n.tag ? `<span class="tag"># ${esc(n.tag)}</span>` : '<span></span>'
+    const dataUri = noteImageUrl(n) ? await imageDataUri(n.image) : null
+    const img = dataUri ? `\n      <img class="note-img" src="${dataUri}" alt="">` : ''
+    const star = n.pinned ? '<span class="pinned" aria-label="已釘選">★</span>' : ''
+    return `    <article class="note${n.pinned ? ' is-pinned' : ''}" tabindex="0" role="button" data-tag="${esc(n.tag)}" aria-label="便利貼：${esc(n.title || '(無標題)')}" style="--face:${face};--fold:${fold}">
+      <span class="curl" aria-hidden="true"></span>${star}
       <h2>${esc(n.title || '(無標題)')}</h2>${img}
       ${bodyHtml(n.body)}
       <div class="foot">${tag}<span class="time">${stamp(n.created_at)}</span></div>
     </article>`
-      }),
-    )
-  ).join('\n')
+  }
+  // 釘選的排成頂端一列（.pinned-row），其餘走 column-major——跟牆上一致。
+  const pinnedHtml = (await Promise.all(notes.filter((n) => n.pinned).map(renderNote))).join('\n')
+  const restHtml = (await Promise.all(notes.filter((n) => !n.pinned).map(renderNote))).join('\n')
+  const cards = `${
+    pinnedHtml ? `  <div class="pinned-row">\n${pinnedHtml}\n  </div>\n` : ''
+  }${restHtml}`
 
   return `<!doctype html>
 <html lang="zh-Hant">
@@ -250,7 +338,7 @@ export async function buildStickyNotesHtml(
   <h1>📌 便利貼匯出</h1>
   <p class="meta">共 ${notes.length} 則　·　匯出時間 ${when}　·　來自 file_search_app 便利貼　·　點卡片看大張</p>
 </header>
-<main class="wall">
+<main class="wall" style="--wall-min-col:${minCol}px">
 ${cards}
 </main>
 <div class="lb" aria-hidden="true">
@@ -260,6 +348,7 @@ ${cards}
     <div class="lb-content"></div>
   </div>
 </div>
+<script>window.__WALL_MIN_COL__=${minCol};window.__COLUMN_PER_TAG__=${columnPerTag ? 'true' : 'false'}</script>
 <script>${SCRIPT}</script>
 </body>
 </html>
@@ -270,8 +359,11 @@ ${cards}
 export async function downloadStickyNotesHtml(
   notes: Note[],
   tagColors?: Record<string, string>,
+  defaultNoteColor?: string,
+  minColWidth?: number,
+  columnPerTag = false,
 ): Promise<void> {
-  const html = await buildStickyNotesHtml(notes, tagColors)
+  const html = await buildStickyNotesHtml(notes, tagColors, defaultNoteColor, minColWidth, columnPerTag)
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

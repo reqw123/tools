@@ -11,7 +11,10 @@
 import tkinter as tk
 from tkinter import ttk
 
-from file_search_app.config import COLOR_MISSING_FG, MISSING_ICON
+from file_search_app.colors import hash_hsl_hex
+from file_search_app.config import (
+    COLOR_MISSING_FG, INDEX_CHIP_LIGHTNESS, INDEX_CHIP_SATURATION, MISSING_ICON,
+)
 from file_search_app.models import format_added_at
 from file_search_app.ui.styles import icon_for
 
@@ -53,8 +56,14 @@ class IndexTree:
         )
 
         self._tree = ttk.Treeview(
-            self.frame, columns=_COLUMNS, show="headings", selectmode="browse", style="FileSearch.Treeview",
+            # show="tree headings"（不是純 headings）——留下 #0 那一欄，放一個
+            # 依「分類」名稱配色的小色點，掃視清單時同一個分類一眼認得出來。
+            self.frame, columns=_COLUMNS, show="tree headings", selectmode="browse",
+            style="FileSearch.Treeview",
         )
+        self._tree.heading("#0", text="")
+        self._tree.column("#0", width=26, minwidth=26, stretch=False, anchor="center")
+        self._cat_swatches = {}  # 分類名稱 -> tk.PhotoImage（實心色點），建一次重複用
         for col in _COLUMNS:
             self._tree.heading(col, text=_HEADINGS[col])
             self._tree.column(col, width=_WIDTHS[col], anchor="w", stretch=(col in ("desc", "path")))
@@ -95,6 +104,19 @@ class IndexTree:
 
         self._entries_by_iid = {}
 
+    def _category_swatch(self, category: str):
+        """回傳這個分類對應的實心色點 PhotoImage；分類留空回 ""（#0 欄不放圖）。
+        同一個分類永遠同一個顏色（雜湊自名稱，跟便利貼標籤／files-web 一致）。"""
+        if not category:
+            return ""
+        img = self._cat_swatches.get(category)
+        if img is None:
+            color = hash_hsl_hex(category, INDEX_CHIP_LIGHTNESS, INDEX_CHIP_SATURATION)
+            img = tk.PhotoImage(master=self._tree, width=12, height=12)
+            img.put(color, to=(0, 0, 12, 12))
+            self._cat_swatches[category] = img
+        return img
+
     def configure_width(self, width: int) -> None:
         self.frame.configure(width=width)
 
@@ -108,8 +130,13 @@ class IndexTree:
 
     # ── 顯示 ─────────────────────────────────────────────────────────
 
-    def set_entries(self, entries, aggregate_mode: bool) -> None:
-        """依 entries（IndexEntry 清單，順序＝顯示順序）重建整份清單。"""
+    def set_entries(self, entries, aggregate_mode: bool, content_snippets=None) -> None:
+        """依 entries（IndexEntry 清單，順序＝顯示順序）重建整份清單。
+
+        `content_snippets`（可選）：`{entry.path: 內文片段}`——是「因為檔案內文
+        命中」才出現的項目，把片段接在「說明」欄後面（前面加 🔎），讓使用者
+        一眼看出這筆是內文提到、而不是欄位對到；完整內容右邊預覽面板會標色。"""
+        snippets = content_snippets or {}
         self._tree.delete(*self._tree.get_children())
         self._entries_by_iid = {}
         for entry in entries:
@@ -117,10 +144,15 @@ class IndexTree:
             icon = icon_for(entry.path) if exists else MISSING_ICON
             source_display = entry.source_index.name if aggregate_mode else ""
             added_display = format_added_at(entry.added_at)
+            desc = entry.description
+            snippet = snippets.get(entry.path)
+            if snippet:
+                desc = f"{desc}　🔎 {snippet}" if desc else f"🔎 {snippet}"
             iid = self._tree.insert(
                 "", "end",
+                image=self._category_swatch(entry.category),
                 values=(
-                    entry.serial, icon, entry.name, entry.category, entry.description,
+                    entry.serial, icon, entry.name, entry.category, desc,
                     entry.path, source_display, added_display,
                 ),
                 tags=() if exists else ("missing",),

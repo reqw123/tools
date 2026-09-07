@@ -5,6 +5,8 @@ import {
   useSaveAiSettings,
   useTestConnection,
 } from '../hooks/useAi'
+// 這個檔案現在只匯出「全域設定」對話框裡的 AI 分頁內容（AiSettingsPanel）；
+// 外層的 scrim / 分頁殼在 GlobalSettingsDialog.tsx。
 import type { AiSettings, AiSettingsInput } from '../lib/ai'
 import {
   DEFAULT_BASE_URL,
@@ -19,47 +21,22 @@ import {
 type Provider = 'openai' | 'ollama'
 type Where = 'local' | 'lan'
 
-const MODEL_HINT_DEFAULT = '下拉為那台電腦已安裝的模型；也可以直接手動輸入名稱。'
+const MODEL_HINT_DEFAULT = '下拉選單是那台電腦已安裝的模型；要用別的請先在該電腦 `ollama pull` 再按「🔄 讀取清單」。'
 
-export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
+export function AiSettingsPanel({ onClose }: { onClose: () => void }) {
   const { data: settings, isLoading } = useAiSettings()
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    ref.current?.focus()
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
-
   return (
-    <div className="scrim" onClick={onClose}>
-      <div
-        className="sheet plain"
-        role="dialog"
-        aria-modal="true"
-        aria-label="AI 設定"
-        tabIndex={-1}
-        ref={ref}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button className="icon-btn" onClick={onClose} aria-label="關閉">
-          ×
-        </button>
-        <h2>AI 設定</h2>
-        <p className="dim">
-          用來跑便利貼的「AI 搜尋」。設定跟桌面版（檔案快速搜尋）共用同一份——在這裡改，桌面版也會生效。
-          API Key 只存在本機（<code>%LOCALAPPDATA%\file_search</code>），不會進版控、不會跟便利貼一起同步。
-        </p>
-        {isLoading || !settings ? (
-          <p className="dim mono">載入中…</p>
-        ) : (
-          <SettingsForm key="loaded" initial={settings} onClose={onClose} />
-        )}
-      </div>
-    </div>
+    <>
+      <p className="dim">
+        用來跑便利貼的「AI 搜尋」。設定跟桌面版（檔案快速搜尋）共用同一份——在這裡改，桌面版也會生效。
+        API Key 只存在本機（<code>%LOCALAPPDATA%\file_search</code>），不會進版控、不會跟便利貼一起同步。
+      </p>
+      {isLoading || !settings ? (
+        <p className="dim mono">載入中…</p>
+      ) : (
+        <SettingsForm key="loaded" initial={settings} onClose={onClose} />
+      )}
+    </>
   )
 }
 
@@ -111,7 +88,7 @@ function SettingsForm({ initial, onClose }: { initial: AiSettings; onClose: () =
         if (r.models === null) {
           setModelHint(
             silent
-              ? '（讀不到已安裝清單，可按「🔄 讀取清單」重試，或直接手動輸入模型名稱）'
+              ? '（讀不到已安裝清單，可按「🔄 讀取清單」重試——需要那台電腦有跑 Ollama）'
               : `讀取清單失敗：${r.error ?? '連不上那台 Ollama'}`,
           )
           return
@@ -119,16 +96,16 @@ function SettingsForm({ initial, onClose }: { initial: AiSettings; onClose: () =
         setFetchedModels(r.models)
         const cur = ollamaModel.trim()
         if (r.models.length === 0) {
-          setModelHint('那台電腦目前沒有已安裝的模型；請先在該電腦 `ollama pull <模型>`，或手動輸入名稱。')
-        } else if (!cur) {
+          setModelHint('那台電腦目前沒有已安裝的模型；請先在該電腦 `ollama pull <模型>` 再回來讀取。')
+        } else if (!cur || !modelInList(cur, r.models)) {
+          // 下拉只給清單裡的選項，所以沒選過 / 選的已不在清單 → 直接選第一個
           setOllamaModel(r.models[0])
           setModelHint(MODEL_HINT_DEFAULT)
-        } else if (modelInList(cur, r.models)) {
-          setModelHint(MODEL_HINT_DEFAULT)
         } else {
-          setModelHint(
-            `目前填的「${cur}」不在那台電腦的已安裝清單裡——可從下拉改選，或確認之後要在該電腦先 \`ollama pull\` 再用。`,
-          )
+          // 目前的值鬆散比對到清單某一項 → 對齊成清單裡的實際字串，<select> 才選得中
+          const exact = r.models.find((m) => m === cur || modelInList(cur, [m]))
+          if (exact && exact !== cur) setOllamaModel(exact)
+          setModelHint(MODEL_HINT_DEFAULT)
         }
       },
       onError: (e: Error) => setModelHint(`讀取清單失敗：${e.message}`),
@@ -295,14 +272,32 @@ function SettingsForm({ initial, onClose }: { initial: AiSettings; onClose: () =
           )}
 
           <label>
-            模型
+            模型（從該電腦已安裝的清單選，不能手動輸入）
             <span className="model-row">
-              <input
+              <select
+                className="model-select"
                 value={ollamaModel}
-                list="ollama-models"
-                placeholder="llama3.1 / qwen2.5 / llava …"
+                disabled={models.isPending || fetchedModels.length === 0}
                 onChange={(e) => setOllamaModel(e.target.value)}
-              />
+              >
+                {fetchedModels.length === 0 && (
+                  <option value={ollamaModel}>
+                    {ollamaModel
+                      ? `${ollamaModel}（尚未讀取清單）`
+                      : '（按右邊「讀取清單」載入該電腦的模型）'}
+                  </option>
+                )}
+                {fetchedModels.length > 0 && !modelInList(ollamaModel, fetchedModels) && (
+                  <option value={ollamaModel} disabled>
+                    {ollamaModel ? `${ollamaModel}（不在清單裡，請重新選）` : '（請選一個模型）'}
+                  </option>
+                )}
+                {fetchedModels.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 className="btn ghost sm"
@@ -312,11 +307,6 @@ function SettingsForm({ initial, onClose }: { initial: AiSettings; onClose: () =
                 {models.isPending ? '讀取中…' : '🔄 讀取清單'}
               </button>
             </span>
-            <datalist id="ollama-models">
-              {fetchedModels.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
             <span className="hint">{modelHint}</span>
           </label>
         </>

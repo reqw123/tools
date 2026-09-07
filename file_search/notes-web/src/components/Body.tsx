@@ -1,7 +1,17 @@
 import { useMemo } from 'react'
 import { parseBody } from '../lib/format'
 
-export function Body({ text, limit }: { text: string; limit?: number }) {
+export function Body({
+  text,
+  limit,
+  onToggleLine,
+}: {
+  text: string
+  limit?: number
+  /** 有給就讓待辦方框可點——點下去切換那一行的 [x]（srcIndex 是
+   *  body.split('\n') 的行號）。沒給就畫成純裝飾的方框，跟以前一樣。 */
+  onToggleLine?: (srcIndex: number) => void
+}) {
   const parsed = useMemo(() => parseBody(text), [text])
 
   if ('paragraph' in parsed) {
@@ -19,8 +29,23 @@ export function Body({ text, limit }: { text: string; limit?: number }) {
             <i />
           </li>
         ) : (
-          <li key={i} className="task">
-            <b className="box" />
+          <li key={i} className={`task${line.checked ? ' done' : ''}`}>
+            {onToggleLine ? (
+              <button
+                type="button"
+                className="box"
+                role="checkbox"
+                aria-checked={line.checked ?? false}
+                aria-label={line.text || '待辦項'}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleLine(line.srcIndex)
+                }}
+              />
+            ) : (
+              <b className="box" aria-hidden />
+            )}
             <span>{line.text}</span>
           </li>
         ),

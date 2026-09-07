@@ -234,7 +234,6 @@ function ensureDueBadgeWin() {
 async function updateDueBadge(overdueCount, soonCount) {
   const key = `${overdueCount}:${soonCount}`;
   if (key === lastDueBadgeKey) return;
-  lastDueBadgeKey = key;
   const count = overdueCount + soonCount;
   try {
     const w = ensureDueBadgeWin();
@@ -254,6 +253,10 @@ async function updateDueBadge(overdueCount, soonCount) {
         count > 0 ? `已到期 ${overdueCount} 則\n將到期 ${soonCount} 則` : '桌面牆',
       );
     }
+    // 只有真的重畫成功才記住這組數字——若中途失敗（隱藏視窗繪圖失敗、
+    // 被銷毀…）就維持舊的 key，下一輪相同數字才會再試一次，不會因為
+    // 一次失敗就把角標永久卡在「畫不出來」的狀態。
+    lastDueBadgeKey = key;
   } catch (err) {
     console.error('[wallpaper-app] 更新到期角標失敗（不影響其他功能）：', err.message);
   }

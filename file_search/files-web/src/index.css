@@ -714,6 +714,13 @@ code {
 .bucket.shut .bucket-head { border-bottom: none; }
 .bucket-head .chev { transition: transform 0.15s; flex: none; }
 .bucket:not(.shut) .bucket-head .chev { transform: rotate(90deg); }
+.bucket-dot {
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
 .bucket-label {
   font-weight: 600;
   font-size: 0.86rem;

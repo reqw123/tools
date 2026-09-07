@@ -35,7 +35,7 @@ from file_search_app.config import (
 )
 from file_search_app.models import format_added_at
 from file_search_app.platform import file_actions
-from file_search_app.services.sticky_note_service import due_status, format_due_date, preview_text
+from file_search_app.services.sticky_note_service import due_status, format_due_label, preview_text
 from file_search_app.ui.async_task import poll_queue, start_worker
 from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
 from file_search_app.ui.dialogs.scrollable_message_dialog import show_scrollable_message
@@ -44,6 +44,7 @@ from file_search_app.ui.dialogs.sticky_note_batch_recategorize_dialog import (
 )
 from file_search_app.ui.dialogs.sticky_note_bulk_delete_dialog import StickyNoteBulkDeleteDialog
 from file_search_app.ui.dialogs.sticky_note_dialog import StickyNoteDialog
+from file_search_app.ui.dialogs.sticky_note_history_dialog import StickyNoteHistoryDialog
 from file_search_app.ui.dialogs.sticky_note_trash_dialog import StickyNoteTrashDialog
 from file_search_app.ui.styles import bind_wheel_recursive, darken, styled_button
 
@@ -52,6 +53,11 @@ _ALL_TAGS_LABEL = "全部標籤"
 # 搜尋框每打一個字就整批砍掉重畫卡片清單會頓（便利貼一多更明顯），改成打完
 # 停頓這麼多毫秒才真的重畫；期間再按鍵就把上一個排程取消重排。
 _SEARCH_DEBOUNCE_MS = 150
+
+# 到期徽章／「只看快到期」排序是「跟現在時間比」算出來的，卡片畫好之後不會
+# 自己隨時間翻新。每這麼多毫秒檢查一次：只有真的有便利貼的到期狀態
+# （overdue／soon／無）跨過分鐘邊界翻了，才整批重畫，平常不動、不閃。
+_DUE_TICK_MS = 60_000
 
 
 class _Tooltip:
@@ -131,6 +137,8 @@ class StickyNotePanel:
         self._font_icon = tkfont.Font(family=FONT_FAMILY, size=13)
         self._toast_after_id = None
         self._refresh_after_id = None
+        self._due_tick_id = None
+        self._due_snapshot = ()
         # AI 搜尋結果是「暫時覆蓋一般關鍵字搜尋」的狀態，不是永久模式：只要
         # 搜尋框的文字被改過（不等於送出當下那句問題），_refresh() 會自動
         # 判斷失效、退回一般的關鍵字比對，不需要另外一顆「清除 AI 搜尋」按鈕。
@@ -179,6 +187,15 @@ class StickyNotePanel:
         )
         trash_btn.pack(side="right", padx=(0, 4))
         _Tooltip(trash_btn, "垃圾桶（刪除的便利貼可以在這裡復原）", font_hint)
+        history_btn = _icon_button(
+            header, "🕘", self._on_history, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_icon,
+        )
+        history_btn.pack(side="right", padx=(0, 4))
+        _Tooltip(
+            history_btn,
+            "版本記錄（自動備份；批次操作出錯、內容被覆蓋時整份還原到某個時間點）",
+            font_hint,
+        )
         export_btn = _icon_button(header, "📤", self._on_export, BTN_IMPORT_BG, BTN_IMPORT_ACTIVE, self._font_icon)
         export_btn.pack(side="right", padx=(0, 4))
         _Tooltip(export_btn, "匯出成 Markdown 文件（目前篩選出的清單）", font_hint)
@@ -275,9 +292,39 @@ class StickyNotePanel:
         )
 
         self._refresh()
+        self._schedule_due_tick()
 
     def resize(self, width: int) -> None:
         self.frame.configure(width=width)
+
+    # ── 到期狀態隨時間翻新 ───────────────────────────────────────────
+
+    @staticmethod
+    def _compute_due_snapshot(notes, soon_hours):
+        """有到期日的便利貼目前的到期狀態（id → overdue／soon／""）——tick 時
+        拿它跟上次比，一樣就什麼都不做，不同才重畫。`soon_hours` 也算進去，
+        所以在 notes-web 改了「快到期」門檻、讓某則便利貼翻頁時同樣會觸發重畫。"""
+        return tuple(
+            sorted((n.id, due_status(n.due_at, soon_hours=soon_hours)) for n in notes if n.due_at)
+        )
+
+    def _schedule_due_tick(self):
+        self._due_tick_id = self.frame.after(_DUE_TICK_MS, self._on_due_tick)
+
+    def _on_due_tick(self):
+        self._due_tick_id = None
+        if not self.frame.winfo_exists():
+            return
+        try:
+            snapshot = self._compute_due_snapshot(
+                self._service.list_notes(), self._service.due_soon_hours()
+            )
+            changed = snapshot != self._due_snapshot
+        except Exception:  # noqa: BLE001 — 讀檔失敗不該讓這個背景 tick 把面板弄壞
+            changed = False
+        if changed:
+            self._refresh()  # 會重算並更新 _due_snapshot
+        self._schedule_due_tick()
 
     # ── 清單重繪 ─────────────────────────────────────────────────────
 
@@ -296,6 +343,8 @@ class StickyNotePanel:
             self._refresh_after_id = None
 
         notes = self._service.list_notes()
+        soon_hours = self._service.due_soon_hours()
+        self._due_snapshot = self._compute_due_snapshot(notes, soon_hours)
         known_tags = self._service.known_tags(notes)
         values = [_ALL_TAGS_LABEL] + known_tags
         self._tag_filter_combo["values"] = values
@@ -323,7 +372,7 @@ class StickyNotePanel:
         # 在上」換成「最早到期在上」，這樣才看得出接下來該優先處理哪幾則；
         # due_at 是 ISO 字串，字典序排序就是時間序，不用另外解析。
         if self._due_only_var.get():
-            shown = [n for n in shown if due_status(n.due_at)]
+            shown = [n for n in shown if due_status(n.due_at, soon_hours=soon_hours)]
             shown.sort(key=lambda n: n.due_at)
 
         self._last_shown = shown  # 匯出功能沿用「目前篩選出的清單」，見 _on_export()
@@ -348,11 +397,11 @@ class StickyNotePanel:
             ).pack(fill="x", padx=8, pady=10)
         else:
             for note in shown:
-                self._build_card(note)
+                self._build_card(note, soon_hours)
 
         bind_wheel_recursive(self._inner, lambda e: self._canvas.yview_scroll(int(-e.delta / 120), "units"))
 
-    def _build_card(self, note):
+    def _build_card(self, note, soon_hours):
         color = self._service.color_for_tag(note.tag)
         border_color = darken(color, STICKY_CARD_BORDER_DARKEN)
         hover_color = darken(color, STICKY_CARD_HOVER_DARKEN)
@@ -395,11 +444,11 @@ class StickyNotePanel:
         # 底部一排：左邊「# 分類」（沒有分類就不放），右邊建立時間。時間因為
         # 「編輯視同重新建立」（見 StickyNoteService.update_note），實際上是
         # 「最後動過的時間」，剛編輯的便利貼會排到最上面。
-        status = due_status(note.due_at)
+        status = due_status(note.due_at, soon_hours=soon_hours)
         if status:
             badge_bg = STICKY_DUE_OVERDUE_BG if status == "overdue" else STICKY_DUE_SOON_BG
             badge_fg = STICKY_DUE_OVERDUE_FG if status == "overdue" else STICKY_DUE_SOON_FG
-            badge_text = f"{'⏰ 已逾期' if status == 'overdue' else '⏳ 即將到期'}　{format_due_date(note.due_at)}"
+            badge_text = f"{'⏰ 已逾期' if status == 'overdue' else '⏳ 即將到期'}　{format_due_label(note.due_at)}"
             due_badge = tk.Label(
                 card, text=badge_text, bg=badge_bg, fg=badge_fg, font=self._font_hint,
                 anchor="w", cursor="hand2",
@@ -423,6 +472,14 @@ class StickyNotePanel:
         )
         time_label.pack(side="right")
         footer_widgets.append(time_label)
+        # 釘選星號——★＝已釘選（排在清單最上面），☆＝沒釘。點它切換，不會像
+        # 點卡片其他地方那樣觸發「複製」（所以刻意不放進下面的 clickable）。
+        pin_label = tk.Label(
+            footer, text="★" if note.pinned else "☆", bg=color,
+            fg=STICKY_CARD_TEXT_COLOR if note.pinned else STICKY_CARD_META_COLOR,
+            font=self._font_hint, cursor="hand2",
+        )
+        pin_label.pack(side="right", padx=(0, 6))
 
         card.bind(
             "<Configure>",
@@ -443,6 +500,11 @@ class StickyNotePanel:
             widget.bind("<Button-3>", lambda e, n=note: self._popup_card_menu(e, n))
             widget.bind("<Enter>", _hover_on)
             widget.bind("<Leave>", _hover_off)
+
+        pin_label.bind("<Button-1>", lambda _e, n=note: self._on_toggle_pin(n))
+        pin_label.bind("<Button-3>", lambda e, n=note: self._popup_card_menu(e, n))
+        pin_label.bind("<Enter>", _hover_on)
+        pin_label.bind("<Leave>", _hover_off)
 
     # ── 互動 ─────────────────────────────────────────────────────────
 
@@ -472,10 +534,21 @@ class StickyNotePanel:
     def _popup_card_menu(self, event, note):
         menu = tk.Menu(self.frame, tearoff=0, font=self._font_hint)
         menu.add_command(label="📋 複製", command=lambda: self._copy(note))
+        menu.add_command(
+            label="📌 取消釘選" if note.pinned else "📌 釘選（排到最上面）",
+            command=lambda: self._on_toggle_pin(note),
+        )
         menu.add_separator()
         menu.add_command(label="✏️ 編輯", command=lambda: self._on_edit(note))
         menu.add_command(label="🗑️ 刪除", command=lambda: self._on_delete(note))
         menu.tk_popup(event.x_root, event.y_root)
+
+    def _on_toggle_pin(self, note):
+        """釘選／取消釘選——只動排序，不算「編輯」（不更新 created_at）。
+        AI 搜尋結果不失效：釘選只改順序、不改哪些便利貼符合，_refresh() 會
+        在新的 list_notes() 順序上重挑一次。"""
+        self._service.set_pin(note.id, not note.pinned)
+        self._refresh()
 
     def _popup_empty_menu(self, event):
         menu = tk.Menu(self.frame, tearoff=0, font=self._font_hint)
@@ -526,6 +599,12 @@ class StickyNotePanel:
     def _on_trash(self):
         StickyNoteTrashDialog(
             self.frame, self._service, self._service.color_for_tag,
+            on_change=lambda: (self._invalidate_ai_results(), self._refresh()),
+        )
+
+    def _on_history(self):
+        StickyNoteHistoryDialog(
+            self.frame, self._service,
             on_change=lambda: (self._invalidate_ai_results(), self._refresh()),
         )
 

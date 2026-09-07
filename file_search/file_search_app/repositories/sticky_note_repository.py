@@ -6,12 +6,15 @@
 import base64
 import json
 import mimetypes
+import re
 from datetime import datetime
 from pathlib import Path
 
 from file_search_app.config import INDEXES_DIR
 from file_search_app.models import StickyNote, TrashedStickyNote
+from file_search_app.repositories.atomic_io import atomic_write_text
 from file_search_app.repositories.json_store import read_json, write_json
+from file_search_app.repositories.sticky_note_history_repository import StickyNoteHistoryRepository
 
 _DEFAULT_PANEL_STATE = {"visible": True}
 
@@ -25,12 +28,19 @@ _IMAGES_DIRNAME = ".sticky_note_images"
 # 同名同格式（{"<標籤>": "#rrggbb", ...}），兩邊各自讀寫、同一份檔案。
 _TAG_COLORS_FILENAME = ".sticky_tag_colors.json"
 
+# 自訂標籤顏色只認 #rrggbb（跟 notes-web 的 HEX_COLOR_RE 同一條規則）——檔案
+# 是跟 notes-web 共用、也可能被手動編輯的，格式不對的值直接當作沒設定，不然
+# 拿去 tk 的 configure(bg=...) 會丟 TclError，一筆壞資料就讓整個便利貼面板
+# 畫不出來。
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
 
 class StickyNoteRepository:
     def __init__(self, indexes_dir: Path = INDEXES_DIR):
         self.path = indexes_dir / ".sticky_notes.json"
         self._images_dir = indexes_dir / _IMAGES_DIRNAME
         self._tag_colors_path = indexes_dir / _TAG_COLORS_FILENAME
+        self._history = StickyNoteHistoryRepository(indexes_dir)
 
     def load_tag_colors(self) -> dict:
         """標籤→自訂顏色（hex）對照表；沒有自訂過的標籤不會出現在這裡，交由
@@ -39,7 +49,10 @@ class StickyNoteRepository:
         的顯示。"""
         data = read_json(self._tag_colors_path, None)
         if isinstance(data, dict):
-            return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+            return {
+                k: v for k, v in data.items()
+                if isinstance(k, str) and isinstance(v, str) and _HEX_COLOR_RE.match(v)
+            }
         return {}
 
     def save_tag_colors(self, colors: dict) -> None:
@@ -203,6 +216,32 @@ class StickyNoteRepository:
             "trash": [self._serialize_trashed(t) for t in raw["trash"]],
             "panel": raw["panel"],
         })
+        self._history.snapshot(self.path)  # 每次實質變動存一份版本快照（時光機）
+
+    # ── 版本快照（時光機）——委派給 StickyNoteHistoryRepository ───────────
+
+    def list_snapshots(self) -> list:
+        return self._history.list_snapshots()
+
+    def restore_snapshot(self, snapshot_id: str) -> bool:
+        """把某份快照的內容寫回 `.sticky_notes.json`。回傳有沒有真的還原到。
+        還原前先把「現在」也存一份快照，所以還原本身可以再還原回去。"""
+        content = self._history.read_snapshot(snapshot_id)
+        if not content:
+            return False
+        try:
+            data = json.loads(content)
+        except ValueError:
+            return False
+        if not isinstance(data, dict) or not isinstance(data.get("notes"), list):
+            return False
+        self._history.snapshot(self.path)  # 先保住現況
+        try:
+            atomic_write_text(self.path, content)
+        except OSError:
+            return False
+        self._history.snapshot(self.path)  # 還原後的狀態也記一筆
+        return True
 
     @staticmethod
     def _parse_note(item) -> StickyNote:
@@ -229,6 +268,7 @@ class StickyNoteRepository:
             created_at=created_at,
             image=image if isinstance(image, str) else "",
             due_at=due_at if isinstance(due_at, str) else "",
+            pinned=item.get("pinned") is True,
         )
 
     @staticmethod
@@ -240,6 +280,7 @@ class StickyNoteRepository:
             "tag": note.tag,
             "image": note.image,
             "due_at": note.due_at,
+            "pinned": note.pinned,
             "created_at": note.created_at.isoformat(),
         }
 
@@ -256,7 +297,7 @@ class StickyNoteRepository:
         return TrashedStickyNote(
             id=note.id, title=note.title, body=note.body, tag=note.tag,
             created_at=note.created_at, image=note.image, due_at=note.due_at,
-            deleted_at=deleted_at,
+            pinned=note.pinned, deleted_at=deleted_at,
         )
 
     @staticmethod
@@ -268,6 +309,7 @@ class StickyNoteRepository:
             "tag": t.tag,
             "image": t.image,
             "due_at": t.due_at,
+            "pinned": t.pinned,
             "created_at": t.created_at.isoformat(),
             "deleted_at": t.deleted_at.isoformat(),
         }

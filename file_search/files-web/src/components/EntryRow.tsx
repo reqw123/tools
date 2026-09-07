@@ -1,6 +1,8 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Clipboard, Eye, FolderOpen, Pencil, Pin, SquareArrowOutUpRight, Trash2 } from 'lucide-react'
 import type { Entry, PathStat } from '../lib/api'
+import { categoryColors } from '../lib/catColor'
 import { humanSize, kindLabel, kindOf, stampOf } from '../lib/format'
 import { FilePreview } from './FilePreview'
 
@@ -74,6 +76,13 @@ export function EntryRow({
 
   const kind = kindOf(entry.ext)
   const missing = stat && !stat.exists
+
+  // 分類晶片依名稱雜湊配色（跟桌面版清單、便利貼標籤同一套色相）。
+  const chipStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!entry.category) return undefined
+    const c = categoryColors(entry.category)
+    return { '--marker': c.marker, '--marker-ink': c.ink } as CSSProperties
+  }, [entry.category])
   const previewable = ['image', 'video', 'audio', 'pdf', 'text', 'code'].includes(kind)
 
   return (
@@ -88,7 +97,11 @@ export function EntryRow({
           {entry.name}
         </span>
         {entry.parent && <span className="parent mono">{entry.parent}</span>}
-        {entry.category && <span className="chip">{entry.category}</span>}
+        {entry.category && (
+          <span className="chip" style={chipStyle}>
+            {entry.category}
+          </span>
+        )}
         {entry.description && <span className="desc">{entry.description}</span>}
         <span className="grow" />
         {missing && <span className="badge miss">檔案已不存在</span>}

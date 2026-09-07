@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
+from file_search_app.colors import hash_hsl_hex, hash_hue
 from file_search_app.models import IndexEntry, format_added_at
 from file_search_app.ui.styles import darken, icon_for, lighten
 
@@ -47,3 +48,15 @@ def test_lighten_darken_are_inverse_ish():
 def test_icon_for_known_and_unknown():
     assert icon_for("x.pdf") != icon_for("x.unknownext")
     assert icon_for("x.PDF") == icon_for("x.pdf")  # 副檔名比對不分大小寫
+
+
+def test_hash_color_is_stable_and_deterministic():
+    # 同一個字串永遠同一個顏色（不是內建 hash()，不受啟動隨機化影響）
+    assert hash_hsl_hex("研究", 0.55, 0.55) == hash_hsl_hex("研究", 0.55, 0.55)
+    assert 0.0 <= hash_hue("研究") < 1.0
+    c = hash_hsl_hex("工作", 0.55, 0.62)
+    assert c.startswith("#") and len(c) == 7
+    assert int(c[1:], 16) >= 0  # 合法 hex
+    # 已知值——跟 files-web/src/lib/catColor.ts 交叉驗過，改公式時會抓到
+    assert hash_hsl_hex("研究", 0.55, 0.55) == "#a74dcb"
+    assert hash_hsl_hex("研究", 0.28, 0.6) == "#591c72"

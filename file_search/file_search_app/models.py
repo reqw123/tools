@@ -68,6 +68,10 @@ class StickyNote:
     # ISO 格式（含時間，見 sticky_note_service.parse_due_date），空字串代表
     # 沒有到期日。純視覺提示用，不觸發任何主動通知。
     due_at: str = ""
+    # 釘選——不管到期日/建立時間，永遠排在清單最上面。切換釘選「不」算
+    # 「編輯」，不更新 created_at（跟 image 一樣是附加狀態）。跟 notes-web
+    # 共用同一個 pinned 欄位。
+    pinned: bool = False
 
 
 @dataclass
@@ -88,6 +92,7 @@ class TrashedStickyNote:
     image: str
     deleted_at: datetime
     due_at: str = ""
+    pinned: bool = False
 
 
 @dataclass

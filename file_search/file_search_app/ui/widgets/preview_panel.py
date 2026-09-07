@@ -54,6 +54,10 @@ class PreviewPanel:
         self._font_text_size = PREVIEW_TEXT_DEFAULT_SIZE
         self._font_text = tkfont.Font(family=FONT_FAMILY, size=self._font_text_size)
 
+        # 目前搜尋框裡的關鍵字——文字／轉錄預覽會把命中的地方標黃、捲到第一處，
+        # 讓「這個檔案是因為內文提到才出現在清單」一眼看得到在哪。
+        self._search_term = ""
+
         # 每次 show_entry() 就 +1；背景擷取文字的結果回來時比對序號，選取已經
         # 換過（或面板已經在顯示別的東西）就直接丟掉，不會把 A 檔的內容貼到
         # 目前選的 B 檔上。
@@ -81,6 +85,7 @@ class PreviewPanel:
         )
         text_scroll = ttk.Scrollbar(self._text_frame, orient="vertical", command=self._text.yview)
         self._text.configure(yscrollcommand=text_scroll.set)
+        self._text.tag_configure("search_hit", background="#ffe58f")
         self._text.pack(side="left", fill="both", expand=True)
         text_scroll.pack(side="right", fill="y")
         # 滑鼠移到預覽文字上時，Ctrl+滾輪也能縮放字級——跟 VS Code 一樣的手感。
@@ -143,6 +148,7 @@ class PreviewPanel:
         )
         transcript_scroll = ttk.Scrollbar(transcript_body, orient="vertical", command=self._transcript_text.yview)
         self._transcript_text.configure(yscrollcommand=transcript_scroll.set)
+        self._transcript_text.tag_configure("search_hit", background="#ffe58f")
         self._transcript_text.pack(side="left", fill="both", expand=True)
         transcript_scroll.pack(side="right", fill="y")
         self._transcript_text.bind("<Control-MouseWheel>", self._on_ctrl_wheel)
@@ -252,6 +258,38 @@ class PreviewPanel:
         self.media_panel.load_media(path)
         self._set_mode("media")
 
+    def set_search_term(self, term: str) -> None:
+        """搜尋框內容變了就叫一次——文字／轉錄預覽把命中的地方標黃、捲到第一處。
+        關鍵字太短（<2 字）不標，避免整頁螢光。"""
+        term = (term or "").strip()
+        if term == self._search_term:
+            return
+        self._search_term = term
+        if self._mode == "text":
+            self._apply_highlight(self._text)
+        elif self._mode == "transcript":
+            self._apply_highlight(self._transcript_text)
+
+    def _apply_highlight(self, widget) -> None:
+        widget.tag_remove("search_hit", "1.0", "end")
+        term = self._search_term
+        if len(term) < 2:
+            return
+        first = None
+        idx = "1.0"
+        count = tk.IntVar(master=widget)
+        while True:
+            pos = widget.search(term, idx, stopindex="end", nocase=True, count=count)
+            if not pos or count.get() <= 0:
+                break
+            end = f"{pos}+{count.get()}c"
+            widget.tag_add("search_hit", pos, end)
+            if first is None:
+                first = pos
+            idx = end
+        if first is not None:
+            widget.see(first)
+
     def show_entry(self, entry) -> None:
         # 序號 +1：任何還在背景跑的文字擷取，結果回來時都會因序號對不上而作廢。
         self._extract_seq += 1
@@ -357,6 +395,7 @@ class PreviewPanel:
             self._text.insert("1.0", text)
             self._text.configure(state="disabled")
             self._set_mode("text")
+            self._apply_highlight(self._text)
             return
 
         self._image_label.configure(text=icon_for(str(p)), font=("Segoe UI Emoji", 48))
@@ -403,6 +442,7 @@ class PreviewPanel:
             self._transcript_text.delete("1.0", "end")
             self._transcript_text.insert("1.0", cached_text)
             self._transcript_text.configure(state="disabled")
+            self._apply_highlight(self._transcript_text)
         else:
             self._transcribe_btn.configure(text="🎙️ 轉錄")
             self._view_transcript_btn.pack_forget()

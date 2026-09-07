@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { noteThumbUrl, type Note as NoteT } from '../lib/api'
 import { paperVars } from '../lib/color'
-import { dueStatus, fromStoredDueAt, seedOf, stamp, tiltOf } from '../lib/format'
-import { useReminderSettings, useTagColors } from '../hooks/useNotes'
+import { dueLabel, dueStatus, seedOf, stamp, tiltOf } from '../lib/format'
+import {
+  useAppSettings, useReminderSettings, useSetNotePinned, useTagColors, useToggleNoteLine,
+} from '../hooks/useNotes'
 import { Body } from './Body'
 
 const EDGE_MARGIN = 24 // 拖到離視窗邊緣多近算「要彈出去變懸浮視窗」
@@ -15,6 +17,7 @@ export function Note({
   onOpen,
   floatable,
   onDragOut,
+  onGeometryChange,
 }: {
   note: NoteT
   index: number
@@ -22,6 +25,8 @@ export function Note({
   /** 只有桌面牆（Electron）才有這個能力——一般瀏覽器完全不掛這組手勢。 */
   floatable?: boolean
   onDragOut?: (note: NoteT, rect: DOMRect) => void
+  /** 拖曳結束後把 inline 定位樣式清掉了，通知牆重排（列 masonry 重新定位這張）。 */
+  onGeometryChange?: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const drag = useRef<DragState | null>(null)
@@ -31,9 +36,12 @@ export function Note({
   const rot = tiltOf(seed)
   const usePin = seed % 3 === 2
   const { data: tagColors } = useTagColors()
-  const style = paperVars(note.tag, rot, index, tagColors)
+  const { data: appSettings } = useAppSettings()
+  const style = paperVars(note.tag, rot, index, tagColors, appSettings?.defaultNoteColor)
   const { data: reminderSettings } = useReminderSettings()
   const due = dueStatus(note.due_at, reminderSettings?.dueSoonHours)
+  const toggleLine = useToggleNoteLine()
+  const setPinned = useSetNotePinned()
 
   const open = () => {
     // 剛剛在拖（不管有沒有真的拖出去），這次 click 是拖曳動作的副產物，
@@ -71,6 +79,8 @@ export function Note({
       el.style.top = ''
       el.style.width = ''
       el.classList.remove('dragging-out', 'will-pop')
+      // 留在牆上的那則剛被清掉 left/top/width，通知牆用列 masonry 重新定位它。
+      onGeometryChange?.()
     }
 
     const onMove = (e: MouseEvent) => {
@@ -106,7 +116,7 @@ export function Note({
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
     }
-  }, [floatable, note, onDragOut])
+  }, [floatable, note, onDragOut, onGeometryChange])
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (!floatable || !onDragOut) return
@@ -125,6 +135,7 @@ export function Note({
       role="button"
       tabIndex={0}
       data-note-id={note.id}
+      data-tag={note.tag}
       onMouseDown={onMouseDown}
       onClick={open}
       onKeyDown={(e) => {
@@ -137,6 +148,20 @@ export function Note({
     >
       {usePin ? <span className="pin" aria-hidden /> : <span className="tape" aria-hidden />}
       <span className="curl" aria-hidden />
+      <button
+        type="button"
+        className={`pin-toggle${note.pinned ? ' on' : ''}`}
+        aria-pressed={note.pinned}
+        aria-label={note.pinned ? '取消釘選' : '釘選到最上面'}
+        title={note.pinned ? '取消釘選' : '釘選到最上面'}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation()
+          setPinned.mutate({ id: note.id, pinned: !note.pinned })
+        }}
+      >
+        {note.pinned ? '★' : '☆'}
+      </button>
       <h3>{note.title}</h3>
       {note.image && (
         <img
@@ -150,10 +175,14 @@ export function Note({
           draggable={false}
         />
       )}
-      <Body text={note.body} limit={5} />
+      <Body
+        text={note.body}
+        limit={5}
+        onToggleLine={(srcIndex) => toggleLine.mutate({ id: note.id, srcIndex })}
+      />
       {due && (
         <p className={`due-badge ${due}`}>
-          {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{fromStoredDueAt(note.due_at)}
+          {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{dueLabel(note.due_at)}
         </p>
       )}
       <footer>

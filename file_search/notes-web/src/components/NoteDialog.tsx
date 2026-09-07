@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { noteImageUrl, type Note, type NoteInput } from '../lib/api'
 import { paperVars } from '../lib/color'
-import { dueStatus, fromStoredDueAt, stamp } from '../lib/format'
+import { dueLabel, dueStatus, stamp } from '../lib/format'
 import {
+  useAppSettings,
   useCreateNote,
   useDeleteNote,
   useNotes,
   useReminderSettings,
   useRemoveNoteImage,
   useSetNoteImage,
+  useSetNotePinned,
   useTagColors,
+  useToggleNoteLine,
   useUpdateNote,
 } from '../hooks/useNotes'
 import { Body } from './Body'
@@ -84,6 +87,8 @@ export function NoteDialog({
   const create = useCreateNote()
   const update = useUpdateNote()
   const remove = useDeleteNote()
+  const toggleLine = useToggleNoteLine()
+  const setPinned = useSetNotePinned()
   const setImage = useSetNoteImage()
   const removeImage = useRemoveNoteImage()
 
@@ -133,7 +138,8 @@ export function NoteDialog({
 
   const tag = mode === 'new' ? '' : (note?.tag ?? '')
   const { data: tagColors } = useTagColors()
-  const style = paperVars(tag, 0, undefined, tagColors)
+  const { data: appSettings } = useAppSettings()
+  const style = paperVars(tag, 0, undefined, tagColors, appSettings?.defaultNoteColor)
 
   const submit = (input: NoteInput) => {
     if (mode === 'new') {
@@ -203,10 +209,13 @@ export function NoteDialog({
                 onDoubleClick={() => setZoomed(true)}
               />
             )}
-            <Body text={note.body} />
+            <Body
+              text={note.body}
+              onToggleLine={(srcIndex) => toggleLine.mutate({ id: note.id, srcIndex })}
+            />
             {due && (
               <p className={`due-badge ${due}`}>
-                {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{fromStoredDueAt(note.due_at)}
+                {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{dueLabel(note.due_at)}
               </p>
             )}
             <footer>
@@ -217,6 +226,13 @@ export function NoteDialog({
             <div className="sheet-actions">
               <button className="btn ghost" onClick={() => setMode('edit')}>
                 編輯
+              </button>
+              <button
+                className="btn ghost"
+                aria-pressed={note.pinned}
+                onClick={() => setPinned.mutate({ id: note.id, pinned: !note.pinned })}
+              >
+                {note.pinned ? '★ 取消釘選' : '☆ 釘選'}
               </button>
               <button
                 className="btn ghost"

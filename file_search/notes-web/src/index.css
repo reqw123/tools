@@ -360,28 +360,53 @@ body {
 }
 
 /* ─── the wall ──────────────────────────────────────────────────── */
+/* 版面由 Wall.tsx 量完高度後用 inline left/top/width 排（.is-masonry）：
+   column-major「大致等高」——照 notes 的順序把第一欄從上疊到接近平均高度
+   才換下一欄，每欄內部完全緊貼、上下便利貼一路銜接不留空白（跟以前 CSS
+   `columns` 同一種視覺，但精準、沒有分欄破口）。「看全部」時 App 已把
+   notes 依分類排好序（釘選在最前），同色系因此落在同一直行。
+   下面的 CSS Grid 只是 JS 沒跑時（理論上不會）的保底樣式。 */
 .wall {
   max-width: 1180px;
   margin: 0 auto;
   padding: clamp(1.5rem, 5vw, 3rem) clamp(1.25rem, 5vw, 3rem) 1rem;
-  columns: 4 240px;
-  column-gap: 1.9rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--wall-min-col, 240px)), 1fr));
+  gap: 1.9rem;
+  align-items: start;
 }
-@media (max-width: 1180px) {
-  .wall {
-    columns: 3 240px;
+.wall.is-masonry {
+  display: block;
+  position: relative;
+  gap: 0;
+}
+/* 只有 .wall 的「直接子」.note 走絕對定位（釘選的包在 .pinned-row 裡，
+   維持一般 flow）。 */
+.wall.is-masonry > .note {
+  position: absolute;
+  /* left / top / width 由 Wall.tsx 依實測高度寫成 inline style */
+}
+@media (prefers-reduced-motion: no-preference) {
+  .wall.is-masonry.masonry-ready > .note {
+    transition:
+      left 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+      top 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 }
-@media (max-width: 860px) {
-  .wall {
-    columns: 2 220px;
-  }
+
+/* 釘選便利貼——頂端一列，由左到右，一般的 flex 換行。留在正常 flow 裡
+   （不絕對定位），所以它就落在 .wall 內距的最上緣；下面 column-major 的
+   內容由 Wall.tsx 量到它的高度後，從它底部＋一段間距往下接。 */
+.pinned-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.9rem;
+  align-items: flex-start;
+  grid-column: 1 / -1; /* JS 沒跑、.wall 還是 grid 時，這一列橫跨整排 */
 }
-@media (max-width: 560px) {
-  .wall {
-    columns: 1;
-    column-gap: 0;
-  }
+.pinned-row .note {
+  flex: 1 1 220px;
+  max-width: 340px;
 }
 
 .note {
@@ -389,7 +414,7 @@ body {
   break-inside: avoid;
   display: block;
   width: 100%;
-  margin: 0 0 1.9rem;
+  margin: 0;
   padding: 1.15rem 1.15rem 1.3rem;
   position: relative;
   text-align: left;
@@ -514,6 +539,34 @@ body {
   margin: 0.35rem 0 0.6rem;
   text-wrap: balance;
 }
+/* 釘選星號——絕對定位在右上角，不佔版面。沒釘選時淡淡的，hover 卡片才明顯；
+   已釘選一律金色常駐。 */
+.pin-toggle {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 2;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--paper-ink) 40%, transparent);
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, transform 0.12s;
+}
+.note:hover .pin-toggle,
+.pin-toggle:focus-visible {
+  opacity: 1;
+}
+.pin-toggle:hover {
+  transform: scale(1.15);
+}
+.pin-toggle.on {
+  opacity: 1;
+  color: #e0a400;
+}
 .note .para {
   margin: 0;
   font-size: 0.92rem;
@@ -592,6 +645,26 @@ body {
   margin-top: 2px;
   border: 1.5px solid color-mix(in srgb, var(--paper-ink) 55%, transparent);
   border-radius: 3px;
+}
+/* 可點的方框（牆上／詳細視窗給了 onToggleLine 時）——外觀跟裝飾用的
+   <b class="box"> 一致，多一組 hover 與勾選態。 */
+.lines .task button.box {
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.lines .task button.box:hover {
+  border-color: var(--paper-ink);
+  background: color-mix(in srgb, var(--paper-ink) 14%, transparent);
+}
+.lines .task.done .box {
+  background: color-mix(in srgb, var(--paper-ink) 62%, transparent);
+  border-color: color-mix(in srgb, var(--paper-ink) 62%, transparent);
+}
+.lines .task.done > span {
+  text-decoration: line-through;
+  opacity: 0.5;
 }
 .lines .fld {
   display: flex;
@@ -832,7 +905,8 @@ body {
   color: color-mix(in srgb, var(--paper-ink) 78%, transparent);
 }
 .form input,
-.form textarea {
+.form textarea,
+.form select {
   font: inherit;
   font-size: 0.95rem;
   color: var(--paper-ink);
@@ -848,15 +922,19 @@ body {
 }
 :root[data-theme='dark'] .form input,
 :root[data-theme='dark'] .form textarea,
+:root[data-theme='dark'] .form select,
 :root:not([data-theme='light']) .form input,
-:root:not([data-theme='light']) .form textarea {
+:root:not([data-theme='light']) .form textarea,
+:root:not([data-theme='light']) .form select {
   background: rgba(255, 255, 255, 0.14);
   border-color: rgba(255, 255, 255, 0.2);
 }
 .form input:focus,
-.form textarea:focus {
+.form textarea:focus,
+.form select:focus {
   border-color: var(--paper-ink);
 }
+.form select:disabled { opacity: 0.55; cursor: default; }
 .form textarea {
   min-height: 8.5rem;
   resize: vertical;
@@ -873,9 +951,13 @@ body {
   gap: 0.4rem;
   flex-wrap: wrap;
 }
-.due-row input[type='date'] {
+.due-row input[type='date'],
+.due-row input[type='time'] {
   width: auto;
   flex: 0 1 auto;
+}
+.due-row input[type='time']:disabled {
+  opacity: 0.5;
 }
 
 /* 分類欄旁邊的自訂顏色色塊——.tag-color-row-input 讓 TagInput 的外層
@@ -1073,12 +1155,14 @@ body {
   width: auto !important;
   accent-color: var(--brass);
 }
-.sheet.plain .form input {
+.sheet.plain .form input,
+.sheet.plain .form select {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   border-color: var(--hair);
   color: var(--ink);
 }
-.sheet.plain .form input:focus {
+.sheet.plain .form input:focus,
+.sheet.plain .form select:focus {
   border-color: var(--brass);
 }
 .ok-msg {
@@ -1162,8 +1246,128 @@ body {
   gap: 0.4rem;
   align-items: stretch;
 }
-.model-row input { flex: 1; min-width: 0; }
+.model-row input,
+.model-row select { flex: 1; min-width: 0; }
 .model-row .btn { white-space: nowrap; flex: none; }
+
+/* ─── 全域設定對話框（分頁 + 標籤排序 + 外觀）─────────────────────── */
+.settings-sheet {
+  width: min(38rem, 100%);
+  max-height: min(82vh, 46rem);
+  overflow-y: auto;
+}
+.tab-row {
+  display: flex;
+  gap: 0.3rem;
+  margin: 0.6rem 0 1rem;
+  border-bottom: 1px solid var(--hair);
+}
+.tab-row .tab {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0.5rem 0.85rem;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tab-row .tab:hover { color: var(--ink); }
+.tab-row .tab.on {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--brass);
+}
+
+.tag-sort .mode-row {
+  border: 1px solid var(--hair);
+  border-radius: 3px;
+  padding: 0.7rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.tag-sort .mode-row legend {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 0 0.3rem;
+}
+.tag-sort .mode-row .radio { align-items: flex-start !important; }
+.tag-sort .mode-row .radio > span { display: flex; flex-direction: column; }
+.tag-sort .mode-row .hint { display: block; }
+
+.tag-sort-list {
+  max-height: 42vh;
+  overflow-y: auto;
+  margin-top: 0.2rem;
+}
+.tag-sort-list .list-head {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.tag-sort-list .list-head:first-child { margin-top: 0.2rem; }
+.tag-sort-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.tag-sort-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--hair);
+  border-radius: 3px;
+  font-size: 0.86rem;
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.tag-sort-list li.rest { background: none; border-style: dashed; }
+.tag-sort-list li.dim { border: 0; background: none; }
+.tag-sort-list .tag-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  flex: none;
+}
+.tag-sort-list .tag-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tag-sort-list .tag-n {
+  font: 0.75rem 'IBM Plex Mono', ui-monospace, monospace;
+  color: var(--ink-soft);
+}
+.tag-sort-list .row-actions { display: flex; gap: 0.2rem; flex: none; }
+.tag-sort-list .row-actions .btn.sm {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.appearance .swatch-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+.appearance .swatch-row > span:first-child { display: flex; flex-direction: column; }
+.appearance .swatch-controls { display: flex; align-items: center; gap: 0.5rem; flex: none; }
+.sheet.plain .appearance .swatch-controls input.tag-color-swatch {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--hair);
+  border-radius: 3px;
+  cursor: pointer;
+  background: none;
+}
 
 .bd-controls {
   display: flex;

@@ -93,6 +93,12 @@ STICKY_AI_SEARCH_LARGE_NOTE_COUNT = 30
 STICKY_TAG_SATURATION = 0.55
 STICKY_TAG_LIGHTNESS = 0.82
 STICKY_NEUTRAL_COLOR = "#e5e7eb"
+
+# 索引清單「分類」欄的色點——每個分類依名稱雜湊配一個固定色（跟便利貼標籤
+# 同一套 file_search_app.colors.hash_hsl_hex 公式，只是實心小圓點不是粉彩
+# 卡片，用得比便利貼稍微飽和一點才看得清楚）。跨次啟動、跨 files-web 都一致。
+INDEX_CHIP_LIGHTNESS = 0.55
+INDEX_CHIP_SATURATION = 0.62
 STICKY_CARD_TEXT_COLOR = "#1f2937"
 # 卡片底部那排「# 分類 ── 建立時間」的次要文字色——比正文淡，但在所有粉彩
 # 底色（亮度 0.82）上都還讀得清楚。
@@ -120,9 +126,16 @@ STICKY_TOAST_FG = "#166534"
 STICKY_TOOLTIP_BG = "#1f2937"
 STICKY_TOOLTIP_FG = "#ffffff"
 
-# 到期日提醒——純視覺提示，不主動跳通知。到期日在今天（含）之前算逾期，
-# 之後 STICKY_DUE_SOON_DAYS 天內算「快到期」，兩者以外算「還早」不特別標色。
-STICKY_DUE_SOON_DAYS = 2
+# 到期日提醒——純視覺提示，不主動跳通知。到期日存成「當天 23:59:59」（沒填
+# 時間時，見 sticky_note_service.parse_due_date），所以「今天」到期的要等一整天
+# 過完、到期時刻真的過了才算逾期（due < now）；還沒到期、但在「快到期」門檻
+# 小時數內的算「快到期」，更早的算「還早」不特別標色。
+#
+# 「快到期」的門檻由 notes-web 的「⏰ 提醒設定」對話框寫進
+# indexes/.notes_settings.json（{"dueSoonHours": N}）；桌面版透過
+# NotesSettingsRepository 讀同一份值（唯讀），兩邊看到的「快到期」定義才一致。
+# 下面這個常數只是「設定檔還不存在時的預設」（48 小時＝2 天）。
+STICKY_DUE_SOON_HOURS_DEFAULT = 48
 STICKY_DUE_OVERDUE_BG = "#fecaca"
 STICKY_DUE_OVERDUE_FG = "#991b1b"
 STICKY_DUE_SOON_BG = "#fde68a"
@@ -179,6 +192,14 @@ BTN_COPY_ACTIVE = "#b91c5c"
 #     選到磁碟機根目錄時掃描無限跑下去。
 SCAN_SOFT_LIMIT = 1_000
 SCAN_HARD_LIMIT = 500_000
+
+# 監看資料夾（未收錄徽章）——主視窗在背景掃「常用資料夾清單」，數出還沒被
+# 任何索引集收錄的檔案，在工具列亮一個「N 個檔案未收錄」徽章、點一下就開
+# 「找出未收錄檔案」。求快：只算有分類的副檔名（文件/圖片/媒體/壓縮那些，
+# 排除 .exe/.log/暫存等雜訊），掃到這個檔案數就停（比 SCAN_HARD_LIMIT 低很多）。
+WATCH_SCAN_CAP = 50_000
+# 兩次背景檢查之間至少隔這麼久（視窗取得焦點也會觸發，但不會太頻繁）。
+WATCH_RECHECK_SECONDS = 90
 
 # 副檔名 → 圖示，純粹方便掃視清單時快速分辨檔案類型，不影響搜尋/開啟邏輯。
 EXT_ICON = {

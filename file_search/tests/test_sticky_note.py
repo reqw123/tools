@@ -21,6 +21,13 @@ def test_preview_text_first_two_nonblank_lines():
     assert preview_text("   \n  ") == ""
 
 
+def test_preview_text_cleans_notes_web_task_markers():
+    # notes-web 在內文行首用 [x]/[ ] 記待辦勾選——桌面預覽把它換掉不要原樣秀
+    assert preview_text("[x] 買牛奶\n[ ] 寄包裹") == "✓ 買牛奶\n寄包裹"
+    assert preview_text("- [x] 打電話\n1. [ ] 交報告") == "- ✓ 打電話\n1. 交報告"
+    assert preview_text("[note] 這不是勾選標記") == "[note] 這不是勾選標記"
+
+
 # ── CRUD via mutate ────────────────────────────────────────────────
 
 def test_add_list_update_delete(data_dir):
@@ -520,7 +527,16 @@ def test_parse_document_to_note_response_unparseable(data_dir):
 def test_parse_due_date_empty_and_valid():
     assert parse_due_date("") == ""
     assert parse_due_date("  ") == ""
+    # 時間留空 → 當天 23:59:59（跟舊版「只能填日期」時完全一致）
     assert parse_due_date("2026-09-10") == "2026-09-10T23:59:59"
+    assert parse_due_date("2026-09-10", "") == "2026-09-10T23:59:59"
+
+
+def test_parse_due_date_with_time_is_minute_precise():
+    assert parse_due_date("2026-09-10", "09:00") == "2026-09-10T09:00:00"
+    assert parse_due_date("2026-09-10", " 23:05 ") == "2026-09-10T23:05:00"
+    # 日期留空 → 不管有沒有時間都算「沒有到期日」
+    assert parse_due_date("", "09:00") == ""
 
 
 def test_parse_due_date_invalid_raises():
@@ -529,12 +545,33 @@ def test_parse_due_date_invalid_raises():
         assert False, "應該要拋出 ValueError"
     except ValueError:
         pass
+    try:
+        parse_due_date("2026-09-10", "25:99")  # 時間格式不對也要擋下來
+        assert False, "應該要拋出 ValueError"
+    except ValueError:
+        pass
 
 
-def test_format_due_date_round_trips_and_tolerates_junk():
+def test_format_due_date_and_time_round_trip_and_tolerate_junk():
+    from file_search_app.services.sticky_note_service import (
+        format_due_label, format_due_time,
+    )
+
     assert format_due_date("") == ""
     assert format_due_date(parse_due_date("2026-09-10")) == "2026-09-10"
     assert format_due_date("garbage") == ""  # 壞資料不炸掉，當作沒有到期日
+
+    # 23:59:59 是「沒指定時間」哨兵——時間欄留空、徽章只秀日期。
+    eod = parse_due_date("2026-09-10")
+    assert format_due_time(eod) == ""
+    assert format_due_label(eod) == "2026-09-10"
+    assert format_due_time("garbage") == ""
+
+    # 有指定時間 → 時間欄帶回 HH:MM、徽章秀「日期 HH:MM」。
+    timed = parse_due_date("2026-09-10", "09:30")
+    assert format_due_time(timed) == "09:30"
+    assert format_due_label(timed) == "2026-09-10 09:30"
+    assert format_due_label("") == ""
 
 
 def test_due_status_classifies_overdue_soon_later():
@@ -546,8 +583,22 @@ def test_due_status_classifies_overdue_soon_later():
     soon = parse_due_date("2026-09-07")
     later = parse_due_date("2026-09-20")
     assert due_status(overdue, now=now) == "overdue"
-    assert due_status(soon, now=now) == "soon"
+    assert due_status(soon, now=now) == "soon"  # 預設門檻 48h（＝2 天）內
     assert due_status(later, now=now) == ""
+
+
+def test_due_status_honors_soon_hours_param():
+    from datetime import datetime
+
+    now = datetime(2026, 9, 6, 12, 0, 0)
+    # 到期時刻在 ~3.5 天後（2026-09-10 09:00）
+    target = parse_due_date("2026-09-10", "09:00")
+    assert due_status(target, now=now) == ""              # 預設 48h → 還早
+    assert due_status(target, now=now, soon_hours=24) == ""   # 24h → 還早
+    assert due_status(target, now=now, soon_hours=24 * 7) == "soon"  # 一週門檻 → 快到期
+    # 逾期不受 soon_hours 影響
+    past = parse_due_date("2026-09-05")
+    assert due_status(past, now=now, soon_hours=1) == "overdue"
 
 
 def test_add_and_update_note_carry_due_at(data_dir):
@@ -574,3 +625,149 @@ def test_due_at_persists_across_repository_reload(data_dir):
     s.add_note("A", "", "", parse_due_date("2026-09-10"))
     reloaded = svc(data_dir)
     assert reloaded.list_notes()[0].due_at == "2026-09-10T23:59:59"
+
+
+def test_due_soon_hours_reads_notes_web_settings_file(data_dir):
+    import json
+
+    s = svc(data_dir)
+    # 設定檔還不存在 → 預設 48
+    assert s.due_soon_hours() == 48
+
+    # notes-web 寫的 .notes_settings.json（同一個資料夾、同一個 key）
+    (data_dir / ".notes_settings.json").write_text(
+        json.dumps({"dueSoonHours": 168}), encoding="utf-8"
+    )
+    assert s.due_soon_hours() == 168  # 每次呼叫重讀，馬上跟上
+
+    # 壞掉的值 → 安靜退回預設，不拋例外
+    (data_dir / ".notes_settings.json").write_text("{ not json", encoding="utf-8")
+    assert s.due_soon_hours() == 48
+    (data_dir / ".notes_settings.json").write_text(
+        json.dumps({"dueSoonHours": -5}), encoding="utf-8"
+    )
+    assert s.due_soon_hours() == 48
+
+
+# ── 釘選 ───────────────────────────────────────────────────────────
+
+def _seed_notes(data_dir, rows):
+    """rows: [(id, title, created_at_iso, pinned), ...]，直接寫 .sticky_notes.json，
+    才能給每筆一個明確的 created_at（add_note 連跑幾次時間戳會撞在一起）。"""
+    import json
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / ".sticky_notes.json").write_text(json.dumps({
+        "notes": [
+            {"id": i, "title": t, "body": "", "tag": "", "image": "",
+             "due_at": "", "pinned": p, "created_at": c}
+            for i, t, c, p in rows
+        ],
+        "trash": [], "panel": {"visible": True},
+    }), encoding="utf-8")
+    return svc(data_dir)
+
+
+def test_pin_sorts_to_top_and_does_not_bump_created_at(data_dir):
+    s = _seed_notes(data_dir, [
+        ("a", "A", "2026-01-01T10:00:00", False),
+        ("b", "B", "2026-01-01T11:00:00", False),
+        ("c", "C", "2026-01-01T12:00:00", False),
+    ])
+    assert [n.title for n in s.list_notes()] == ["C", "B", "A"]  # created_at 由新到舊
+
+    assert s.set_pin("a", True) is True
+    assert s.set_pin("a", True) is False   # 已經是釘選 → 不重複寫、回 False
+    notes = s.list_notes()
+    assert [n.title for n in notes] == ["A", "C", "B"]           # 釘選排到最上面
+    assert notes[0].created_at.isoformat() == "2026-01-01T10:00:00"  # created_at 沒被動過
+
+    assert s.set_pin("a", False) is True
+    assert [n.title for n in s.list_notes()] == ["C", "B", "A"]
+    assert s.set_pin("no-such-id", True) is False
+
+
+def test_pin_group_keeps_created_at_order(data_dir):
+    s = _seed_notes(data_dir, [
+        ("a", "A", "2026-01-01T10:00:00", True),
+        ("b", "B", "2026-01-01T11:00:00", False),
+        ("c", "C", "2026-01-01T12:00:00", True),
+    ])
+    # 釘選群組內部仍依 created_at 由新到舊（C 比 A 新），未釘選的 B 墊底
+    assert [n.title for n in s.list_notes()] == ["C", "A", "B"]
+
+
+def test_pin_survives_trash_restore_reload_and_export_import(data_dir):
+    s = _seed_notes(data_dir, [("a", "A", "2026-01-01T10:00:00", True)])
+
+    s.delete_note("a")
+    assert s.list_trash()[0].pinned is True
+    s.restore_note("a")
+    assert s.list_notes()[0].pinned is True
+
+    assert svc(data_dir).list_notes()[0].pinned is True  # 重新載入 repo 也還在
+
+    other = svc(data_dir / "other")
+    other.import_json(s.export_json(s.list_notes()))
+    assert other.list_notes()[0].pinned is True
+
+
+# ── 版本快照（時光機）───────────────────────────────────────────────
+
+def test_history_snapshots_each_change_and_restores(data_dir):
+    s = svc(data_dir)
+    s.add_note("A", "v1", "")
+    s.add_note("B", "v1", "")
+    n = s.list_notes()[0]  # B (最新)
+    s.update_note(n.id, "B", "v2 內容改過", "")
+
+    hist = s.list_history()
+    assert len(hist) == 3                       # 三次寫入 → 三個版本
+    assert hist[0]["taken_at"] >= hist[1]["taken_at"] >= hist[2]["taken_at"]  # 最新在前
+    assert hist[0]["note_count"] == 2
+    assert hist[-1]["note_count"] == 1          # 最舊的那份只有 A
+
+    # 還原到「只有 A」那個版本
+    assert s.restore_snapshot(hist[-1]["id"]) is True
+    titles = [x.title for x in s.list_notes()]
+    assert titles == ["A"]
+
+    # 還原前的狀態有被自動存起來 → 可以再還原回去（B 帶著 v2 內容）
+    hist2 = s.list_history()
+    two_notes = next(h for h in hist2 if h["note_count"] == 2)
+    assert s.restore_snapshot(two_notes["id"]) is True
+    b = next(x for x in s.list_notes() if x.title == "B")
+    assert b.body == "v2 內容改過"
+
+
+def test_history_ignores_panel_only_change_and_dedups(data_dir):
+    s = svc(data_dir)
+    s.add_note("A", "", "")
+    before = len(s.list_history())
+    s.save_panel_visible(False)      # 只動 panel
+    s.save_panel_visible(True)
+    assert len(s.list_history()) == before   # 沒有新版本
+
+
+def test_history_prunes_to_max(data_dir):
+    from file_search_app.repositories.sticky_note_history_repository import (
+        MAX_SNAPSHOTS, StickyNoteHistoryRepository,
+    )
+
+    s = svc(data_dir)
+    for i in range(MAX_SNAPSHOTS + 8):
+        s.add_note(f"note-{i}", f"body-{i}", "")   # 每次都是不同內容
+    hist = s.list_history()
+    assert len(hist) == MAX_SNAPSHOTS             # 舊的被砍掉，只留最新 40 份
+    assert hist[0]["note_count"] == MAX_SNAPSHOTS + 8
+
+    repo = StickyNoteHistoryRepository(indexes_dir=data_dir)
+    assert repo.read_snapshot("../../etc/passwd") == ""   # 擋路徑穿越
+    assert repo.read_snapshot("not-a-stamp") == ""
+
+
+def test_restore_snapshot_rejects_bad_id(data_dir):
+    s = svc(data_dir)
+    s.add_note("A", "", "")
+    assert s.restore_snapshot("nope") is False
+    assert s.restore_snapshot("20260101T000000000000") is False  # 格式對但檔案不存在

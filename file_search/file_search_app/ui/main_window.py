@@ -5,6 +5,7 @@ MediaController／platform.file_actions 完成。"""
 
 import queue
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, font as tkfont, messagebox, ttk
@@ -26,7 +27,7 @@ from file_search_app.config import (
     INDEXES_DIR, MEDIA_EXTS, MEDIA_SEEK_SECONDS_MAX, MEDIA_SEEK_SECONDS_MIN,
     PREVIEW_DEFAULT_WIDTH, PREVIEW_GRIP_WIDTH, PREVIEW_MIN_WIDTH,
     STICKY_GRIP_WIDTH, STICKY_PANEL_DEFAULT_WIDTH, STICKY_PANEL_MIN_WIDTH,
-    STICKY_REVEAL_HANDLE_WIDTH, TREE_MIN_WIDTH,
+    STICKY_REVEAL_HANDLE_WIDTH, TREE_MIN_WIDTH, WATCH_RECHECK_SECONDS,
 )
 from file_search_app.media.media_controller import MediaController
 from file_search_app.platform import file_actions
@@ -131,6 +132,9 @@ class MainWindow(_BaseTk):
         self._filter_after_id = None
         self._entry_cache = {}       # path_str -> {mtime,size,hash,text}，牽涉到的索引集內容快取合併
         self._current_index_path = None  # None 且選單顯示「全部索引」＝聚合模式；None 且選單是空的＝沒有任何索引可用
+        self._watch_last_check = 0.0  # 上次背景檢查未收錄檔案的 monotonic 時間，節流用
+        self._watch_seq = 0          # 每發動一次檢查 +1；只有序號最新的結果會被採用
+        self._ui_ready = False       # __init__ 期間的 _reload_index() 不要就去掃資料夾
         self._preview_width = PREVIEW_DEFAULT_WIDTH
         self._preview_drag_start_x = None
         self._preview_drag_start_width = None
@@ -154,6 +158,11 @@ class MainWindow(_BaseTk):
         self.bind_all("<Control-f>", self._focus_search)
         self.bind_all("<Escape>", self._clear_search)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        # 未收錄徽章——開窗後一下下先掃一次；之後每次視窗重新取得焦點也順手
+        # 檢查（切回來時剛好看到新加的檔案），節流見 _maybe_check_unindexed。
+        self._ui_ready = True
+        self.after(1500, lambda: self._maybe_check_unindexed(force=True))
+        self.bind("<FocusIn>", lambda _e: self._maybe_check_unindexed(), add="+")
         # 預覽內容縮放：跟 VS Code 同一套鍵位，+/- 兩種鍵盤都各綁一份（有無 Shift
         # 皆可、小鍵盤也算），全域生效，不用先把滑鼠移到預覽區塊上。
         for seq in ("<Control-plus>", "<Control-equal>", "<Control-KP_Add>"):
@@ -286,9 +295,17 @@ class MainWindow(_BaseTk):
         styled_button(
             toolbar3, "🔄 更新內容快取", self._on_update_cache, BTN_REFRESH_BG, BTN_REFRESH_ACTIVE, self._font_hint,
         ).pack(side="left")
-        styled_button(
+        self._find_unindexed_btn = styled_button(
             toolbar3, "🔎 找出未收錄檔案...", self._on_find_unindexed, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, self._font_hint,
-        ).pack(side="left", padx=(8, 0))
+        )
+        self._find_unindexed_btn.pack(side="left", padx=(8, 0))
+        # 未收錄徽章——背景掃「常用資料夾清單」數出還沒收錄的檔案數，count>0
+        # 才顯示（見 _maybe_check_unindexed），點一下開「找出未收錄檔案」。
+        self._watch_badge = tk.Label(
+            toolbar3, text="", bg="#fde68a", fg="#92400e", font=self._font_hint,
+            padx=8, pady=2, cursor="hand2",
+        )
+        self._watch_badge.bind("<Button-1>", lambda _e: self._on_find_unindexed())
         styled_button(
             toolbar3, "🧬 重複偵測...", self._on_find_duplicates, BTN_DETECT_BG, BTN_DETECT_ACTIVE, self._font_hint,
         ).pack(side="left", padx=(8, 0))
@@ -589,6 +606,7 @@ class MainWindow(_BaseTk):
             self._folder_var.set("全部")
 
         self._apply_filter()
+        self._maybe_check_unindexed()  # 索引變動 → 順手更新未收錄徽章（節流，不會每次都真的掃）
 
     def _schedule_apply_filter(self):
         """只給搜尋框打字用——分類／資料夾下拉、重新載入那些要即時反映的
@@ -606,7 +624,13 @@ class MainWindow(_BaseTk):
         wanted_folder = self._folder_var.get()
         filtered = self._search.filter_entries(self._all_entries, typed, wanted_category, wanted_folder, self._entry_cache)
         self._filtered_entries = filtered
-        self._tree.set_entries(filtered, aggregate_mode=(self._current_index_path is None))
+        snippets = (
+            self._search.content_match_snippets(filtered, typed, self._entry_cache) if typed else {}
+        )
+        self._tree.set_entries(
+            filtered, aggregate_mode=(self._current_index_path is None), content_snippets=snippets,
+        )
+        self._preview.set_search_term(typed)
 
         total = len(self._all_entries)
         shown = len(filtered)
@@ -618,7 +642,12 @@ class MainWindow(_BaseTk):
             notes.append("指定資料夾")
         note = "，" + "、".join(notes) if notes else ""
         if typed:
-            self._status_var.set(f"🔍 符合「{typed}」{note}：{shown} / {total} 筆")
+            uncached = len({e.path for e in self._all_entries if e.path not in self._entry_cache})
+            hint = (
+                f"　·　還有 {uncached} 個檔案沒建立內容快取，按「🔄 更新內容快取」可一併搜尋檔案內文"
+                if uncached else ""
+            )
+            self._status_var.set(f"🔍 符合「{typed}」{note}：{shown} / {total} 筆{hint}")
         else:
             self._status_var.set(f"共 {total} 筆索引{note}（⚠️ 紅字表示該路徑目前找不到檔案，可能已搬移或刪除）")
         self._update_preview()
@@ -1136,7 +1165,62 @@ class MainWindow(_BaseTk):
     # ── 找出未收錄檔案／常用資料夾 ─────────────────────────────────────
 
     def _on_manage_known_folders(self):
-        KnownFoldersDialog(self, self._metadata.load_known_folders, self._metadata.save_known_folders)
+        KnownFoldersDialog(
+            self, self._metadata.load_known_folders, self._metadata.save_known_folders,
+            on_change=lambda: self._maybe_check_unindexed(force=True),
+        )
+
+    # ── 未收錄徽章（監看常用資料夾）─────────────────────────────────────
+
+    def _maybe_check_unindexed(self, force: bool = False):
+        """背景掃「常用資料夾清單」數出還沒被任何索引集收錄的檔案，更新工具列
+        徽章。節流：非 force 時，距離上次檢查不到 WATCH_RECHECK_SECONDS 就跳過
+        （視窗焦點事件會很頻繁）。沒有常用資料夾就什麼都不做。掃描在背景執行
+        緒、只碰檔案系統；同時可能有好幾次在跑（force 不受節流限制），但只有
+        序號最新的那次結果會被採用（_watch_seq）。"""
+        if not self._ui_ready:
+            return
+        folders = self._metadata.load_known_folders()
+        if not folders:
+            self._watch_seq += 1  # 讓任何還在背景跑的舊結果作廢
+            self._render_watch_badge({"count": 0})
+            return
+        now = time.monotonic()
+        if not force and now - self._watch_last_check < WATCH_RECHECK_SECONDS:
+            return
+        self._watch_last_check = now
+        self._watch_seq += 1
+        seq = self._watch_seq
+        index_files = self._index.list_index_files()
+        result_q = queue.Queue()
+
+        def _work():
+            all_entries = self._index.all_entries_in(index_files)
+            keys = {path_key(e.path) for e in all_entries}
+            result_q.put(("done", self._scan.count_unindexed(folders, keys)))
+
+        start_worker(_work, result_q)
+        poll_queue(
+            self, result_q,
+            lambda msg: self._on_unindexed_check_message(msg, seq), interval_ms=200,
+        )
+
+    def _on_unindexed_check_message(self, message, seq):
+        kind, payload = message
+        if kind == "done" and seq == self._watch_seq:  # 序號對不上＝已被更新的檢查取代
+            self._render_watch_badge(payload)
+        return True  # 只會有一則結果，收到就收工
+
+    def _render_watch_badge(self, result):
+        count = result.get("count", 0)
+        if count <= 0:
+            self._watch_badge.configure(text="")
+            self._watch_badge.pack_forget()
+            return
+        suffix = "+" if result.get("truncated") else ""
+        self._watch_badge.configure(text=f"⚠️ {count}{suffix} 個檔案未收錄（點我處理）")
+        if not self._watch_badge.winfo_ismapped():
+            self._watch_badge.pack(side="left", padx=(8, 0), after=self._find_unindexed_btn)
 
     def _on_find_unindexed(self):
         files = self._index.list_index_files()
@@ -1151,6 +1235,7 @@ class MainWindow(_BaseTk):
         def _on_confirm(new_files, target, category):
             count = self._import.import_folder(target, new_files, category)
             self._reload_index()
+            self._maybe_check_unindexed(force=True)  # 剛收錄一批 → 徽章數字要馬上跟著降
             messagebox.showinfo(
                 "找出未收錄檔案",
                 f"已新增 {count} 筆到「{target.name}」（說明欄留空，之後可用「批次補說明...」或「編輯所選列」補上）。",

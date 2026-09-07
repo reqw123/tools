@@ -1,6 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { Note } from './lib/api'
-import { useNotes, useReminderSettings, useTagColors } from './hooks/useNotes'
+import { useAppSettings, useNotes, useReminderSettings, useTagColors } from './hooks/useNotes'
+import { useMinuteTick } from './hooks/useMinuteTick'
 import { useAiSearch, useAiTarget } from './hooks/useAi'
 import { hasDesktopWall } from './lib/desktopWall'
 import { dueStatus } from './lib/format'
@@ -10,7 +11,7 @@ import { CropOverlay } from './components/CropOverlay'
 import { NoteDialog } from './components/NoteDialog'
 import { ThemeToggle } from './components/ThemeToggle'
 import { AiAnswerDialog } from './components/AiAnswerDialog'
-import { AiSettingsDialog } from './components/AiSettingsDialog'
+import { GlobalSettingsDialog, type SettingsTab } from './components/GlobalSettingsDialog'
 import { BatchCreateDialog } from './components/BatchCreateDialog'
 import { BatchDeleteDialog } from './components/BatchDeleteDialog'
 import { BatchRecategorizeDialog } from './components/BatchRecategorizeDialog'
@@ -18,8 +19,10 @@ import { GenerateNotesDialog } from './components/GenerateNotesDialog'
 import { ImportNotesDialog } from './components/ImportNotesDialog'
 import { ReminderSettingsDialog } from './components/ReminderSettingsDialog'
 import { TrashDialog } from './components/TrashDialog'
+import { HistoryDialog } from './components/HistoryDialog'
 import { downloadStickyNotesHtml } from './lib/exportHtml'
 import { downloadNotesJson } from './lib/exportJson'
+import { orderTags, tagRecency } from './lib/tagOrder'
 import { getDefaultTag, setDefaultTag } from './lib/defaultTag'
 import type { TagCount } from './components/TagBar'
 
@@ -53,8 +56,16 @@ export function App() {
   // 「只看快到期／已逾期」——疊加在其他篩選之上，開啟時同時把排序從「最新
   // 建立在上」換成「最早到期在上」，見下面 shown 的計算。
   const [dueOnly, setDueOnly] = useState(false)
+  // 每分鐘翻新一次，讓到期徽章／「只看快到期」篩選隨時間自己更新（見下面
+  // shown 的 deps）——純視覺，不是鬧鐘。
+  const minuteTick = useMinuteTick()
   const { data: reminderSettings } = useReminderSettings()
   const { data: tagColors } = useTagColors()
+  const { data: appSettings } = useAppSettings()
+  const tagSort = useMemo(
+    () => appSettings?.tagSort ?? { mode: 'count' as const, order: [] },
+    [appSettings],
+  )
 
   const [aiMode, setAiMode] = useState(false)
   const [rawAiResult, setAiResult] = useState<AiResult | null>(null)
@@ -62,7 +73,7 @@ export function App() {
   // AI 結果只在「搜尋框文字沒被改過」的期間有效——一旦文字跟送出當下的問題不同，
   // 那批命中的 id 不再對應目前輸入，直接當作沒有（不用 effect 去清 state）。
   const aiResult = rawAiResult && query.trim() === rawAiResult.query ? rawAiResult : null
-  const [aiSettingsOpen, setAiSettingsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState<SettingsTab | null>(null)
   const { data: aiTarget } = useAiTarget()
   const aiSearch = useAiSearch()
 
@@ -72,6 +83,7 @@ export function App() {
   const [generateNotes, setGenerateNotes] = useState(false)
   const [importNotes, setImportNotes] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [reminderSettingsOpen, setReminderSettingsOpen] = useState(false)
   const [defaultTag, setDefTag] = useState(getDefaultTag)
   const applyDefaultTag = useCallback((t: string) => {
@@ -186,13 +198,17 @@ export function App() {
   const deferredQuery = useDeferredValue(query)
   const list = useMemo(() => notes ?? [], [notes])
 
+  // 橫向分類列的順序＝「全域設定」的 tagSort（手動釘的排最前，其餘依 mode
+  // 自動排）。knownTags 由此衍生，牆面「看全部」時的同色系分欄也吃這個順序，
+  // 兩邊一致。
+  const tagRecencyMap = useMemo(() => tagRecency(list), [list])
   const tags = useMemo<TagCount[]>(() => {
     const m = new Map<string, number>()
     for (const n of list) if (n.tag) m.set(n.tag, (m.get(n.tag) ?? 0) + 1)
-    return [...m.entries()]
-      .map(([t, count]) => ({ tag: t, count }))
-      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, 'zh-Hant'))
-  }, [list])
+    const live = [...m.entries()].map(([tag, count]) => ({ tag, count }))
+    const cm = new Map(live.map((t) => [t.tag, t.count]))
+    return orderTags(live, tagSort, tagRecencyMap).map((tag) => ({ tag, count: cm.get(tag) ?? 0 }))
+  }, [list, tagSort, tagRecencyMap])
   const knownTags = useMemo(() => tags.map((t) => t.tag), [tags])
 
   // 目前分類篩選底下的便利貼——AI 搜尋會把「這些」送出去
@@ -200,6 +216,13 @@ export function App() {
     () => (tag ? list.filter((n) => n.tag === tag) : list),
     [list, tag],
   )
+
+  // 「什麼都沒篩，就是在看全部」時：把 notes 依分類排好序（釘選在最前），
+  // 並把 groupByTag 傳給 Wall → Wall 改用「一個分類一直行、不同分類由左到右」
+  // 的排版（見 Wall 的 columnPerTag），置頂的幾個分類因此並排、都看得到。
+  // 一旦有搜尋／選了分類／AI／只看快到期就沒這個意義，維持原順序＋大致等高排版。
+  const groupByTag =
+    !croppedIds && !aiResult && !aiMode && !deferredQuery.trim() && !tag && !dueOnly
 
   const shown = useMemo(() => {
     // 裁切中——只看框選到的那幾則，蓋過搜尋/分類/AI 篩選（使用者已經明確
@@ -234,11 +257,27 @@ export function App() {
       // 疊加在其他篩選之上，同時把排序從「最新建立在上」換成「最早到期在
       // 上」——due_at 是 ISO 字串，字典序排序就是時間序，不用另外解析。
       const soonHours = reminderSettings?.dueSoonHours
-      base = base.filter((n) => dueStatus(n.due_at, soonHours)).sort((a, b) => (a.due_at < b.due_at ? -1 : 1))
+      base = base
+        .filter((n) => dueStatus(n.due_at, soonHours))
+        // 釘選的仍排最前面，其餘依到期日由早到晚。
+        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || (a.due_at < b.due_at ? -1 : 1))
+    }
+    if (groupByTag) {
+      // 釘選的維持在最前面（Wall 會把它們排成頂端一列）；其餘依分類分群，
+      // 群的順序跟工具列的分類 chip 一致（＝「全域設定」的 tagSort），無分類
+      // 的殿後。群內維持 created_at 由新到舊。Wall 收到後照 data-tag 分直行。
+      const rank = new Map(knownTags.map((t, i) => [t, i]))
+      const tagRank = (t: string) => (t ? (rank.get(t) ?? knownTags.length) : knownTags.length + 1)
+      base = [
+        ...base.filter((n) => n.pinned),
+        ...[...base.filter((n) => !n.pinned)].sort((a, b) => tagRank(a.tag) - tagRank(b.tag)),
+      ]
     }
     // 拖出去變懸浮視窗的便利貼從牆上拿掉——懸浮視窗那邊（FocusedNote）自己顯示。
     return floatedIds.size ? base.filter((n) => !floatedIds.has(n.id)) : base
-  }, [list, tag, deferredQuery, aiMode, aiResult, croppedIds, floatedIds, dueOnly, reminderSettings])
+    // minuteTick：每分鐘重算，讓「只看快到期」的篩選/排序隨時間翻新。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, tag, deferredQuery, aiMode, aiResult, croppedIds, floatedIds, dueOnly, reminderSettings, minuteTick, groupByTag, knownTags])
 
   // 詳細視窗的「上一則／下一則」——在目前這份篩選/排序出的清單（shown）裡移
   // 動，不是整份未篩選清單，這樣使用者在「只看快到期」之類的篩選底下瀏覽
@@ -291,7 +330,7 @@ export function App() {
 
   const anyDialogOpen =
     !!dialog || batchCreate || batchRecategorize || batchDelete || generateNotes || importNotes ||
-    trashOpen || aiSettingsOpen || reminderSettingsOpen
+    trashOpen || historyOpen || settingsOpen !== null || reminderSettingsOpen
   // 已經在裁切中就不能再拉一次框——先恢復完整畫面才能重新選——不然兩個裁切
   // 範圍疊在一起的語意會很奇怪。
   const cropActive = canFloat && !anyDialogOpen && !croppedIds
@@ -349,9 +388,17 @@ export function App() {
         aiSearching={aiSearch.isPending}
         aiError={aiSearch.error?.message ?? null}
         sendCount={inScope.length}
-        onOpenAiSettings={() => setAiSettingsOpen(true)}
+        onOpenSettings={(t) => setSettingsOpen(t ?? 'ai')}
         onExport={() => {
-          if (shown.length) void downloadStickyNotesHtml(shown, tagColors)
+          if (shown.length) {
+            void downloadStickyNotesHtml(
+              shown,
+              tagColors,
+              appSettings?.defaultNoteColor,
+              appSettings?.wall.minColWidth,
+              groupByTag,
+            )
+          }
         }}
         exportCount={shown.length}
         onExportJson={() => void downloadNotesJson()}
@@ -364,6 +411,7 @@ export function App() {
         onOpenReminderSettings={() => setReminderSettingsOpen(true)}
         onGenerateNotes={() => setGenerateNotes(true)}
         onTrash={() => setTrashOpen(true)}
+        onHistory={() => setHistoryOpen(true)}
       />
 
       {aiResult && (
@@ -400,6 +448,9 @@ export function App() {
           onOpen={(n) => setDialog({ kind: 'open', note: n })}
           floatable={canFloat}
           onDragOut={onDragOut}
+          minColWidth={appSettings?.wall.minColWidth}
+          masonry={appSettings?.wall.masonry ?? true}
+          columnPerTag={groupByTag}
         />
       )}
 
@@ -473,6 +524,14 @@ export function App() {
       {reminderSettingsOpen && (
         <ReminderSettingsDialog onClose={() => setReminderSettingsOpen(false)} />
       )}
+      {historyOpen && (
+        <HistoryDialog
+          onClose={() => {
+            setHistoryOpen(false)
+            setAiResult(null) // 還原可能整份換掉，AI 搜尋命中清單就對不上了
+          }}
+        />
+      )}
       {aiResult && !answerDismissed && (
         <AiAnswerDialog
           query={aiResult.query}
@@ -481,7 +540,12 @@ export function App() {
           onClose={() => setAnswerDismissed(true)}
         />
       )}
-      {aiSettingsOpen && <AiSettingsDialog onClose={() => setAiSettingsOpen(false)} />}
+      {settingsOpen !== null && (
+        <GlobalSettingsDialog
+          initialTab={settingsOpen}
+          onClose={() => setSettingsOpen(null)}
+        />
+      )}
     </div>
   )
 }

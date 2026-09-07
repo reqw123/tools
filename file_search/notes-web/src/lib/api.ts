@@ -9,6 +9,8 @@ export interface Note {
   created_at: string
   /** 到期日，存檔格式（見 lib/format.ts 的 toStoredDueAt/fromStoredDueAt/dueStatus）；'' = 沒有到期日。 */
   due_at: string
+  /** 釘選——永遠排在清單最上面（見 server listNotes）。切換釘選不動 created_at。 */
+  pinned: boolean
 }
 
 /** 垃圾桶裡的便利貼——「刪除」現在是先搬到這裡，不是真的消失，可以復原或
@@ -75,6 +77,16 @@ export const api = {
     }).then((r) => r.note),
   removeImage: (id: string) =>
     req<{ note: Note }>(`/notes/${id}/image`, { method: 'DELETE' }).then((r) => r.note),
+  toggleLine: (id: string, srcIndex: number) =>
+    req<{ note: Note }>(`/notes/${id}/toggle-line`, {
+      method: 'POST',
+      body: JSON.stringify({ srcIndex }),
+    }).then((r) => r.note),
+  setPinned: (id: string, pinned: boolean) =>
+    req<{ note: Note }>(`/notes/${id}/pin`, {
+      method: 'POST',
+      body: JSON.stringify({ pinned }),
+    }).then((r) => r.note),
   bulkCreate: (input: { tag: string; count: number; titlePrefix?: string }) =>
     req<{ created: Note[] }>('/notes/bulk', {
       method: 'POST',
@@ -97,6 +109,9 @@ export const api = {
       body: JSON.stringify({ content }),
     }),
   trash: () => req<{ notes: TrashedNote[] }>('/notes/trash').then((r) => r.notes),
+  history: () => req<{ snapshots: Snapshot[] }>('/notes/history').then((r) => r.snapshots),
+  restoreHistory: (id: string) =>
+    req<{ ok: boolean }>(`/notes/history/${id}/restore`, { method: 'POST' }),
   restore: (id: string) =>
     req<{ note: Note }>(`/notes/trash/${id}/restore`, { method: 'POST' }).then((r) => r.note),
   purge: (id: string) => req<void>(`/notes/trash/${id}`, { method: 'DELETE' }),
@@ -112,6 +127,9 @@ export const api = {
     req<TagColors>('/tag-colors', { method: 'PATCH', body: JSON.stringify({ tag, color }) }),
   clearTagColor: (tag: string) =>
     req<TagColors>(`/tag-colors/${encodeURIComponent(tag)}`, { method: 'DELETE' }),
+  getSettings: () => req<AppSettings>('/settings'),
+  patchSettings: (patch: AppSettingsPatch) =>
+    req<AppSettings>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
 }
 
 /** 「快到期」門檻——卡片標色跟 /notes/due-soon（給 Node-RED 用）共用同一份，
@@ -120,6 +138,42 @@ export interface ReminderSettings {
   dueSoonHours: number
 }
 
+export type TagSortMode = 'count' | 'manual' | 'recent'
+
+/** 「全域設定」——存在跟 dueSoonHours 同一份 .notes_settings.json。 */
+export interface AppSettings {
+  dueSoonHours: number
+  tagSort: {
+    mode: TagSortMode
+    /** 手動排定的標籤順序；還存在且列到的排最前，其餘依 mode 遞補在後。 */
+    order: string[]
+  }
+  /** 無分類 / 分類沒有自訂顏色時的便利貼紙色（#rrggbb）。 */
+  defaultNoteColor: string
+  wall: {
+    /** 一欄至少多寬（px）才多開一欄。 */
+    minColWidth: number
+    /** false＝關掉 JS 動態排版，用單純等寬格線。 */
+    masonry: boolean
+  }
+}
+
+/** PATCH /api/settings 的部分更新（dueSoonHours 走 /reminder-settings 舊路由）。 */
+export type AppSettingsPatch = {
+  tagSort?: Partial<AppSettings['tagSort']>
+  defaultNoteColor?: string
+  wall?: Partial<AppSettings['wall']>
+}
+
 /** 標籤→自訂顏色（hex）。沒自訂過的標籤不會出現在這裡，colorForTag() 拿不
  *  到就照舊退回雜湊配色。 */
 export type TagColors = Record<string, string>
+
+/** 便利貼檔案的一個版本快照（時光機）。每次有實質變動就自動存一份。 */
+export interface Snapshot {
+  id: string
+  /** 拍下時間，ISO（本地時間，無時區）。 */
+  taken_at: string
+  note_count: number
+  trash_count: number
+}

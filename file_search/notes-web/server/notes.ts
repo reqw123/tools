@@ -8,17 +8,23 @@ import {
   dueSummary,
   emptyTrash,
   exportNotesJson,
+  getAppSettings,
   getNote,
   getReminderSettings,
   getTagColors,
   importNotesJson,
   listNotes,
+  listSnapshots,
   listTrash,
+  patchAppSettings,
   purgeNote,
   restoreNote,
+  restoreSnapshot,
+  setNotePinned,
   setReminderSettings,
   setTagColor,
   tagCounts,
+  toggleNoteLine,
   updateNote,
   updateNotesTag,
 } from './store'
@@ -67,6 +73,48 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       },
     },
     async (req) => setReminderSettings(req.body.dueSoonHours ?? 48),
+  )
+
+  // 全域設定（標籤排序、預設便利貼顏色、牆面版面）——dueSoonHours 也在裡面，
+  // 但保留 /reminder-settings 舊路由不動，這支給「全域設定」對話框用。
+  app.get('/settings', async () => getAppSettings())
+
+  app.patch<{
+    Body: {
+      tagSort?: { mode?: 'count' | 'manual' | 'recent'; order?: string[] }
+      defaultNoteColor?: string
+      wall?: { minColWidth?: number; masonry?: boolean }
+    }
+  }>(
+    '/settings',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            tagSort: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                mode: { type: 'string', enum: ['count', 'manual', 'recent'] },
+                order: { type: 'array', maxItems: 300, items: { type: 'string', maxLength: 60 } },
+              },
+            },
+            defaultNoteColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
+            wall: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                minColWidth: { type: 'number', minimum: 160, maximum: 520 },
+                masonry: { type: 'boolean' },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (req) => patchAppSettings(req.body),
   )
 
   // 標籤自訂顏色——沒自訂過的標籤不會出現在回應裡，前端 colorForTag() 拿不
@@ -132,6 +180,47 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(204).send()
   })
 
+  // 釘選／取消釘選——排到清單最上面。獨立端點（不是 PATCH /notes/:id）：
+  // 釘選是排序偏好，不算「編輯」，不更新 created_at（見 store.ts setNotePinned）。
+  app.post<{ Params: { id: string }; Body: { pinned?: boolean } }>(
+    '/notes/:id/pin',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['pinned'],
+          properties: { pinned: { type: 'boolean' } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const note = setNotePinned(req.params.id, req.body.pinned ?? false)
+      if (!note) return reply.code(404).send({ error: 'not found' })
+      return { note }
+    },
+  )
+
+  // 牆上／詳細視窗直接點便利貼裡的待辦方框——切換那一行的 [x] 勾選。
+  // 走獨立端點（不是 PATCH /notes/:id）是因為打勾不算「編輯」，不更新
+  // created_at、不把便利貼推回牆頂（見 store.ts toggleNoteLine）。
+  app.post<{ Params: { id: string }; Body: { srcIndex?: number } }>(
+    '/notes/:id/toggle-line',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['srcIndex'],
+          properties: { srcIndex: { type: 'integer', minimum: 0, maximum: 9999 } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const note = toggleNoteLine(req.params.id, req.body.srcIndex ?? 0)
+      if (!note) return reply.code(404).send({ error: 'not found' })
+      return { note }
+    },
+  )
+
   // ── 垃圾桶（靜態路徑 /notes/trash*，Fastify 會排在 /notes/:id 前面比對，
   //    不會被吃掉）── 「刪除」上面已經改成移到這裡，這幾支負責復原／永久刪除。
 
@@ -150,6 +239,18 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.delete('/notes/trash', async () => ({ removed: emptyTrash() }))
+
+  // ── 版本記錄（時光機）──（靜態路徑，排在 /notes/:id 前面比對）
+  // 每次便利貼有實質變動就自動存一份時間戳快照，可整份還原到某個版本
+  // （連垃圾桶）——給垃圾桶救不回來的情況用。見 store.ts 的 snapshotHistory。
+
+  app.get('/notes/history', async () => ({ snapshots: listSnapshots() }))
+
+  app.post<{ Params: { id: string } }>('/notes/history/:id/restore', async (req, reply) => {
+    const ok = restoreSnapshot(req.params.id)
+    if (!ok) return reply.code(404).send({ error: 'not found' })
+    return { ok: true }
+  })
 
   // ── 批次 ──（靜態路徑，Fastify 會排在 /notes/:id 前面比對，不會被吃掉）
 

@@ -100,6 +100,29 @@ def test_app_prefs_survives_corrupt_nested_shape(data_dir):
     assert r.load_seek_seconds() == 10
 
 
+# ── NotesSettingsRepository（唯讀，讀 notes-web 的 .notes_settings.json）────
+
+def test_notes_settings_reads_notes_web_due_soon_hours(data_dir):
+    import json
+
+    from file_search_app.repositories.notes_settings_repository import NotesSettingsRepository
+
+    r = NotesSettingsRepository(indexes_dir=data_dir)
+    assert r.load_due_soon_hours() == 48  # 檔案不存在 → 預設
+
+    p = data_dir / ".notes_settings.json"
+    p.write_text(json.dumps({"dueSoonHours": 6}), encoding="utf-8")
+    assert r.load_due_soon_hours() == 6
+    p.write_text(json.dumps({"dueSoonHours": 240.0}), encoding="utf-8")  # 允許浮點
+    assert r.load_due_soon_hours() == 240.0
+
+    # 損毀／非正數／型別不對 → 一律安靜退回預設，不拋例外
+    for bad in ("{ broken", '{"dueSoonHours": 0}', '{"dueSoonHours": -3}',
+                '{"dueSoonHours": "48"}', '{"dueSoonHours": true}', '[]'):
+        p.write_text(bad, encoding="utf-8")
+        assert r.load_due_soon_hours() == 48
+
+
 # ── AISettingsRepository ───────────────────────────────────────────
 
 def test_ai_settings_defaults(data_dir, tmp_path):

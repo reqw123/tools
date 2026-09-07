@@ -1,17 +1,17 @@
 """便利貼業務邏輯——新增／編輯／刪除、關鍵字＋標籤篩選、標籤自動配色、既有
 標籤清單（給新增/編輯對話框跟篩選下拉選單做自動完成用）。不依賴 Tkinter。"""
 
-import colorsys
-import hashlib
 import json
 import re
 import uuid
 from datetime import datetime, timedelta
 
+from file_search_app.colors import hash_hsl_hex
 from file_search_app.config import (
-    STICKY_DUE_SOON_DAYS, STICKY_NEUTRAL_COLOR, STICKY_TAG_LIGHTNESS, STICKY_TAG_SATURATION,
+    STICKY_DUE_SOON_HOURS_DEFAULT, STICKY_NEUTRAL_COLOR, STICKY_TAG_LIGHTNESS, STICKY_TAG_SATURATION,
 )
 from file_search_app.models import StickyNote, TrashedStickyNote
+from file_search_app.repositories.notes_settings_repository import NotesSettingsRepository
 from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
 
 # AI 搜尋一則便利貼內容送給模型時最多帶這麼多字——便利貼本來就是短筆記，
@@ -20,13 +20,28 @@ from file_search_app.repositories.sticky_note_repository import StickyNoteReposi
 AI_SEARCH_BODY_SNIPPET_CHARS = 200
 
 
+# 待辦勾選標記——網頁版（notes-web）在內文那一行開頭加 `[x]`／`[ ]` 來記
+# 便利貼裡的清單項目有沒有打勾（見 src/lib/format.ts 的 TASK_LINE_RE）。桌面
+# 版不渲染清單，但預覽摘要若原樣秀「[x] 買牛奶」很雜——這裡把標記換掉：
+# 打勾的行前面放「✓ 」，沒打勾的直接拿掉標記。
+_TASK_MARKER_RE = re.compile(r"^(\s*(?:\d+[.、)]|[-•])?\s*)\[([ xX])\]\s*")
+
+
+def _clean_task_marker(line: str) -> str:
+    m = _TASK_MARKER_RE.match(line)
+    if not m:
+        return line
+    done = m.group(2) in ("x", "X")
+    return f"{m.group(1)}{'✓ ' if done else ''}{line[m.end():]}"
+
+
 def preview_text(body: str, max_lines: int = 2) -> str:
     """卡片／清單列上顯示的內容摘要——取前 `max_lines` 行非空白內容，超出的
     行數用「 …」帶過。面板卡片跟批次刪除對話框共用同一個函式，同一則便利貼
     在兩個畫面看到的摘要才會長一樣（先前面板取 2 行、批次刪除把整份內容用
     「／」串一行又各自截字，屬於同一份資料兩種呈現）。純字串處理，不碰
     Tkinter。"""
-    lines = [line for line in body.splitlines() if line.strip()]
+    lines = [_clean_task_marker(line) for line in body.splitlines() if line.strip()]
     if not lines:
         return ""
     text = "\n".join(lines[:max_lines])
@@ -35,21 +50,36 @@ def preview_text(body: str, max_lines: int = 2) -> str:
     return text
 
 
-def parse_due_date(raw: str) -> str:
-    """把使用者在到期日欄位打的 `YYYY-MM-DD` 轉成實際存檔用的格式——存成
-    當天 23:59:59（而不是 00:00:00），這樣「今天」到期的便利貼要等一整天
-    過完才算逾期，不會一到當天凌晨就馬上顯示成紅色。空字串（清除到期日）
-    原樣回傳空字串；格式不對丟 `ValueError`，交給呼叫端（對話框）顯示
-    錯誤訊息，這裡不吞例外也不猜測使用者的意思。"""
+# 只填日期、沒指定時間時存的時刻——當天最後一秒。語意是「當天內到期」
+# （「今天」到期的便利貼要等一整天過完才算逾期，不會一到凌晨就變紅），
+# 也是所有舊資料的值。顯示時把它視為「沒有具體時間」，只秀日期不秀 23:59。
+_DUE_END_OF_DAY = (23, 59, 59)
+
+
+def parse_due_date(raw: str, time_raw: str = "") -> str:
+    """把使用者填的到期日轉成存檔用的完整 ISO datetime 字串。
+
+    `raw` 是 `YYYY-MM-DD`；`time_raw` 是可留空的 `HH:MM`：
+      - 留空 → 存成當天 23:59:59（`_DUE_END_OF_DAY`），語意同舊版「只能填
+        日期」時：沒指定時間、當天內到期。舊資料本來就都是這個值。
+      - 有填 → 存成當天 `HH:MM:00`，到期提醒精確到分。
+    `due_status()` 一直是拿完整 datetime 比對，這裡放開時間精度不需要動它。
+    空的 `raw`（清除到期日）原樣回傳空字串；日期或時間格式不對丟
+    `ValueError`，交給呼叫端（對話框）顯示錯誤訊息。"""
     raw = raw.strip()
     if not raw:
         return ""
     day = datetime.strptime(raw, "%Y-%m-%d")
-    return day.replace(hour=23, minute=59, second=59).isoformat()
+    time_raw = (time_raw or "").strip()
+    if time_raw:
+        parsed = datetime.strptime(time_raw, "%H:%M")
+        return day.replace(hour=parsed.hour, minute=parsed.minute, second=0).isoformat()
+    hour, minute, second = _DUE_END_OF_DAY
+    return day.replace(hour=hour, minute=minute, second=second).isoformat()
 
 
 def format_due_date(due_at: str) -> str:
-    """把存檔格式的到期日轉回對話框輸入框要顯示的 `YYYY-MM-DD`——空字串或
+    """把存檔格式的到期日轉回對話框日期欄要顯示的 `YYYY-MM-DD`——空字串或
     格式壞掉（例如手動改過 JSON）都當作沒有到期日，回傳空字串，不讓一筆
     壞資料炸掉整個編輯視窗。"""
     if not due_at:
@@ -60,10 +90,39 @@ def format_due_date(due_at: str) -> str:
         return ""
 
 
-def due_status(due_at: str, now: datetime = None) -> str:
-    """卡片標色用的分類：`"overdue"`（已過期）／`"soon"`（
-    `STICKY_DUE_SOON_DAYS` 天內到期）／`""`（沒有到期日，或到期日還早，
-    都不特別標色）。純視覺提示分類，不觸發任何通知。"""
+def format_due_time(due_at: str) -> str:
+    """把存檔格式的到期日轉回對話框時間欄要顯示的 `HH:MM`——沒有到期日、
+    格式壞掉、或時間正好是 `_DUE_END_OF_DAY`（沒指定具體時間的哨兵值）都
+    回空字串（時間欄留空）。"""
+    if not due_at:
+        return ""
+    try:
+        dt = datetime.fromisoformat(due_at)
+    except ValueError:
+        return ""
+    if (dt.hour, dt.minute, dt.second) == _DUE_END_OF_DAY:
+        return ""
+    return dt.strftime("%H:%M")
+
+
+def format_due_label(due_at: str) -> str:
+    """卡片徽章上顯示的到期日——只有日期，或「日期 HH:MM」（有指定時間
+    時）。沒有到期日回空字串。"""
+    date_part = format_due_date(due_at)
+    if not date_part:
+        return ""
+    time_part = format_due_time(due_at)
+    return f"{date_part} {time_part}" if time_part else date_part
+
+
+def due_status(due_at: str, now: datetime = None, soon_hours: float = None) -> str:
+    """卡片標色用的分類：`"overdue"`（已過期）／`"soon"`（到期前 `soon_hours`
+    小時內；`None` 時用 `STICKY_DUE_SOON_HOURS_DEFAULT`）／`""`（沒有到期日，
+    或到期日還早，都不特別標色）。純視覺提示分類，不觸發任何通知。
+
+    `soon_hours` 一般由呼叫端（`StickyNotePanel`）透過
+    `StickyNoteService.due_soon_hours()` 讀 notes-web 的 `.notes_settings.json`
+    傳進來，讓桌面版跟 notes-web 用同一個門檻。"""
     if not due_at:
         return ""
     try:
@@ -73,18 +132,44 @@ def due_status(due_at: str, now: datetime = None) -> str:
     now = now or datetime.now()
     if due < now:
         return "overdue"
-    if due - now <= timedelta(days=STICKY_DUE_SOON_DAYS):
+    if soon_hours is None:
+        soon_hours = STICKY_DUE_SOON_HOURS_DEFAULT
+    if due - now <= timedelta(hours=soon_hours):
         return "soon"
     return ""
 
 
 class StickyNoteService:
-    def __init__(self, repo: StickyNoteRepository):
+    def __init__(self, repo: StickyNoteRepository, notes_settings_repo: NotesSettingsRepository = None):
         self._repo = repo
+        # 「快到期」門檻讀 notes-web 那份 .notes_settings.json（跟便利貼檔同一個
+        # 資料夾）——沒特別注入就依 repo 的位置自己開一個。
+        self._notes_settings = notes_settings_repo or NotesSettingsRepository(repo.path.parent)
+
+    def due_soon_hours(self) -> float:
+        """目前「到期前幾小時算快到期」的門檻——每次都重讀 notes-web 的設定檔
+        （檔案很小），使用者在 notes-web 改完，桌面版下次重畫就跟上。"""
+        return self._notes_settings.load_due_soon_hours()
+
+    # ── 版本快照（時光機）─────────────────────────────────────────────
+
+    def list_history(self) -> list:
+        """`[{id, taken_at, note_count, trash_count}]`，最新在前。每次便利貼有
+        實質變動就自動存一份（見 StickyNoteHistoryRepository）。"""
+        return self._repo.list_snapshots()
+
+    def restore_snapshot(self, snapshot_id: str) -> bool:
+        """整份便利貼資料回到某個版本（連垃圾桶一起）。回傳有沒有真的還原到；
+        還原前會先自動存一份「現在」的快照，所以還原可以再還原。"""
+        return self._repo.restore_snapshot(snapshot_id)
 
     def list_notes(self) -> list:
-        """全部便利貼，最新在上。"""
-        return sorted(self._repo.load_notes(), key=lambda n: n.created_at, reverse=True)
+        """全部便利貼——釘選的一律排最前面，其餘依 created_at 由新到舊。
+        釘選群組內部也依 created_at 排，所以「釘選 + 剛編輯」的還是會浮到
+        釘選區的最上面。搜尋／篩選／AI 結果都是在這個順序上再挑，不重排，
+        所以釘選效果會一路帶到那些畫面。"""
+        by_recent = sorted(self._repo.load_notes(), key=lambda n: n.created_at, reverse=True)
+        return sorted(by_recent, key=lambda n: not n.pinned)  # stable → 群組內維持 created_at 序
 
     def search(self, notes: list, query: str, tag_filter: str) -> list:
         """query 比對標題／內容／標籤——在搜尋框直接打標籤名稱（或一部分）就能
@@ -132,10 +217,15 @@ class StickyNoteService:
         override = self._repo.load_tag_colors().get(tag)
         if override:
             return override
-        digest = hashlib.md5(tag.encode("utf-8")).hexdigest()
-        hue = (int(digest, 16) % 360) / 360.0
-        r, g, b = colorsys.hls_to_rgb(hue, STICKY_TAG_LIGHTNESS, STICKY_TAG_SATURATION)
-        return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
+        return self.hash_color_for_tag(tag)
+
+    def hash_color_for_tag(self, tag: str) -> str:
+        """只走雜湊配色、完全不看使用者自訂覆寫——給「按下『重設』會回到哪個
+        顏色」這種預覽用途。一般顯示一律用 `color_for_tag()`（那個會先查
+        自訂顏色）。"""
+        if not tag:
+            return STICKY_NEUTRAL_COLOR
+        return hash_hsl_hex(tag, STICKY_TAG_LIGHTNESS, STICKY_TAG_SATURATION)
 
     def get_tag_color_override(self, tag: str) -> str:
         """這個標籤有沒有自訂過顏色——回傳自訂的 hex，沒有就回空字串。給
@@ -199,6 +289,25 @@ class StickyNoteService:
         self._repo.mutate(apply)
         return found
 
+    def set_pin(self, note_id: str, pinned: bool) -> bool:
+        """釘選／取消釘選——只動 `pinned` 旗標，**不更新 `created_at`**（釘選是
+        排序偏好，不是內容變動；跟 image 一樣是附加狀態）。回傳有沒有真的改到
+        （id 不存在、或狀態本來就一樣都回 False 且不寫檔）。"""
+        pinned = bool(pinned)
+        changed = False
+
+        def apply(notes):
+            nonlocal changed
+            for note in notes:
+                if note.id == note_id and note.pinned != pinned:
+                    note.pinned = pinned
+                    changed = True
+                    return notes
+            return None
+
+        self._repo.mutate(apply)
+        return changed
+
     def update_tags(self, note_ids, tag: str) -> int:
         """批次改標籤——統一改成同一個標籤（空字串＝清空標籤），只動標籤欄，
         標題／內容／到期日都不變，也不當成「重新建立」（不更新 created_at，
@@ -236,7 +345,7 @@ class StickyNoteService:
             trashed = TrashedStickyNote(
                 id=target.id, title=target.title, body=target.body, tag=target.tag,
                 created_at=target.created_at, image=target.image, due_at=target.due_at,
-                deleted_at=now,
+                pinned=target.pinned, deleted_at=now,
             )
             return remaining, trash + [trashed]
 
@@ -260,7 +369,8 @@ class StickyNoteService:
             newly_trashed = [
                 TrashedStickyNote(
                     id=n.id, title=n.title, body=n.body, tag=n.tag,
-                    created_at=n.created_at, image=n.image, due_at=n.due_at, deleted_at=now,
+                    created_at=n.created_at, image=n.image, due_at=n.due_at,
+                    pinned=n.pinned, deleted_at=now,
                 )
                 for n in to_trash
             ]
@@ -291,7 +401,7 @@ class StickyNoteService:
             restored = StickyNote(
                 id=target.id, title=target.title, body=target.body,
                 tag=target.tag, created_at=target.created_at, image=target.image,
-                due_at=target.due_at,
+                due_at=target.due_at, pinned=target.pinned,
             )
             return notes + [restored], remaining_trash
 

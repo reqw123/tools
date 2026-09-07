@@ -1,5 +1,5 @@
 import {
-  AlarmClock, Bot, CopyPlus, Download, HardDriveDownload, Plus, Recycle, Search, Settings2, Sparkles, Tags,
+  AlarmClock, Bot, CopyPlus, Download, HardDriveDownload, History, Plus, Recycle, Search, Settings2, Sparkles, Tags,
   Timer, Trash2, Upload,
 } from 'lucide-react'
 import type { AiTarget } from '../lib/ai'
@@ -21,7 +21,7 @@ export function Toolbar({
   aiSearching,
   aiError,
   sendCount,
-  onOpenAiSettings,
+  onOpenSettings,
   onExport,
   exportCount,
   onExportJson,
@@ -31,6 +31,7 @@ export function Toolbar({
   onBatchDelete,
   onGenerateNotes,
   onTrash,
+  onHistory,
   dueOnly,
   onToggleDueOnly,
   onOpenReminderSettings,
@@ -49,7 +50,7 @@ export function Toolbar({
   aiSearching: boolean
   aiError: string | null
   sendCount: number
-  onOpenAiSettings: () => void
+  onOpenSettings: (tab?: 'ai' | 'tags' | 'appearance') => void
   onExport: () => void
   exportCount: number
   onExportJson: () => void
@@ -59,6 +60,7 @@ export function Toolbar({
   onBatchDelete: () => void
   onGenerateNotes: () => void
   onTrash: () => void
+  onHistory: () => void
   dueOnly: boolean
   onToggleDueOnly: () => void
   onOpenReminderSettings: () => void
@@ -98,7 +100,7 @@ export function Toolbar({
           >
             <Bot size={16} strokeWidth={2.2} aria-hidden />
           </button>
-          <button className="btn ghost icon" onClick={onOpenAiSettings} title="AI 設定">
+          <button className="btn ghost icon" onClick={() => onOpenSettings()} title="全域設定">
             <Settings2 size={15} strokeWidth={2.2} aria-hidden />
           </button>
           <button
@@ -157,6 +159,13 @@ export function Toolbar({
           <button className="btn ghost icon" onClick={onTrash} title="垃圾桶（刪除的便利貼可以在這裡復原）">
             <Recycle size={15} strokeWidth={2.2} aria-hidden />
           </button>
+          <button
+            className="btn ghost icon"
+            onClick={onHistory}
+            title="版本記錄（自動備份；批次操作出錯、內容被覆蓋時整份還原到某個時間點）"
+          >
+            <History size={15} strokeWidth={2.2} aria-hidden />
+          </button>
           <button className="btn" onClick={onAdd}>
             <Plus size={16} strokeWidth={2.6} aria-hidden />
             新增便利貼
@@ -177,7 +186,7 @@ export function Toolbar({
                       aiTarget.leaves_machine ? '內容會離開這台電腦' : '內容不離開這台電腦'
                     } · 累計第 ${aiTarget.call_count + 1} 次 · Enter 送出`}
             {!aiSearching && (
-              <button className="link" onClick={onOpenAiSettings}>
+              <button className="link" onClick={() => onOpenSettings('ai')}>
                 設定
               </button>
             )}

@@ -23,7 +23,9 @@ from file_search_app.config import (
     COLOR_STATUS_FG, FONT_FAMILY,
 )
 from file_search_app.models import IndexEntry
-from file_search_app.services.sticky_note_service import format_due_date, parse_due_date
+from file_search_app.services.sticky_note_service import (
+    format_due_date, format_due_time, parse_due_date,
+)
 from file_search_app.ui.async_task import poll_queue, start_worker
 from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
 from file_search_app.ui.styles import styled_button
@@ -45,6 +47,13 @@ class StickyNoteDialog(tk.Toplevel):
 
         self._ai_description = ai_description
         self._sticky_service = sticky_service
+        self._on_confirm = on_confirm
+        # 這次對話框裡「還沒送出」的標籤顏色改動：{標籤: "#rrggbb"}＝要設成這個
+        # 顏色，{標籤: None}＝按過「重設」要清掉自訂。真正寫進
+        # .sticky_tag_colors.json 要等使用者按「新增」／「儲存」（見
+        # _apply_pending_tag_colors，由下面 _confirm 呼叫）——按「取消」就整批
+        # 丟掉，不會像先前那樣選了色、關掉視窗顏色卻已經改掉且沒得還原。
+        self._pending_tag_colors = {}
 
         font_label = tkfont.Font(family=FONT_FAMILY, size=12)
         self._font_hint = font_hint = tkfont.Font(family=FONT_FAMILY, size=10)
@@ -82,7 +91,7 @@ class StickyNoteDialog(tk.Toplevel):
 
         tk.Label(pad, text="標題：", bg=COLOR_BG, font=font_label, anchor="w").pack(fill="x")
         self.title_var = tk.StringVar(value=initial_title)
-        title_entry = tk.Entry(pad, textvariable=self.title_var, font=font_label)
+        title_entry = self._title_entry = tk.Entry(pad, textvariable=self.title_var, font=font_label)
         title_entry.pack(fill="x", pady=(2, 10), ipady=4)
         title_entry.focus_set()
         title_entry.select_range(0, "end")
@@ -112,23 +121,34 @@ class StickyNoteDialog(tk.Toplevel):
         self._refresh_tag_swatch()
 
         tk.Label(
-            pad, text="到期日（可留空；卡片會依到期日標色提醒，格式 YYYY-MM-DD）：",
+            pad,
+            text="到期日（可留空；日期 YYYY-MM-DD、時間 HH:MM。填了時間就精確到分提醒，"
+                 "時間留空＝當天內到期）：",
             bg=COLOR_BG, font=font_label, anchor="w", wraplength=380, justify="left",
         ).pack(fill="x")
         due_row = tk.Frame(pad, bg=COLOR_BG)
-        due_row.pack(fill="x", pady=(2, 10))
+        due_row.pack(fill="x", pady=(2, 2))
         self.due_var = tk.StringVar(value=format_due_date(initial_due_at))
-        due_entry = tk.Entry(due_row, textvariable=self.due_var, font=font_label, width=12)
+        due_entry = self._due_entry = tk.Entry(due_row, textvariable=self.due_var, font=font_label, width=11)
         due_entry.pack(side="left", ipady=4)
+        self.due_time_var = tk.StringVar(value=format_due_time(initial_due_at))
+        due_time_entry = tk.Entry(due_row, textvariable=self.due_time_var, font=font_label, width=6)
+        due_time_entry.pack(side="left", ipady=4, padx=(6, 0))
+        tk.Label(
+            due_row, text="HH:MM", bg=COLOR_BG, fg=COLOR_STATUS_FG, font=self._font_hint,
+        ).pack(side="left", padx=(4, 0))
+
+        due_quick_row = tk.Frame(pad, bg=COLOR_BG)
+        due_quick_row.pack(fill="x", pady=(0, 10))
         for label, days in (("今天", 0), ("明天", 1), ("3天後", 3), ("一週後", 7)):
             styled_button(
-                due_row, label, lambda d=days: self._set_due_in(d),
+                due_quick_row, label, lambda d=days: self._set_due_in(d),
                 BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_hint,
-            ).pack(side="left", padx=(6, 0))
+            ).pack(side="left", padx=(0, 6))
         styled_button(
-            due_row, "清除", lambda: self.due_var.set(""),
+            due_quick_row, "清除", self._clear_due,
             BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_hint,
-        ).pack(side="left", padx=(6, 0))
+        ).pack(side="left")
 
         tk.Label(
             pad, text="內容（可多行，例如一組指令步驟；超過看得到的行數可以捲動）：",
@@ -144,63 +164,95 @@ class StickyNoteDialog(tk.Toplevel):
         if initial_body:
             self.body_text.insert("1.0", initial_body)
 
-        def _confirm(_event=None):
-            title_value = self.title_var.get().strip()
-            if not title_value:
-                self._error_var.set("標題不能留空。")
-                title_entry.focus_set()
-                return
-            try:
-                due_value = parse_due_date(self.due_var.get())
-            except ValueError:
-                self._error_var.set("到期日格式不對，請用 YYYY-MM-DD（或清空）。")
-                due_entry.focus_set()
-                return
-            body_value = self.body_text.get("1.0", "end-1c")
-            on_confirm(title_value, body_value, self.tag_var.get(), due_value)
-            self.destroy()
-
         styled_button(btn_row, "取消", self.destroy, BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, font_label).pack(side="right")
-        styled_button(btn_row, confirm_text, _confirm, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, font_label).pack(
+        styled_button(btn_row, confirm_text, self._confirm, BTN_PRIMARY_BG, BTN_PRIMARY_ACTIVE, font_label).pack(
             side="right", padx=(0, 8)
         )
 
         # Esc 取消、Enter 確認——內容框（Text）本身要能正常換行，所以 Enter
         # 只綁在標題／標籤兩個單行輸入上，不綁整個視窗。
         self.bind("<Escape>", lambda _e: self.destroy())
-        title_entry.bind("<Return>", _confirm)
-        self.bind("<Control-Return>", _confirm)  # 焦點在內容框時用 Ctrl+Enter 送出
+        title_entry.bind("<Return>", self._confirm)
+        self.bind("<Control-Return>", self._confirm)  # 焦點在內容框時用 Ctrl+Enter 送出
+
+    def _confirm(self, _event=None):
+        title_value = self.title_var.get().strip()
+        if not title_value:
+            self._error_var.set("標題不能留空。")
+            self._title_entry.focus_set()
+            return
+        try:
+            due_value = parse_due_date(self.due_var.get(), self.due_time_var.get())
+        except ValueError:
+            self._error_var.set("到期日格式不對——日期用 YYYY-MM-DD、時間用 HH:MM（都可留空）。")
+            self._due_entry.focus_set()
+            return
+        body_value = self.body_text.get("1.0", "end-1c")
+        self._apply_pending_tag_colors()
+        self._on_confirm(title_value, body_value, self.tag_var.get(), due_value)
+        self.destroy()
 
     def _set_due_in(self, days: int):
+        """快捷鈕只設日期，不動時間欄——想精確到分的人自己在時間欄填 HH:MM。"""
         self.due_var.set((datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d"))
+
+    def _clear_due(self):
+        self.due_var.set("")
+        self.due_time_var.set("")
+
+    def _effective_tag_color(self, tag):
+        """考慮這次對話框裡還沒送出的暫存改動（_pending_tag_colors）後，這個
+        標籤實際要顯示的色塊顏色，以及「重設」按鈕該不該可以點（有沒有有效
+        的自訂顏色）。回傳 (color_hex, has_override)。"""
+        if tag in self._pending_tag_colors:
+            pending = self._pending_tag_colors[tag]
+            if pending:
+                return pending, True
+            return self._sticky_service.hash_color_for_tag(tag), False
+        color = self._sticky_service.color_for_tag(tag)
+        has_override = bool(tag) and bool(self._sticky_service.get_tag_color_override(tag))
+        return color, has_override
+
+    def _apply_pending_tag_colors(self):
+        """把這次對話框裡累積的標籤顏色改動真正寫進去——只在使用者按下
+        「新增」／「儲存」時由 _confirm 呼叫；按「取消」則整批丟棄。"""
+        for pending_tag, pending_color in self._pending_tag_colors.items():
+            if pending_color:
+                self._sticky_service.set_tag_color(pending_tag, pending_color)
+            else:
+                self._sticky_service.clear_tag_color(pending_tag)
 
     def _refresh_tag_swatch(self):
         """標籤欄位打字的當下（包括切換到別的既有標籤）就即時更新色塊——不用
         等存檔才看到顏色對不對。空標籤顯示中性灰，「重設」按鈕只有在目前這個
         標籤真的有自訂過顏色時才能點，沒自訂過按了也沒意義。"""
         tag = self.tag_var.get().strip()
-        color = self._sticky_service.color_for_tag(tag)
+        color, has_override = self._effective_tag_color(tag)
         self._tag_swatch.configure(bg=color)
-        has_override = bool(tag) and bool(self._sticky_service.get_tag_color_override(tag))
-        self._reset_color_btn.config(state="normal" if has_override else "disabled")
+        self._reset_color_btn.config(state="normal" if (tag and has_override) else "disabled")
 
     def _pick_tag_color(self):
         tag = self.tag_var.get().strip()
         if not tag:
             messagebox.showinfo("自訂標籤顏色", "請先輸入標籤名稱，才能設定顏色。")
             return
-        current = self._sticky_service.color_for_tag(tag)
-        _rgb, hex_color = colorchooser.askcolor(color=current, title=f"選擇「{tag}」的顏色", parent=self)
+        current, _ = self._effective_tag_color(tag)
+        rgb, hex_color = colorchooser.askcolor(color=current, title=f"選擇「{tag}」的顏色", parent=self)
         if not hex_color:
             return  # 使用者按取消
-        self._sticky_service.set_tag_color(tag, hex_color)
+        # Tk 的 askcolor 在某些平台會回 16-bit/通道的長格式（#rrrrggggbbbb），
+        # 正規化成 #rrggbb——不然桌面版跟 notes-web（嚴格驗 ^#[0-9a-fA-F]{6}$）
+        # 兩邊都會把它當壞值丟掉。
+        if rgb:
+            hex_color = "#%02x%02x%02x" % (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+        self._pending_tag_colors[tag] = hex_color
         self._refresh_tag_swatch()
 
     def _reset_tag_color(self):
         tag = self.tag_var.get().strip()
         if not tag:
             return
-        self._sticky_service.clear_tag_color(tag)
+        self._pending_tag_colors[tag] = None
         self._refresh_tag_swatch()
 
     def _on_ai_generate(self):

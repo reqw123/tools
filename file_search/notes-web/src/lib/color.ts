@@ -36,8 +36,12 @@ const toHex = (n: number) => Math.trunc(n * 255).toString(16).padStart(2, '0')
  * （55% / 82%）轉成 HSL → RGB。整數截斷（不四捨五入），跟 Python 的
  * int(x*255) 一致。
  */
-export function colorForTag(tag: string, overrides?: Record<string, string>): string {
-  if (!tag) return NEUTRAL
+export function colorForTag(
+  tag: string,
+  overrides?: Record<string, string>,
+  neutral: string = NEUTRAL,
+): string {
+  if (!tag) return neutral
   const override = overrides?.[tag]
   if (override) return override
   const hue = Number(BigInt('0x' + md5(tag)) % 360n) / 360
@@ -67,8 +71,9 @@ export function paperVars(
   rot = 0,
   index?: number,
   overrides?: Record<string, string>,
+  neutral?: string,
 ): CSSProperties {
-  const face = colorForTag(tag, overrides)
+  const face = colorForTag(tag, overrides, neutral)
   const vars: Record<string, string | number> = {
     '--face': face,
     '--fold': darken(face, FOLD_DARKEN),

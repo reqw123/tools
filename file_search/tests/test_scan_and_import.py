@@ -43,6 +43,40 @@ def test_categorize_counts_sums_to_total(tmp_path):
     assert d["PDF"] == 2 and d["其他"] == 1
 
 
+def test_count_unindexed(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "已收錄.pdf").write_text("x", encoding="utf-8")
+    (tmp_path / "沒收錄.docx").write_text("x", encoding="utf-8")
+    (tmp_path / "sub" / "也沒收錄.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "忽略.exe").write_text("x", encoding="utf-8")   # 不在 watched_extensions
+    (tmp_path / "build.log").write_text("x", encoding="utf-8")  # 同上
+
+    existing = {path_key(tmp_path / "已收錄.pdf")}
+    res = ScanService.count_unindexed([str(tmp_path), "C:/does/not/exist"], existing)
+    assert res["count"] == 2            # docx + tx；exe/log 不算
+    assert res["folder_count"] == 1    # 不存在的資料夾不算
+    assert res["truncated"] is False
+
+    # 全部都收錄了 → 0
+    all_keys = {
+        path_key(tmp_path / "已收錄.pdf"),
+        path_key(tmp_path / "沒收錄.docx"),
+        path_key(tmp_path / "sub" / "也沒收錄.txt"),
+    }
+    assert ScanService.count_unindexed([str(tmp_path)], all_keys)["count"] == 0
+    # 沒有資料夾 → 0
+    assert ScanService.count_unindexed([], set())["count"] == 0
+
+
+def test_count_unindexed_respects_scan_cap(tmp_path, monkeypatch):
+    for i in range(30):
+        (tmp_path / f"f{i}.txt").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(ScanService, "watch_scan_cap", 10)
+    res = ScanService.count_unindexed([str(tmp_path)], set())
+    assert res["truncated"] is True
+    assert res["scanned"] <= 12        # cap + 邊界那一筆
+
+
 def test_find_unindexed_uses_case_insensitive_key():
     existing = {path_key(r"C:\docs\a.txt")}
     found = [Path(r"C:\docs\A.TXT"), Path(r"C:\docs\b.txt")]

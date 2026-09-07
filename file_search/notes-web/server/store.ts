@@ -43,6 +43,9 @@ export interface Note {
   /** ISO 格式（含時間，見桌面版 sticky_note_service.parse_due_date），
    *  '' = 沒有到期日。純視覺提示用，不觸發任何主動通知。 */
   due_at: string
+  /** 釘選——不管到期日/建立時間，永遠排在清單最上面（見 listNotes）。
+   *  切換釘選不算「編輯」，不更新 created_at。跟桌面版共用同一個欄位。 */
+  pinned: boolean
 }
 
 /** 垃圾桶裡的便利貼——刪除（單筆或批次）不是真的消失，先搬到這裡，可以
@@ -83,13 +86,151 @@ function readRaw(): RawFile {
   return { notes: [], trash: [], panel: { visible: true } }
 }
 
-function writeRaw(raw: RawFile): void {
-  const dir = dirname(FILE)
+let tmpSeq = 0
+
+/**
+ * 原子寫入：先寫到暫存檔、成功後才 rename 換掉目標檔案——寫到一半崩潰／
+ * 斷電不會留下半截 JSON（讀取端會 catch 成空值 → 設定或資料整份遺失）。
+ * 對應桌面版 `repositories/atomic_io.py`；`.sticky_notes.json`、
+ * `.sticky_tag_colors.json`、`.notes_settings.json` 全部走這條路。
+ */
+function atomicWriteFile(target: string, text: string): void {
+  const dir = dirname(target)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  const tmp = `${FILE}.${process.pid}.tmp`
+  const tmp = `${target}.${process.pid}.${Date.now()}.${tmpSeq++}.tmp`
+  try {
+    writeFileSync(tmp, text, 'utf-8')
+    renameSync(tmp, target)
+  } catch (err) {
+    try {
+      rmSync(tmp, { force: true })
+    } catch {
+      /* 暫存檔清不掉就算了，不掩蓋原本的寫入錯誤 */
+    }
+    throw err
+  }
+}
+
+function writeRaw(raw: RawFile): void {
   // indent=1 跟 Python 的 json.dumps(..., indent=1) 對齊，diff 比較乾淨
-  writeFileSync(tmp, JSON.stringify(raw, null, 1), 'utf-8')
-  renameSync(tmp, FILE)
+  const text = JSON.stringify(raw, null, 1)
+  atomicWriteFile(FILE, text)
+  snapshotHistory(text) // 每次實質變動存一份版本快照（時光機）
+}
+
+// ── 版本快照（時光機）───────────────────────────────────────────────
+// 每次 .sticky_notes.json 有實質變動（notes／trash）就在
+// indexes/.sticky_notes_history/ 存一份時間戳副本，最多留 MAX_SNAPSHOTS 份。
+// 給「垃圾桶救不回來」的情況用（批次改標籤改錯、內容被覆蓋、匯入蓋掉…）。
+// 跟桌面版 sticky_note_history_repository.py 同一套（同資料夾同檔名慣例）。
+// 快照是保險：寫不進去、資料夾壞掉都安靜略過，絕不擋住便利貼本身的存檔。
+const HISTORY_DIR = join(dirname(FILE), '.sticky_notes_history')
+const MAX_SNAPSHOTS = 40
+const SNAPSHOT_NAME_RE = /^\d{8}T\d{12}\.json$/
+
+function snapshotFiles(): string[] {
+  try {
+    return readdirSync(HISTORY_DIR).filter((n) => SNAPSHOT_NAME_RE.test(n)).sort()
+  } catch {
+    return []
+  }
+}
+
+function snapshotHistory(content: string): void {
+  try {
+    const files = snapshotFiles()
+    if (files.length) {
+      try {
+        const newest = JSON.parse(readFileSync(join(HISTORY_DIR, files[files.length - 1]), 'utf-8'))
+        const incoming = JSON.parse(content)
+        if (
+          JSON.stringify(newest.notes) === JSON.stringify(incoming.notes) &&
+          JSON.stringify(newest.trash) === JSON.stringify(incoming.trash)
+        ) {
+          return // 跟最新快照的 notes+trash 一樣 → 不重複存（面板狀態不算變動）
+        }
+      } catch {
+        /* 最新那份壞掉 → 照存新的 */
+      }
+    }
+    if (!existsSync(HISTORY_DIR)) mkdirSync(HISTORY_DIR, { recursive: true })
+    const now = new Date()
+    const p = (n: number, w = 2) => String(n).padStart(w, '0')
+    const stamp =
+      `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}` +
+      `T${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`
+    let usec = now.getMilliseconds() * 1000
+    let name = `${stamp}${p(usec, 6)}.json`
+    for (let i = 0; i < 1_000_000 && existsSync(join(HISTORY_DIR, name)); i += 1) {
+      usec = (usec + 1) % 1_000_000
+      name = `${stamp}${p(usec, 6)}.json`
+    }
+    writeFileSync(join(HISTORY_DIR, name), content, 'utf-8')
+    const all = snapshotFiles()
+    for (const old of all.slice(0, Math.max(0, all.length - MAX_SNAPSHOTS))) {
+      try {
+        rmSync(join(HISTORY_DIR, old), { force: true })
+      } catch {
+        /* 砍不掉就下次再砍 */
+      }
+    }
+  } catch {
+    /* 快照是保險，寫不進去不該擋住存檔 */
+  }
+}
+
+export interface Snapshot {
+  id: string
+  taken_at: string
+  note_count: number
+  trash_count: number
+}
+
+export function listSnapshots(): Snapshot[] {
+  const out: Snapshot[] = []
+  for (const name of snapshotFiles()) {
+    try {
+      const data = JSON.parse(readFileSync(join(HISTORY_DIR, name), 'utf-8'))
+      if (!data || typeof data !== 'object') continue
+      const id = name.replace(/\.json$/, '')
+      const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/.exec(id)
+      out.push({
+        id,
+        taken_at: m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}` : id,
+        note_count: Array.isArray(data.notes) ? data.notes.length : 0,
+        trash_count: Array.isArray(data.trash) ? data.trash.length : 0,
+      })
+    } catch {
+      /* 壞掉的那份跳過 */
+    }
+  }
+  return out.reverse() // snapshotFiles() 是舊→新，這裡翻成新→舊
+}
+
+/** 整份便利貼資料（連垃圾桶）回到某個版本。還原前先自動存一份「現在」，
+ *  所以還原可以再還原。回傳有沒有真的還原到。 */
+export function restoreSnapshot(id: string): boolean {
+  if (!SNAPSHOT_NAME_RE.test(`${id}.json`)) return false
+  let content: string
+  try {
+    content = readFileSync(join(HISTORY_DIR, `${id}.json`), 'utf-8')
+  } catch {
+    return false
+  }
+  try {
+    const data = JSON.parse(content)
+    if (!data || typeof data !== 'object' || !Array.isArray((data as RawFile).notes)) return false
+  } catch {
+    return false
+  }
+  try {
+    snapshotHistory(readFileSync(FILE, 'utf-8')) // 先保住現況
+  } catch {
+    /* 主檔還不存在 → 沒有現況可保 */
+  }
+  atomicWriteFile(FILE, content)
+  snapshotHistory(content)
+  return true
 }
 
 function parseNote(x: unknown): Note | null {
@@ -103,14 +244,15 @@ function parseNote(x: unknown): Note | null {
     tag: typeof o.tag === 'string' ? o.tag : '',
     image: typeof o.image === 'string' ? o.image : '',
     due_at: typeof o.due_at === 'string' ? o.due_at : '',
+    pinned: o.pinned === true,
     created_at: typeof o.created_at === 'string' && o.created_at ? o.created_at : localIso(),
   }
 }
 
-function serialize(n: Note): Record<string, string> {
+function serialize(n: Note): Record<string, unknown> {
   return {
     id: n.id, title: n.title, body: n.body, tag: n.tag, image: n.image,
-    due_at: n.due_at, created_at: n.created_at,
+    due_at: n.due_at, pinned: n.pinned, created_at: n.created_at,
   }
 }
 
@@ -121,7 +263,7 @@ function parseTrashedNote(x: unknown): TrashedNote | null {
   return { ...n, deleted_at: typeof o.deleted_at === 'string' && o.deleted_at ? o.deleted_at : localIso() }
 }
 
-function serializeTrashed(t: TrashedNote): Record<string, string> {
+function serializeTrashed(t: TrashedNote): Record<string, unknown> {
   return { ...serialize(t), deleted_at: t.deleted_at }
 }
 
@@ -191,7 +333,13 @@ function localIso(d = new Date()): string {
 
 export function listNotes(): Note[] {
   const notes = readRaw().notes.map(parseNote).filter((n): n is Note => n !== null)
-  return notes.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
+  // 釘選的一律排最前面；其餘（含釘選群組內部）依 created_at 由新到舊。
+  // 搜尋／篩選／AI 結果都是在這個順序上再挑、不重排，釘選效果會一路帶過去。
+  return notes.sort(
+    (a, b) =>
+      Number(b.pinned) - Number(a.pinned) ||
+      (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0),
+  )
 }
 
 export function getNote(id: string): Note | undefined {
@@ -206,6 +354,7 @@ export function createNote(input: { title: string; body?: string; tag?: string; 
     tag: (input.tag ?? '').trim(),
     image: '',
     due_at: input.due_at ?? '',
+    pinned: false,
     created_at: localIso(),
   }
   const raw = readRaw()
@@ -229,6 +378,52 @@ export function setNoteImage(id: string, image: string): Note | undefined {
     return serialize(updated)
   })
   if (!updated) return undefined
+  writeRaw(raw)
+  return updated
+}
+
+/**
+ * 釘選／取消釘選一則便利貼——只動 `pinned`，**不動 `created_at`**（釘選是
+ * 排序偏好，不是「編輯」，跟 setNoteImage 同一個道理）。回傳更新後的便利貼；
+ * 找不到 id 回 undefined；狀態本來就一樣則回傳現況、不寫檔。
+ */
+export function setNotePinned(id: string, pinned: boolean): Note | undefined {
+  const raw = readRaw()
+  const idx = raw.notes.findIndex((x) => parseNote(x)?.id === id)
+  if (idx < 0) return undefined
+  const n = parseNote(raw.notes[idx])!
+  if (n.pinned === pinned) return n
+  const updated: Note = { ...n, pinned }
+  raw.notes[idx] = serialize(updated)
+  writeRaw(raw)
+  return updated
+}
+
+// 一行待辦的結構——跟前端 src/lib/format.ts 的 TASK_LINE_RE 同一份，改一邊
+// 記得改另一邊（ADR 0001：server 刻意各留一份 parser，不跨層 import）。
+const TASK_LINE_RE = /^(\s*(?:\d+[.、)]|[-•])?\s*)(\[[ xX]\]\s*)?(.*)$/
+
+/**
+ * 切換一則便利貼內文第 `srcIndex` 行（`body.split('\n')` 的索引）的待辦
+ * 勾選狀態——在該行加上或拿掉開頭的 `[x]` 標記。**不動 `created_at`**：
+ * 打勾是「使用清單」不是「編輯內容」，不該把便利貼推回牆頂（跟
+ * `setNoteImage` 同一個道理）。回傳更新後的便利貼；找不到 id 回 undefined；
+ * `srcIndex` 超界或那行是填空欄（結尾「：」）→ 回傳現況、不寫檔。
+ */
+export function toggleNoteLine(id: string, srcIndex: number): Note | undefined {
+  const raw = readRaw()
+  const idx = raw.notes.findIndex((x) => parseNote(x)?.id === id)
+  if (idx < 0) return undefined
+  const n = parseNote(raw.notes[idx])!
+  const lines = n.body.split('\n')
+  if (srcIndex < 0 || srcIndex >= lines.length || /[:：]\s*$/.test(lines[srcIndex])) {
+    return n
+  }
+  const m = lines[srcIndex].match(TASK_LINE_RE)!
+  const checked = /x/i.test(m[2] ?? '')
+  lines[srcIndex] = checked ? `${m[1]}${m[3]}` : `${m[1]}[x] ${m[3]}`
+  const updated: Note = { ...n, body: lines.join('\n') }
+  raw.notes[idx] = serialize(updated)
   writeRaw(raw)
   return updated
 }
@@ -282,6 +477,7 @@ export function createNotes(
     tag: (it.tag ?? '').trim(),
     image: '',
     due_at: '',
+    pinned: false,
     created_at: localIso(new Date(base - i)),
   }))
   const raw = readRaw()
@@ -347,7 +543,8 @@ export function restoreNote(id: string): Note | undefined {
   raw.trash = raw.trash.filter((x) => (parseTrashedNote(x)?.id ?? null) !== id)
   const restored: Note = {
     id: target.id, title: target.title, body: target.body,
-    tag: target.tag, image: target.image, due_at: target.due_at, created_at: target.created_at,
+    tag: target.tag, image: target.image, due_at: target.due_at,
+    pinned: target.pinned, created_at: target.created_at,
   }
   raw.notes = [...raw.notes, serialize(restored)]
   writeRaw(raw)
@@ -413,28 +610,16 @@ export interface ReminderSettings {
   dueSoonHours: number
 }
 
+// dueSoonHours 現在只是「全域設定」（見 getAppSettings 那一節）裡的一個欄位；
+// 這兩支保留舊介面 / 舊路由 /reminder-settings 不變，內部轉呼叫共用的讀寫。
 export function getReminderSettings(): ReminderSettings {
-  try {
-    const data = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) as unknown
-    const hours = (data as Record<string, unknown> | null)?.dueSoonHours
-    if (typeof hours === 'number' && Number.isFinite(hours) && hours > 0) {
-      return { dueSoonHours: hours }
-    }
-  } catch {
-    // 檔案不存在或壞掉都退回預設值，不拋例外——這是次要的顯示偏好，不該
-    // 因為一份設定檔壞了就讓整支 API（甚至整個 server）掛掉。
-  }
-  return { dueSoonHours: DEFAULT_DUE_SOON_HOURS }
+  return { dueSoonHours: getAppSettings().dueSoonHours }
 }
 
 /** 1 小時 ~ 30 天（720 小時），純粹避免打錯數字（例如多打一個 0）產生離譜
  *  的門檻；不是什麼精確的業務邏輯上限。 */
 export function setReminderSettings(dueSoonHours: number): ReminderSettings {
-  const clamped = Math.min(720, Math.max(1, Math.round(dueSoonHours)))
-  const dir = dirname(SETTINGS_FILE)
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(SETTINGS_FILE, JSON.stringify({ dueSoonHours: clamped }, null, 1), 'utf-8')
-  return { dueSoonHours: clamped }
+  return { dueSoonHours: patchAppSettings({ dueSoonHours }).dueSoonHours }
 }
 
 export interface DueNote {
@@ -499,9 +684,7 @@ export function getTagColors(): TagColors {
 }
 
 function writeTagColors(colors: TagColors): void {
-  const dir = dirname(TAG_COLORS_FILE)
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(TAG_COLORS_FILE, JSON.stringify(colors, null, 1), 'utf-8')
+  atomicWriteFile(TAG_COLORS_FILE, JSON.stringify(colors, null, 1))
 }
 
 /** 指定某個標籤固定用這個顏色，回傳更新後的完整對照表。`tag`／`color` 格式
@@ -524,6 +707,120 @@ export function clearTagColor(tag: string): TagColors {
     writeTagColors(colors)
   }
   return colors
+}
+
+// ── 全域設定（.notes_settings.json）─────────────────────────────────
+// dueSoonHours 之外還放：標籤排序偏好、預設便利貼紙色、牆面版面參數。全部
+// 是「這台機器的顯示偏好」，不是便利貼資料本身，壞掉互不牽連（讀不到就整包
+// 退回預設值）。寫入時保留所有不認得的頂層鍵——桌面版目前只讀 dueSoonHours，
+// 日後若自己加鍵也不會被這邊蓋掉。
+
+export type TagSortMode = 'count' | 'manual' | 'recent'
+
+export interface TagSortPref {
+  /** count＝依便利貼數量多寡；recent＝依最近有便利貼異動；manual＝完全照 order。 */
+  mode: TagSortMode
+  /** 使用者手動排定的標籤順序。目前還存在、且列在這裡的標籤永遠排最前（照這個
+   *  順序）；其餘（含日後新增的）依 mode 遞補在後。 */
+  order: string[]
+}
+
+export interface WallPref {
+  /** 一欄至少多寬（px）才多開一欄。 */
+  minColWidth: number
+  /** false＝關掉 JS 動態 masonry，用單純等寬格線。 */
+  masonry: boolean
+}
+
+export interface AppSettings {
+  dueSoonHours: number
+  tagSort: TagSortPref
+  /** 無分類 / 分類沒有自訂顏色時的便利貼紙色（#rrggbb）。 */
+  defaultNoteColor: string
+  wall: WallPref
+}
+
+const DEFAULT_NOTE_COLOR = '#e5e7eb' // = notes-web lib/color.ts NEUTRAL / 桌面版 STICKY_NEUTRAL_COLOR
+const DEFAULT_MIN_COL_WIDTH = 240
+
+function coerceAppSettings(data: unknown): AppSettings {
+  const o = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  const ts = (o.tagSort && typeof o.tagSort === 'object' ? o.tagSort : {}) as Record<string, unknown>
+  const w = (o.wall && typeof o.wall === 'object' ? o.wall : {}) as Record<string, unknown>
+
+  const hours = o.dueSoonHours
+  const mode = ts.mode
+  const order = Array.isArray(ts.order)
+    ? [
+        ...new Set(
+          (ts.order as unknown[])
+            .filter((t): t is string => typeof t === 'string' && !!t.trim())
+            .map((t) => t.trim()),
+        ),
+      ].slice(0, 300)
+    : []
+  const minColWidth =
+    typeof w.minColWidth === 'number' && Number.isFinite(w.minColWidth)
+      ? Math.min(520, Math.max(160, Math.round(w.minColWidth)))
+      : DEFAULT_MIN_COL_WIDTH
+
+  return {
+    dueSoonHours:
+      typeof hours === 'number' && Number.isFinite(hours) && hours > 0
+        ? Math.min(720, Math.max(1, Math.round(hours)))
+        : DEFAULT_DUE_SOON_HOURS,
+    tagSort: { mode: mode === 'manual' || mode === 'recent' ? mode : 'count', order },
+    defaultNoteColor:
+      typeof o.defaultNoteColor === 'string' && HEX_COLOR_RE.test(o.defaultNoteColor)
+        ? o.defaultNoteColor.toLowerCase()
+        : DEFAULT_NOTE_COLOR,
+    wall: { minColWidth, masonry: typeof w.masonry === 'boolean' ? w.masonry : true },
+  }
+}
+
+export function getAppSettings(): AppSettings {
+  try {
+    return coerceAppSettings(JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')))
+  } catch {
+    return coerceAppSettings({}) // 檔案不存在或壞掉 → 整包預設值
+  }
+}
+
+export interface AppSettingsPatch {
+  dueSoonHours?: number
+  tagSort?: Partial<TagSortPref>
+  defaultNoteColor?: string
+  wall?: Partial<WallPref>
+}
+
+/** 只覆寫 patch 帶到的欄位，其餘沿用目前值；驗證/夾範圍後原子寫回，
+ *  不認得的頂層鍵原樣保留。回傳寫入後的完整設定。 */
+export function patchAppSettings(patch: AppSettingsPatch | null | undefined): AppSettings {
+  const p: AppSettingsPatch = patch ?? {}
+  let rawObj: Record<string, unknown> = {}
+  try {
+    const parsed = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      rawObj = parsed as Record<string, unknown>
+    }
+  } catch {
+    /* 檔案不存在或壞掉 → 從空物件開始（等於全部套預設再蓋上 patch） */
+  }
+  const cur = coerceAppSettings(rawObj)
+  // 顏色特別處理：格式不對就「保留原值」，不是退回預設（其餘欄位交給
+  // coerceAppSettings 夾範圍即可——例如欄寬 9999 夾成 520 是想要的行為）。
+  const nextColor =
+    typeof p.defaultNoteColor === 'string' && HEX_COLOR_RE.test(p.defaultNoteColor)
+      ? p.defaultNoteColor
+      : cur.defaultNoteColor
+  const clean = coerceAppSettings({
+    dueSoonHours: p.dueSoonHours ?? cur.dueSoonHours,
+    tagSort: { ...cur.tagSort, ...p.tagSort },
+    defaultNoteColor: nextColor,
+    wall: { ...cur.wall, ...p.wall },
+  })
+  atomicWriteFile(SETTINGS_FILE, JSON.stringify({ ...rawObj, ...clean }, null, 1))
+  return clean
 }
 
 // ── 匯出／匯入（搬家／備份用）──────────────────────────────────────

@@ -1,8 +1,11 @@
-import { useState } from 'react'
-import type { NoteInput } from '../lib/api'
+import { useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import type { NoteInput, TagColors } from '../lib/api'
 import { colorForTag } from '../lib/color'
-import { fromStoredDueAt, toStoredDueAt } from '../lib/format'
-import { useClearTagColor, useSetTagColor, useTagColors } from '../hooks/useNotes'
+import { fromStoredDueAt, timeFromStoredDueAt, toStoredDueAt } from '../lib/format'
+import {
+  TAG_COLORS_KEY, useClearTagColor, useSetTagColor, useTagColors,
+} from '../hooks/useNotes'
 import { TagInput } from './TagInput'
 
 export function NoteForm({
@@ -29,6 +32,7 @@ export function NoteForm({
   const [tag, setTag] = useState(initial?.tag ?? defaultTag ?? '')
   const [body, setBody] = useState(initial?.body ?? '')
   const [dueDate, setDueDate] = useState(fromStoredDueAt(initial?.due_at ?? ''))
+  const [dueTime, setDueTime] = useState(timeFromStoredDueAt(initial?.due_at ?? ''))
   const [touched, setTouched] = useState(false)
 
   const titleError = touched && !title.trim() ? '標題不能留空' : ''
@@ -39,6 +43,48 @@ export function NoteForm({
   const clearTagColor = useClearTagColor()
   const hasColorOverride = !!trimmedTag && !!tagColors?.[trimmedTag]
 
+  // <input type="color"> 的 React onChange 對應的是 `input` 事件，使用者在
+  // 原生調色盤裡拖曳時會連續觸發——直接在那裡 mutate 會對後端狂送 PATCH、
+  // 狂重寫 .sticky_tag_colors.json。折衷：拖曳時「只」更新本地的 tag-colors
+  // query 快取（樂觀更新），牆上同分類的便利貼就能即時跟著變色；真正的 PATCH
+  // 只在原生 `change`（關閉調色盤）或欄位失焦時送出一次。
+  const qc = useQueryClient()
+  const swatchRef = useRef<HTMLInputElement>(null)
+  const [draftColor, setDraftColor] = useState<string | null>(null)
+  const pendingRef = useRef<string | null>(null)
+  const resolvedColor = trimmedTag ? colorForTag(trimmedTag, tagColors) : '#e5e7eb'
+
+  // 拖曳中：本地即時預覽（swatch 自己 + 牆上同分類卡片）。
+  const previewTagColor = (color: string) => {
+    setDraftColor(color)
+    if (!trimmedTag) return
+    pendingRef.current = color
+    qc.setQueryData<TagColors>(TAG_COLORS_KEY, (old) => ({ ...(old ?? {}), [trimmedTag]: color }))
+  }
+
+  // 把還沒送出的顏色真的寫回後端。呼叫點：原生 change（關閉調色盤）、
+  // swatch 失焦、切換分類/卸載時的 effect cleanup。
+  const commitTagColor = () => {
+    const color = pendingRef.current
+    pendingRef.current = null
+    setDraftColor(null)
+    if (color && trimmedTag) setTagColor.mutate({ tag: trimmedTag, color })
+  }
+
+  useEffect(() => {
+    setDraftColor(null)
+    pendingRef.current = null
+    const el = swatchRef.current
+    if (!el) return
+    el.addEventListener('change', commitTagColor)
+    return () => {
+      el.removeEventListener('change', commitTagColor)
+      commitTagColor()
+    }
+    // setTagColor.mutate 在 react-query 裡跨 render 穩定，只需要跟著 trimmedTag 重掛。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimmedTag])
+
   return (
     <form
       className="form"
@@ -46,7 +92,7 @@ export function NoteForm({
         e.preventDefault()
         setTouched(true)
         if (!title.trim()) return
-        onSubmit({ title: title.trim(), tag: tag.trim(), body, due_at: toStoredDueAt(dueDate) })
+        onSubmit({ title: title.trim(), tag: tag.trim(), body, due_at: toStoredDueAt(dueDate, dueTime) })
       }}
     >
       <label>
@@ -76,15 +122,17 @@ export function NoteForm({
             className="tag-color-row-input"
           />
           <input
+            ref={swatchRef}
             type="color"
             className="tag-color-swatch"
             // 空標籤沒有顏色概念可以自訂，用中性灰佔位並停用整顆輸入框。
-            value={trimmedTag ? colorForTag(trimmedTag, tagColors) : '#e5e7eb'}
+            value={trimmedTag ? (draftColor ?? resolvedColor) : '#e5e7eb'}
             disabled={!trimmedTag}
             title={trimmedTag ? `自訂「${trimmedTag}」的顏色` : '請先輸入分類名稱'}
-            onChange={(e) => {
-              if (trimmedTag) setTagColor.mutate({ tag: trimmedTag, color: e.target.value })
-            }}
+            // 拖曳中只做即時預覽（含牆上同分類卡片）；實際 PATCH 交給
+            // effect 掛的原生 `change`，或這裡的 onBlur。
+            onChange={(e) => previewTagColor(e.target.value)}
+            onBlur={commitTagColor}
           />
           {hasColorOverride && (
             <button
@@ -99,9 +147,16 @@ export function NoteForm({
       </label>
 
       <label>
-        到期日（可留空；卡片會依到期日標色提醒）
+        到期日（可留空；填了時間就精確到分提醒，時間留空＝當天內到期）
         <div className="due-row">
           <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <input
+            type="time"
+            value={dueTime}
+            disabled={!dueDate}
+            title={dueDate ? '到期時間（可留空＝當天內）' : '先選日期'}
+            onChange={(e) => setDueTime(e.target.value)}
+          />
           {(
             [
               ['今天', 0],
@@ -125,8 +180,15 @@ export function NoteForm({
               {label}
             </button>
           ))}
-          {dueDate && (
-            <button type="button" className="btn sm ghost" onClick={() => setDueDate('')}>
+          {(dueDate || dueTime) && (
+            <button
+              type="button"
+              className="btn sm ghost"
+              onClick={() => {
+                setDueDate('')
+                setDueTime('')
+              }}
+            >
               清除
             </button>
           )}
