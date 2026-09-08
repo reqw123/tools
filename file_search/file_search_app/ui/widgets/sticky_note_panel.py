@@ -35,6 +35,8 @@ from file_search_app.config import (
 )
 from file_search_app.models import format_added_at
 from file_search_app.platform import file_actions
+from file_search_app.repositories.notes_settings_repository import NotesSettingsRepository
+from file_search_app.services.note_semantic_service import NoteSemanticService
 from file_search_app.services.sticky_note_service import (
     REPEAT_LABELS, due_status, format_due_label, preview_text,
 )
@@ -55,6 +57,9 @@ _ALL_TAGS_LABEL = "全部標籤"
 # 搜尋框每打一個字就整批砍掉重畫卡片清單會頓（便利貼一多更明顯），改成打完
 # 停頓這麼多毫秒才真的重畫；期間再按鍵就把上一個排程取消重排。
 _SEARCH_DEBOUNCE_MS = 150
+# 語意搜尋每次要把查詢句送去 Ollama 算向量（就算便利貼向量已快取），比純
+# 字串比對重，去抖動放長一點，不要每個鍵都打一次本機 API。
+_SEMANTIC_DEBOUNCE_MS = 600
 
 # 到期徽章／「只看快到期」排序是「跟現在時間比」算出來的，卡片畫好之後不會
 # 自己隨時間翻新。每這麼多毫秒檢查一次：只有真的有便利貼的到期狀態
@@ -149,6 +154,17 @@ class StickyNotePanel:
         self._ai_result_ids = None
         self._ai_query_snapshot = None
 
+        # 語意搜尋（本機 Ollama embedding 依相似度排序）——跟 AI 搜尋一樣是
+        # 「暫時覆蓋一般關鍵字搜尋」的狀態：只在搜尋框文字沒被改過的期間有效。
+        # 開關開著時，搜尋框每次改動會（去抖動後）在背景重算一次相似度。
+        self._semantic = NoteSemanticService(service)
+        self._semantic_var = tk.BooleanVar(value=False)
+        self._semantic_scores = None  # {note_id: score}；None＝還沒算/已失效
+        self._semantic_snapshot = None  # 算這批分數時搜尋框的內容
+        self._semantic_error = None  # Ollama 連不上/模型沒下載時的訊息（顯示在計數列）
+        self._semantic_seq = 0  # 丟掉比目前新一輪還舊的背景結果
+        self._semantic_after_id = None
+
         self.frame = tk.Frame(
             parent, bg=COLOR_PREVIEW_BG, width=width,
             highlightbackground=COLOR_PREVIEW_BORDER, highlightthickness=1,
@@ -234,7 +250,7 @@ class StickyNotePanel:
         self._search_var = tk.StringVar()
         search_entry = tk.Entry(search_row, textvariable=self._search_var, font=font_hint, relief="flat")
         search_entry.pack(side="left", fill="x", expand=True, padx=(4, 4), ipady=3)
-        self._search_var.trace_add("write", lambda *_a: self._schedule_refresh())
+        self._search_var.trace_add("write", lambda *_a: self._on_search_changed())
         self._ai_search_btn = styled_button(
             search_row, "🤖", self._on_ai_search, BTN_AI_BG, BTN_AI_ACTIVE, font_hint,
         )
@@ -246,6 +262,23 @@ class StickyNotePanel:
             font_hint,
         )
 
+        semantic_row = tk.Frame(filter_box, bg=STICKY_FILTER_BOX_BG)
+        semantic_row.pack(fill="x", padx=8, pady=(0, 4))
+        semantic_check = tk.Checkbutton(
+            semantic_row, text="🧠 語意搜尋（依意思相近排序，需本機 Ollama）",
+            variable=self._semantic_var, command=self._on_toggle_semantic,
+            bg=STICKY_FILTER_BOX_BG, fg=STICKY_FILTER_BOX_FG,
+            activebackground=STICKY_FILTER_BOX_BG, selectcolor=STICKY_FILTER_BOX_BG, font=font_hint,
+        )
+        semantic_check.pack(side="left")
+        _Tooltip(
+            semantic_check,
+            "把搜尋框的字和每則便利貼都轉成向量、依相似度排序——"
+            "字面對不上但意思相近的也找得到。第一次會花幾秒建立向量，"
+            "之後只算查詢句。需要那台電腦有跑 Ollama 且下載了 embedding 模型。",
+            font_hint,
+        )
+
         tag_row = tk.Frame(filter_box, bg=STICKY_FILTER_BOX_BG)
         tag_row.pack(fill="x", padx=8, pady=(0, 4))
         tk.Label(tag_row, text="標籤：", bg=STICKY_FILTER_BOX_BG, fg=STICKY_FILTER_BOX_FG, font=font_hint).pack(side="left")
@@ -254,7 +287,7 @@ class StickyNotePanel:
             tag_row, textvariable=self._tag_filter_var, state="readonly", font=font_hint,
         )
         self._tag_filter_combo.pack(side="left", fill="x", expand=True, padx=(4, 0))
-        self._tag_filter_combo.bind("<<ComboboxSelected>>", lambda _e: self._refresh())
+        self._tag_filter_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_tag_filter_changed())
 
         due_row = tk.Frame(filter_box, bg=STICKY_FILTER_BOX_BG)
         due_row.pack(fill="x", padx=8, pady=(0, 4))
@@ -338,6 +371,93 @@ class StickyNotePanel:
             self.frame.after_cancel(self._refresh_after_id)
         self._refresh_after_id = self.frame.after(_SEARCH_DEBOUNCE_MS, self._refresh)
 
+    # ── 語意搜尋 ─────────────────────────────────────────────────────
+
+    def _on_search_changed(self):
+        """搜尋框文字改動的統一入口：一律排一次去抖動重畫；語意開關開著時，
+        另外排一次（更長去抖動的）背景相似度重算。"""
+        self._schedule_refresh()
+        if self._semantic_var.get():
+            self._schedule_semantic()
+
+    def _on_tag_filter_changed(self):
+        # 語意開著時，換標籤要重算（新標籤範圍外的便利貼原本沒有分數）
+        if self._semantic_var.get() and self._search_var.get().strip():
+            self._run_semantic()
+        else:
+            self._refresh()
+
+    def _on_toggle_semantic(self):
+        self._semantic_error = None
+        if self._semantic_var.get():
+            if self._search_var.get().strip():
+                self._run_semantic()  # 立刻算一次，不等去抖動
+            else:
+                self._refresh()
+        else:
+            # 關掉→丟掉這批分數，退回一般關鍵字搜尋
+            self._semantic_scores = None
+            self._semantic_snapshot = None
+            if self._semantic_after_id is not None:
+                self.frame.after_cancel(self._semantic_after_id)
+                self._semantic_after_id = None
+            self._refresh()
+
+    def _schedule_semantic(self):
+        if self._semantic_after_id is not None:
+            self.frame.after_cancel(self._semantic_after_id)
+        self._semantic_after_id = self.frame.after(_SEMANTIC_DEBOUNCE_MS, self._run_semantic)
+
+    def _run_semantic(self):
+        """在背景執行緒算「查詢句 vs 每則便利貼」的 cosine 相似度（便利貼向量
+        有快取，通常只需要算查詢句），完成後把分數存起來、重畫清單。Ollama
+        連不上／模型沒下載時把訊息記到 _semantic_error，_refresh() 會顯示在
+        計數列並退回關鍵字搜尋。"""
+        if self._semantic_after_id is not None:
+            self.frame.after_cancel(self._semantic_after_id)
+            self._semantic_after_id = None
+        if not self._semantic_var.get():
+            return
+        query = self._search_var.get().strip()
+        if not query:
+            self._semantic_scores = None
+            self._semantic_snapshot = None
+            self._refresh()
+            return
+
+        tag_filter = "" if self._tag_filter_var.get() == _ALL_TAGS_LABEL else self._tag_filter_var.get()
+        model = NotesSettingsRepository().load_embed_model()
+        self._semantic_seq += 1
+        seq = self._semantic_seq
+        self._count_var.set("🧠 語意搜尋計算中…")
+        result_queue = queue.Queue()
+
+        def _worker():
+            try:
+                result_queue.put(("done", self._semantic.search(query, tag_filter, model)))
+            except Exception as exc:  # noqa: BLE001 — 背景執行緒任何例外都要塞回佇列
+                result_queue.put(("error", f"{type(exc).__name__}: {exc}"))
+
+        def _on_message(message):
+            if seq != self._semantic_seq:
+                return True  # 已經有更新一輪在跑，這批結果過期了
+            kind, payload = message
+            if kind == "error" or not payload.get("ok"):
+                self._semantic_error = (
+                    payload if kind == "error" else payload.get("error")
+                ) or "語意搜尋暫時無法使用"
+                self._semantic_scores = None
+                self._semantic_snapshot = query
+            else:
+                self._semantic_error = None
+                self._semantic_scores = {r["id"]: r["score"] for r in payload["results"]}
+                self._semantic_snapshot = query
+            self._refresh()
+            return True
+
+        start_worker(_worker, result_queue)
+        poll_queue(self.frame, result_queue, _on_message)
+
     def _refresh(self):
         # 有排程中的去抖動重畫就先取消，免得等一下又多跑一次一樣的重畫。
         if self._refresh_after_id is not None:
@@ -360,15 +480,31 @@ class StickyNotePanel:
         # 對應目前的輸入，自動失效退回一般的關鍵字比對，不用另外一顆
         # 「清除 AI 搜尋」按鈕。標籤篩選則是在 AI 結果之上再篩一層，兩者
         # 疊加使用。
+        semantic_on = self._semantic_var.get()
+        semantic_ready = (
+            semantic_on
+            and query_text.strip()
+            and self._semantic_snapshot == query_text.strip()
+            and self._semantic_scores is not None
+        )
+        ai_mode = False
+        semantic_mode = False
         if self._ai_result_ids is not None and query_text == self._ai_query_snapshot:
             shown = [n for n in notes if n.id in self._ai_result_ids]
             if tag_filter:
                 shown = [n for n in shown if n.tag == tag_filter]
             ai_mode = True
+        elif semantic_ready:
+            # 語意命中：只留跨過相似度門檻的，依分數高到低排。標籤篩選再疊一層。
+            scores = self._semantic_scores
+            shown = [n for n in notes if n.id in scores]
+            if tag_filter:
+                shown = [n for n in shown if n.tag == tag_filter]
+            shown.sort(key=lambda n: scores.get(n.id, 0.0), reverse=True)
+            semantic_mode = True
         else:
             self._ai_result_ids = None
             shown = self._service.search(notes, query_text, tag_filter)
-            ai_mode = False
 
         # 「只看快到期/已逾期」——疊加在其他篩選之上，同時把排序從「最新建立
         # 在上」換成「最早到期在上」，這樣才看得出接下來該優先處理哪幾則；
@@ -381,6 +517,10 @@ class StickyNotePanel:
 
         if ai_mode:
             self._count_var.set(f"🤖 AI 搜尋結果：{len(shown)} 則")
+        elif semantic_mode:
+            self._count_var.set(f"🧠 語意相似：{len(shown)} 則（依相近程度排序）")
+        elif semantic_on and self._semantic_error and query_text.strip():
+            self._count_var.set(f"🧠 語意搜尋無法使用：{self._semantic_error}　·　已改用關鍵字比對")
         elif query_text.strip() or tag_filter:
             self._count_var.set(f"符合條件：{len(shown)} / {len(notes)} 則")
         else:
@@ -588,6 +728,12 @@ class StickyNotePanel:
         改過時才失效，漏了這條）。"""
         self._ai_result_ids = None
         self._ai_query_snapshot = None
+        # 語意分數也一起失效——刪掉的便利貼會自然從結果消失，但新增／改內容
+        # 後要重算才準；開關還開著就在背景重跑一次。
+        self._semantic_scores = None
+        self._semantic_snapshot = None
+        if self._semantic_var.get() and self._search_var.get().strip():
+            self._schedule_semantic()
 
     def _confirm_add(self, title, body, tag, due_at, repeat=""):
         self._service.add_note(title, body, tag, due_at, repeat)

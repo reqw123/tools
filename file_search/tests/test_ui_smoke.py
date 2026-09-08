@@ -240,6 +240,49 @@ def test_sticky_panel_due_only_filters_and_sorts(tk_root, data_dir):
     assert {n.id for n in panel._last_shown} == {no_due.id, soon.id, overdue.id}
 
 
+def test_sticky_panel_semantic_search_reorders(tk_root, data_dir):
+    import tkinter.font as tkfont
+
+    from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
+    from file_search_app.services.note_semantic_service import NoteSemanticService
+    from file_search_app.services.sticky_note_service import StickyNoteService
+    from file_search_app.ui.widgets.sticky_note_panel import StickyNotePanel
+
+    svc = StickyNoteService(StickyNoteRepository(indexes_dir=data_dir))
+    a = svc.add_note("行李清單", "護照 旅遊", "旅遊")
+    svc.add_note("晨跑計畫", "跑步 運動", "健康")
+    svc.add_note("報稅提醒", "財務 報稅", "理財")
+
+    vocab = ["行李", "跑步", "報稅"]
+
+    def fake_embed(_base, _model, texts):
+        return [[1.0 if w in t else 0.0 for w in vocab] for t in texts]
+
+    class FakeAIDesc:
+        def is_configured(self):
+            return True, ""
+
+    panel = StickyNotePanel(tk_root, svc, FakeAIDesc(), on_open_ai_settings=lambda e: None,
+                            font_hint=tkfont.Font(size=10), width=380, on_collapse=lambda: None)
+    # 換成注入假 embed 的 service，測試不碰真的 Ollama
+    panel._semantic = NoteSemanticService(svc, embed_fn=fake_embed, cache_path=data_dir / ".emb.json")
+    tk_root.update()
+
+    panel._semantic_var.set(True)
+    panel._search_var.set("出國前要帶的行李")
+    panel._on_toggle_semantic()
+    _pump(tk_root, 0.6)
+
+    assert [n.id for n in panel._last_shown] == [a.id]
+    assert "語意相似" in panel._count_var.get()
+
+    # 關掉→退回關鍵字搜尋（「行李」只字面命中第一則）
+    panel._semantic_var.set(False)
+    panel._on_toggle_semantic()
+    _pump(tk_root, 0.3)
+    assert "語意相似" not in panel._count_var.get()
+
+
 def test_sticky_panel_pin_toggle_sorts_to_top(tk_root, data_dir):
     import json
     import tkinter.font as tkfont
