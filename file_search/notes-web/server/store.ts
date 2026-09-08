@@ -10,7 +10,7 @@ import {
   writeFileSync,
   type Stats,
 } from 'node:fs'
-import { dirname, extname, isAbsolute, join } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import { dropThumbs } from './note-thumb'
 
 /**
@@ -64,13 +64,56 @@ export interface TrashedNote extends Note {
 
 export const projectRoot = join(import.meta.dirname, '..')
 
-const FILE =
+// ── 便利貼集合（生活 / 研究生）──────────────────────────────────────
+// 「研究生模式」把整面牆換成論文專案專用的另一份便利貼檔（預設
+// C:\ai_project\.thesis_notes.json，跟論文專案一起版控），跟生活便利貼
+// 完全分開——各自的清單、垃圾桶、版本快照、標籤顏色。切換靠每個 request
+// 的 `x-note-collection` 標頭（見 index.ts 的 onRequest hook），store 這邊
+// 用一個 module 變數記「這一個 request 要動哪一份」——store 的函式全是同步
+// IO，同一個 handler 內不會被別的 request 插隊，所以安全。
+//
+// 共用（不隨集合切換）：插圖資料夾（檔名唯一、靜態路由在啟動時就綁死一個
+// root）、`.notes_settings.json`（是 app 全域偏好，不是某一份便利貼的資料）。
+export type NoteCollection = 'life' | 'thesis'
+
+const LIFE_FILE =
   process.env.STICKY_NOTES_FILE ??
   join(projectRoot, '..', 'indexes', '.sticky_notes.json')
 
-/** 便利貼插圖放這裡——跟 `.sticky_notes.json` 同一個資料夾，`STICKY_NOTES_FILE`
- *  覆寫路徑時圖片也跟著走。前端用 `/note-images/<檔名>` 取（見 index.ts）。 */
-export const noteImagesDir = join(dirname(FILE), '.sticky_note_images')
+let activeCollection: NoteCollection = 'life'
+
+/** 這一個 request 要動哪一份便利貼——index.ts 的 onRequest hook 依標頭設定。 */
+export function setActiveCollection(c: NoteCollection): void {
+  activeCollection = c === 'thesis' ? 'thesis' : 'life'
+}
+export function getActiveCollection(): NoteCollection {
+  return activeCollection
+}
+
+function thesisNotesFile(): string {
+  const dir = process.env.THESIS_NOTES_DIR || getAppSettings().thesisProjectDir || 'C:\\ai_project'
+  return join(dir, '.thesis_notes.json')
+}
+
+/** 目前作用中的便利貼 JSON 路徑。 */
+export function activeNotesFile(): string {
+  return activeCollection === 'thesis' ? thesisNotesFile() : LIFE_FILE
+}
+
+function historyDir(): string {
+  const f = activeNotesFile()
+  return join(dirname(f), `${basename(f, '.json')}_history`)
+}
+
+function tagColorsFile(): string {
+  return activeCollection === 'thesis'
+    ? join(dirname(activeNotesFile()), '.thesis_tag_colors.json')
+    : join(dirname(LIFE_FILE), '.sticky_tag_colors.json')
+}
+
+/** 便利貼插圖放這裡——生活／研究生共用同一個資料夾（檔名是 uuid，不會撞），
+ *  靜態路由在 index.ts 啟動時就綁死這個 root。前端用 `/note-images/<檔名>` 取。 */
+export const noteImagesDir = join(dirname(LIFE_FILE), '.sticky_note_images')
 
 interface RawFile {
   notes: unknown[]
@@ -80,6 +123,7 @@ interface RawFile {
 }
 
 function readRaw(): RawFile {
+  const FILE = activeNotesFile()
   if (!existsSync(FILE)) return { notes: [], trash: [], panel: { visible: true } }
   try {
     const data = JSON.parse(readFileSync(FILE, 'utf-8')) as unknown
@@ -122,7 +166,7 @@ function atomicWriteFile(target: string, text: string): void {
 function writeRaw(raw: RawFile): void {
   // indent=1 跟 Python 的 json.dumps(..., indent=1) 對齊，diff 比較乾淨
   const text = JSON.stringify(raw, null, 1)
-  atomicWriteFile(FILE, text)
+  atomicWriteFile(activeNotesFile(), text)
   snapshotHistory(text) // 每次實質變動存一份版本快照（時光機）
 }
 
@@ -132,19 +176,20 @@ function writeRaw(raw: RawFile): void {
 // 給「垃圾桶救不回來」的情況用（批次改標籤改錯、內容被覆蓋、匯入蓋掉…）。
 // 跟桌面版 sticky_note_history_repository.py 同一套（同資料夾同檔名慣例）。
 // 快照是保險：寫不進去、資料夾壞掉都安靜略過，絕不擋住便利貼本身的存檔。
-const HISTORY_DIR = join(dirname(FILE), '.sticky_notes_history')
+// 生活 → .sticky_notes_history/；研究生 → .thesis_notes_history/（見 historyDir）。
 const MAX_SNAPSHOTS = 40
 const SNAPSHOT_NAME_RE = /^\d{8}T\d{12}\.json$/
 
 function snapshotFiles(): string[] {
   try {
-    return readdirSync(HISTORY_DIR).filter((n) => SNAPSHOT_NAME_RE.test(n)).sort()
+    return readdirSync(historyDir()).filter((n) => SNAPSHOT_NAME_RE.test(n)).sort()
   } catch {
     return []
   }
 }
 
 function snapshotHistory(content: string): void {
+  const HISTORY_DIR = historyDir()
   try {
     const files = snapshotFiles()
     if (files.length) {
@@ -195,6 +240,7 @@ export interface Snapshot {
 }
 
 export function listSnapshots(): Snapshot[] {
+  const HISTORY_DIR = historyDir()
   const out: Snapshot[] = []
   for (const name of snapshotFiles()) {
     try {
@@ -219,9 +265,10 @@ export function listSnapshots(): Snapshot[] {
  *  所以還原可以再還原。回傳有沒有真的還原到。 */
 export function restoreSnapshot(id: string): boolean {
   if (!SNAPSHOT_NAME_RE.test(`${id}.json`)) return false
+  const FILE = activeNotesFile()
   let content: string
   try {
-    content = readFileSync(join(HISTORY_DIR, `${id}.json`), 'utf-8')
+    content = readFileSync(join(historyDir(), `${id}.json`), 'utf-8')
   } catch {
     return false
   }
@@ -748,7 +795,8 @@ export function tagCounts(): { tag: string; count: number }[] {
     .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, 'zh-Hant'))
 }
 
-export const notesFilePath = FILE
+/** 生活便利貼檔的固定路徑——啟動 log / 靜態資源用（研究生檔用 activeNotesFile()）。 */
+export const notesFilePath = LIFE_FILE
 
 // ── 到期日提醒摘要（給外部排程/自動化拉取用，例如 Node-RED）───────────────
 // 只讀、不主動推播——這支 app 本身不知道怎麼發 Discord/LINE，也不該知道
@@ -768,7 +816,8 @@ export const notesFilePath = FILE
 // 它怎麼呼叫這支 API——這就是特意要的低耦合：改設定不用碰 Node-RED 那邊
 // 的流程，這支 API 掛掉或設定檔壞掉也不會讓 Node-RED 整個流程壞掉（就只
 // 是那一輪讀不到資料、不會發通知，僅此而已）。
-const SETTINGS_FILE = join(dirname(FILE), '.notes_settings.json')
+// app 全域偏好（不隨集合切換）——永遠放生活便利貼那個資料夾（indexes/）。
+const SETTINGS_FILE = join(dirname(LIFE_FILE), '.notes_settings.json')
 const DEFAULT_DUE_SOON_HOURS = 48 // 跟改動前硬寫的「2 天」門檻一致，設定檔還不存在時的預設值
 
 export interface ReminderSettings {
@@ -828,14 +877,13 @@ export function dueSummary(): DueSummary {
 // 獨立的小檔案，跟 .sticky_notes.json 分開存（顯示偏好，不是筆記資料本身，
 // 壞掉互不牽連）。跟桌面版的 .sticky_tag_colors.json 同名同格式
 // （{"<標籤>": "#rrggbb", ...}），兩邊各自讀寫同一份檔案。
-const TAG_COLORS_FILE = join(dirname(FILE), '.sticky_tag_colors.json')
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
 
 export type TagColors = Record<string, string>
 
 export function getTagColors(): TagColors {
   try {
-    const data = JSON.parse(readFileSync(TAG_COLORS_FILE, 'utf-8')) as unknown
+    const data = JSON.parse(readFileSync(tagColorsFile(), 'utf-8')) as unknown
     if (data && typeof data === 'object' && !Array.isArray(data)) {
       const out: TagColors = {}
       for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
@@ -850,7 +898,7 @@ export function getTagColors(): TagColors {
 }
 
 function writeTagColors(colors: TagColors): void {
-  atomicWriteFile(TAG_COLORS_FILE, JSON.stringify(colors, null, 1))
+  atomicWriteFile(tagColorsFile(), JSON.stringify(colors, null, 1))
 }
 
 /** 指定某個標籤固定用這個顏色，回傳更新後的完整對照表。`tag`／`color` 格式
@@ -913,8 +961,12 @@ export interface AppSettings {
   trashRetentionDays: number
   /** 垃圾桶最多留幾則，超過從最舊的清起。0＝不限筆數。 */
   trashMaxCount: number
+  /** 「研究生模式」的論文專案資料夾——研究生便利貼存在
+   *  `<thesisProjectDir>/.thesis_notes.json`，「從專案生成」也讀這裡的文件。 */
+  thesisProjectDir: string
 }
 
+const DEFAULT_THESIS_PROJECT_DIR = 'C:\\ai_project'
 const DEFAULT_NOTE_COLOR = '#e5e7eb' // = notes-web lib/color.ts NEUTRAL / 桌面版 STICKY_NEUTRAL_COLOR
 const DEFAULT_MIN_COL_WIDTH = 240
 // = 桌面版 config.py STICKY_EMBED_MODEL_DEFAULT（多語言、中文效果好）
@@ -968,6 +1020,10 @@ function coerceAppSettings(data: unknown): AppSettings {
         : DEFAULT_EMBED_MODEL,
     trashRetentionDays: coerceNonNegInt(o.trashRetentionDays, DEFAULT_TRASH_RETENTION_DAYS, 3650),
     trashMaxCount: coerceNonNegInt(o.trashMaxCount, DEFAULT_TRASH_MAX_COUNT, 100000),
+    thesisProjectDir:
+      typeof o.thesisProjectDir === 'string' && o.thesisProjectDir.trim()
+        ? o.thesisProjectDir.trim().slice(0, 500)
+        : DEFAULT_THESIS_PROJECT_DIR,
   }
 }
 
@@ -987,6 +1043,7 @@ export interface AppSettingsPatch {
   embedModel?: string
   trashRetentionDays?: number
   trashMaxCount?: number
+  thesisProjectDir?: string
 }
 
 /** 只覆寫 patch 帶到的欄位，其餘沿用目前值；驗證/夾範圍後原子寫回，
@@ -1019,6 +1076,8 @@ export function patchAppSettings(patch: AppSettingsPatch | null | undefined): Ap
     trashRetentionDays:
       p.trashRetentionDays !== undefined ? p.trashRetentionDays : cur.trashRetentionDays,
     trashMaxCount: p.trashMaxCount !== undefined ? p.trashMaxCount : cur.trashMaxCount,
+    thesisProjectDir:
+      p.thesisProjectDir !== undefined ? p.thesisProjectDir : cur.thesisProjectDir,
   })
   atomicWriteFile(SETTINGS_FILE, JSON.stringify({ ...rawObj, ...clean }, null, 1))
   return clean

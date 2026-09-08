@@ -1,5 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import type { Note } from './lib/api'
+import { useQueryClient } from '@tanstack/react-query'
+import type { Note, NoteCollection } from './lib/api'
+import { getApiCollection, setApiCollection } from './lib/api'
 import { useAppSettings, useNotes, useReminderSettings, useTagColors } from './hooks/useNotes'
 import { useMinuteTick } from './hooks/useMinuteTick'
 import { useAiSearch, useAiTarget, useSemanticSearch, useSemanticStatus } from './hooks/useAi'
@@ -48,10 +50,27 @@ interface AiResult {
 }
 
 export function App() {
+  const qc = useQueryClient()
   const { data: notes, isLoading, isError, error } = useNotes()
   const [query, setQuery] = useState('')
   const [tag, setTag] = useState<string | null>(null)
   const [dialog, setDialog] = useState<DialogState>(null)
+
+  // 「研究生模式」——整面牆換成論文專案專用的另一份便利貼（見 lib/api 的
+  // x-note-collection）。只在桌面牆（wallpaper）出現；瀏覽器維持單純的生活牆。
+  const [collection, setCollection] = useState<NoteCollection>(getApiCollection)
+  const switchCollection = useCallback(
+    (c: NoteCollection) => {
+      if (c === getApiCollection()) return
+      setApiCollection(c)
+      setCollection(c)
+      setQuery('')
+      setTag(null)
+      // 兩份便利貼的清單／垃圾桶／版本記錄／標籤色都不同 → 整包重抓
+      qc.removeQueries()
+    },
+    [qc],
+  )
 
   // 「只看快到期／已逾期」——疊加在其他篩選之上，開啟時同時把排序從「最新
   // 建立在上」換成「最早到期在上」，見下面 shown 的計算。
@@ -379,13 +398,24 @@ export function App() {
       )}
       <CropOverlay active={cropActive} onCrop={onCrop} />
       <header className="hero">
-        <p className="eyebrow mono">Sticky Wall · file_search_app</p>
+        <p className="eyebrow mono">
+          {collection === 'thesis' ? 'Thesis Wall · 研究生模式' : 'Sticky Wall · file_search_app'}
+        </p>
         <h1 className="brush">
-          釘在牆上的<em>便利貼</em>
+          {collection === 'thesis' ? (
+            <>
+              論文專案的<em>便利貼</em>
+            </>
+          ) : (
+            <>
+              釘在牆上的<em>便利貼</em>
+            </>
+          )}
         </h1>
         <p className="lede">
-          桌面工具「檔案快速搜尋」裡的便利貼——常用指令、清單、備忘與願望，依分類自動配色。
-          這面牆即時反映資料庫（新增／編輯／刪除馬上出現），也能用 AI 用一般語句問問題。
+          {collection === 'thesis'
+            ? '「研究生模式」——這面牆只放論文專案（貓咪行為辨識系統）相關的便利貼，存在專案資料夾裡、跟生活便利貼完全分開。可用「從專案生成」讓 AI 讀專案文件產出任務便利貼。'
+            : '桌面工具「檔案快速搜尋」裡的便利貼——常用指令、清單、備忘與願望，依分類自動配色。這面牆即時反映資料庫（新增／編輯／刪除馬上出現），也能用 AI 用一般語句問問題。'}
         </p>
         <div className="stat-row mono">
           <span className="stat">
@@ -410,6 +440,8 @@ export function App() {
         onTag={setTag}
         tags={tags}
         total={list.length}
+        collection={collection}
+        onSwitchCollection={switchCollection}
         onAdd={() => setDialog({ kind: 'new' })}
         aiMode={aiMode}
         onToggleAiMode={toggleAiMode}

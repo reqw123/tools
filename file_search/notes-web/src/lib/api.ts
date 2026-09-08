@@ -55,10 +55,41 @@ export interface NoteInput {
 
 const BASE = '/api'
 
+// ── 便利貼集合（生活 / 研究生模式）─────────────────────────────────
+// 「研究生模式」把整面牆換成論文專案專用的另一份便利貼——每個 /api 請求帶
+// `x-note-collection` 標頭，後端據此決定這一輪動哪一份檔（見 server/index.ts）。
+export type NoteCollection = 'life' | 'thesis'
+const COLLECTION_KEY = 'note-collection'
+
+let apiCollection: NoteCollection = (() => {
+  try {
+    return localStorage.getItem(COLLECTION_KEY) === 'thesis' ? 'thesis' : 'life'
+  } catch {
+    return 'life'
+  }
+})()
+
+export function getApiCollection(): NoteCollection {
+  return apiCollection
+}
+/** 切換集合——之後所有 API 請求都帶新的標頭。呼叫端（App）負責清 query 快取重抓。 */
+export function setApiCollection(c: NoteCollection): void {
+  apiCollection = c
+  try {
+    localStorage.setItem(COLLECTION_KEY, c)
+  } catch {
+    /* 私密視窗之類的存不進去——這次 session 還是能用，只是重開會回到生活模式 */
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
-    headers: init?.body ? { 'content-type': 'application/json' } : undefined,
     ...init,
+    headers: {
+      ...(init?.body ? { 'content-type': 'application/json' } : {}),
+      'x-note-collection': apiCollection,
+      ...init?.headers,
+    },
   })
   if (res.status === 204) return undefined as T
   const data = (await res.json().catch(() => null)) as unknown
@@ -178,6 +209,8 @@ export interface AppSettings {
   trashRetentionDays: number
   /** 垃圾桶最多留幾則，超過從最舊的清起。0＝不限筆數。 */
   trashMaxCount: number
+  /** 「研究生模式」的論文專案資料夾。 */
+  thesisProjectDir: string
 }
 
 /** PATCH /api/settings 的部分更新（dueSoonHours 走 /reminder-settings 舊路由）。 */
@@ -188,6 +221,7 @@ export type AppSettingsPatch = {
   embedModel?: string
   trashRetentionDays?: number
   trashMaxCount?: number
+  thesisProjectDir?: string
 }
 
 /** 標籤→自訂顏色（hex）。沒自訂過的標籤不會出現在這裡，colorForTag() 拿不

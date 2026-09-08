@@ -234,6 +234,41 @@ body {
   align-items: center;
   flex-wrap: wrap;
 }
+
+/* 研究生模式切換——只在桌面牆（wallpaper）出現 */
+.collection-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.coll-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.28rem 0.7rem;
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  background: var(--panel);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.coll-tab.on {
+  border-color: var(--brass);
+  color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 12%, transparent);
+}
+.coll-tab svg {
+  color: currentColor;
+}
+.coll-note {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  margin-left: 0.3rem;
+}
 .field {
   display: flex;
   align-items: center;

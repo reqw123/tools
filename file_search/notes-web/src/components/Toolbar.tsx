@@ -1,8 +1,9 @@
 import {
-  AlarmClock, Bot, CopyPlus, CornerDownLeft, Download, HardDriveDownload, History, Plus, Recycle, Search, Settings2,
-  Sparkles, Sprout, Tags, Timer, Trash2, Upload,
+  AlarmClock, Bot, CopyPlus, CornerDownLeft, Download, GraduationCap, HardDriveDownload, History, Home, Plus, Recycle,
+  Search, Settings2, Sparkles, Sprout, Tags, Timer, Trash2, Upload,
 } from 'lucide-react'
 import type { AiTarget } from '../lib/ai'
+import type { NoteCollection } from '../lib/api'
 import type { TagCount } from './TagBar'
 import { TagBar } from './TagBar'
 
@@ -21,6 +22,8 @@ export function Toolbar({
   onTag,
   tags,
   total,
+  collection,
+  onSwitchCollection,
   onAdd,
   aiMode,
   onToggleAiMode,
@@ -53,6 +56,9 @@ export function Toolbar({
   onTag: (t: string | null) => void
   tags: TagCount[]
   total: number
+  /** 便利貼集合切換——null＝不顯示（一般瀏覽器）；有值＝桌面牆，顯示「生活／研究生」。 */
+  collection: NoteCollection | null
+  onSwitchCollection: (c: NoteCollection) => void
   onAdd: () => void
   aiMode: boolean
   onToggleAiMode: () => void
@@ -82,6 +88,31 @@ export function Toolbar({
   return (
     <div className="bar">
       <div className="bar-inner">
+        {collection && (
+          <div className="collection-row" role="group" aria-label="便利貼集合">
+            <button
+              type="button"
+              className={`coll-tab${collection === 'life' ? ' on' : ''}`}
+              aria-pressed={collection === 'life'}
+              onClick={() => onSwitchCollection('life')}
+            >
+              <Home size={14} strokeWidth={2.2} aria-hidden /> 生活
+            </button>
+            <button
+              type="button"
+              className={`coll-tab${collection === 'thesis' ? ' on' : ''}`}
+              aria-pressed={collection === 'thesis'}
+              onClick={() => onSwitchCollection('thesis')}
+            >
+              <GraduationCap size={15} strokeWidth={2.2} aria-hidden /> 研究生
+            </button>
+            {collection === 'thesis' && (
+              <span className="coll-note mono">
+                論文專案專用便利貼 · 存在 C:\ai_project · 跟生活便利貼完全分開
+              </span>
+            )}
+          </div>
+        )}
         <div className="bar-row">
           <label className={`field${aiMode ? ' ai' : ''}${semanticOn ? ' semantic' : ''}`}>
             {aiMode ? (

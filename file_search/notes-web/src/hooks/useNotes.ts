@@ -240,6 +240,9 @@ export function mergeAppSettings(old: AppSettings | undefined, patch: AppSetting
       ? { trashRetentionDays: patch.trashRetentionDays }
       : {}),
     ...(patch.trashMaxCount !== undefined ? { trashMaxCount: patch.trashMaxCount } : {}),
+    ...(patch.thesisProjectDir !== undefined
+      ? { thesisProjectDir: patch.thesisProjectDir }
+      : {}),
   }
 }
 

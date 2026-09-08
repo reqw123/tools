@@ -101,7 +101,10 @@ class NoteSemanticService:
         if cache_path is not None:
             self._cache_path = cache_path
         else:
-            self._cache_path = self._sticky._repo.path.with_name(".sticky_notes_embeddings.json")
+            # 快取檔名跟著便利貼檔走（研究生模式是另一份 .thesis_notes.json）——
+            # .sticky_notes.json → .sticky_notes_embeddings.json
+            notes_path = self._sticky._repo.path
+            self._cache_path = notes_path.with_name(f"{notes_path.stem}_embeddings.json")
         self._embed_fn = embed_fn  # (base_url, model, texts) -> list[vec]；None＝用真的 Ollama
 
     # ── 位址／模型 ────────────────────────────────────────────────────

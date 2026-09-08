@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { BridgeError, runBridge } from './ai'
-import { createNotes, getAppSettings, notesFilePath } from './store'
+import { activeNotesFile, createNotes, getAppSettings } from './store'
 
 const settingsBody = {
   type: 'object',
@@ -59,7 +59,7 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
       const r = await runBridge<{ answer: string; ids: string[]; call_count: number }>(
         'search',
         { query: req.body.query, tag: req.body.tag ?? '' },
-        ['--notes-file', notesFilePath],
+        ['--notes-file', activeNotesFile()],
       )
       return { answer: r.answer, matchedIds: r.ids, callCount: r.call_count }
     },
@@ -98,7 +98,7 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
       }>(
         'semantic-search',
         { query: req.body.query, tag: req.body.tag ?? '', model: getAppSettings().embedModel },
-        ['--notes-file', notesFilePath],
+        ['--notes-file', activeNotesFile()],
       ),
   )
 
@@ -108,7 +108,7 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
     runBridge<{ ok: boolean; model: string; installed: boolean | null; error: string | null }>(
       'semantic-status',
       { model: getAppSettings().embedModel },
-      ['--notes-file', notesFilePath],
+      ['--notes-file', activeNotesFile()],
     ),
   )
 

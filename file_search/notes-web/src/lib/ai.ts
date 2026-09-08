@@ -74,12 +74,19 @@ export interface AiGenerateNoteResult {
   skipped: boolean
 }
 
+import { getApiCollection } from './api'
+
 const BASE = '/api'
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
-    headers: init?.body ? { 'content-type': 'application/json' } : undefined,
     ...init,
+    headers: {
+      ...(init?.body ? { 'content-type': 'application/json' } : {}),
+      // AI 搜尋／生成也要對「目前這個模式」的那份便利貼作用（見 api.ts）
+      'x-note-collection': getApiCollection(),
+      ...init?.headers,
+    },
   })
   const data = (await res.json().catch(() => null)) as unknown
   if (!res.ok) {

@@ -2,7 +2,14 @@ import Fastify from 'fastify'
 import fastifyStatic from '@fastify/static'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { listNotes, noteImagesDir, notesFilePath, projectRoot, pruneTrash } from './store'
+import {
+  listNotes,
+  noteImagesDir,
+  notesFilePath,
+  projectRoot,
+  pruneTrash,
+  setActiveCollection,
+} from './store'
 import { notesRoutes } from './notes'
 import { noteImageRoutes } from './note-image-routes'
 import { aiRoutes } from './ai-routes'
@@ -12,6 +19,15 @@ const PORT = Number(process.env.API_PORT ?? 8787)
 const isProd = process.env.NODE_ENV === 'production'
 
 const app = Fastify({ logger: true })
+
+// 「研究生模式」——前端在每個 /api 請求帶 `x-note-collection: life|thesis`，
+// 這裡在請求一進來就設定好 store 這一輪要動哪一份便利貼（生活 or 論文專案）。
+// store 全是同步 IO，同一個 handler 內不會被別的請求插隊，所以 module 變數安全。
+// 沒帶標頭（Node-RED、舊前端）一律當生活便利貼。
+app.addHook('onRequest', async (req) => {
+  const c = req.headers['x-note-collection']
+  setActiveCollection(c === 'thesis' ? 'thesis' : 'life')
+})
 
 app.log.info(`便利貼資料檔：${notesFilePath}`)
 if (existsSync(notesFilePath)) {
