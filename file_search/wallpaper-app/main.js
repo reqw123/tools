@@ -872,6 +872,18 @@ function createWall() {
 
   win.webContents.session.clearCache().finally(loadWall);
 
+  // 使用者一點牆、或牆上開便利貼對話框時 React 對某個元素呼叫 .focus()，這個
+  // BrowserWindow 就拿到 OS 焦點——Windows 上會順勢把它在 always-on-top 同層
+  // 裡拉到最前，蓋掉右上角「結束程式」按鈕（quitWin 的 relativeLevel 較高只是
+  // best-effort，擋不住這個）。之前只有全域快捷鍵／切模式／接螢幕這些路徑會
+  // 補 raiseQuitButton()，漏了「單純點一下牆／點一則便利貼」這條最常見的，
+  // 使用者回報「剛啟動後點一則便利貼，右上角叉叉就點不到了」。setTimeout 讓
+  // Windows 先把自己的 z-order 排完，我們再蓋回去。moveTop/setAlwaysOnTop
+  // 都不會搶焦點，不會把使用者正在操作的牆彈走。
+  win.on('focus', () => {
+    setTimeout(raiseQuitButton, 40);
+  });
+
   win.on('closed', () => {
     win = null;
   });

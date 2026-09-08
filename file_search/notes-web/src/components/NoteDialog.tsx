@@ -45,9 +45,10 @@ export function NoteDialog({
   const [picking, setPicking] = useState(false)
   const [pickPath, setPickPath] = useState<string | null>(null)
   const [imgErr, setImgErr] = useState('')
-  // 便利貼容器裡的插圖太小看不清楚——雙擊放大，蓋在最上層，可以超出便利貼
-  // 視窗本身的範圍。zoomedRef 讓下面 Escape 監聽器不用把 zoomed 放進 deps
-  // （不然每次放大/收合都要整個重掛一次監聽器、重設 body overflow）。
+  // 便利貼容器裡的插圖太小看不清楚——點一下放大（跟匯出的 HTML 同一套規則），
+  // 蓋在最上層，可以超出便利貼視窗本身的範圍。zoomedRef 讓下面 Escape 監聽器
+  // 不用把 zoomed 放進 deps（不然每次放大/收合都要整個重掛一次監聽器、重設
+  // body overflow）。
   const [zoomed, setZoomed] = useState(false)
   const zoomedRef = useRef(false)
   useEffect(() => {
@@ -205,8 +206,8 @@ export function NoteDialog({
                 src={noteImageUrl(note)!}
                 alt=""
                 draggable={false}
-                title="雙擊放大"
-                onDoubleClick={() => setZoomed(true)}
+                title="點一下放大"
+                onClick={() => setZoomed(true)}
               />
             )}
             <Body
@@ -339,14 +340,16 @@ export function NoteDialog({
       )}
 
       {zoomed && note && noteImageUrl(note) && (
-        <div className="zoom-scrim" onClick={() => setZoomed(false)}>
-          <img
-            className="zoom-img"
-            src={noteImageUrl(note)!}
-            alt=""
-            draggable={false}
-            onDoubleClick={() => setZoomed(false)}
-          />
+        // stopPropagation：這層是 .scrim 的子節點，不擋掉點擊會冒泡到 .scrim
+        // 的 onClose，收放大圖時把整個便利貼視窗也一起關掉。
+        <div
+          className="zoom-scrim"
+          onClick={(e) => {
+            e.stopPropagation()
+            setZoomed(false)
+          }}
+        >
+          <img className="zoom-img" src={noteImageUrl(note)!} alt="" draggable={false} />
         </div>
       )}
     </div>
