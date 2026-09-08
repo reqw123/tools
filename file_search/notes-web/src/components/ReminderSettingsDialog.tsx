@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useReminderSettings, useSetReminderSettings } from '../hooks/useNotes'
-import type { ReminderSettings } from '../lib/api'
+import type { AlarmChannels, ReminderSettings } from '../lib/api'
 
 /**
- * 「快到期」門檻設定——這個數字同時決定卡片什麼時候標黃色，也是
- * GET /notes/due-soon 拿去分「已逾期／快到期」的依據（見 server/store.ts
- * 的 dueSummary()）。Node-RED（或其他排程系統）只讀 due-soon 算好的結果，
- * 完全不需要知道這個設定存在——改這裡不用去動任何 Node-RED flow，
- * 那邊也不會因為這個設定壞掉、存不進去而跟著壞掉，各自獨立。
+ * 「快到期」門檻 ＋ 四個到期通知管道的開關。
+ *
+ * - dueSoonHours：到期前幾小時算「快到期」，卡片標黃 & GET /notes/due-soon 分
+ *   「已逾期／快到期」都用這個。
+ * - dueAlarmChannels：桌面牆系統通知／系統匣角標／Node-RED 即時鬧鐘／Node-RED
+ *   6 小時彙整，各自獨立開關。關掉任何一個都**不影響**便利貼卡片的紅／黃標色
+ *   （那是前端直接看 due_at + dueSoonHours 算的）。
  */
 export function ReminderSettingsDialog({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -37,11 +39,6 @@ export function ReminderSettingsDialog({ onClose }: { onClose: () => void }) {
           ×
         </button>
         <h2>⏰ 提醒設定</h2>
-        <p className="dim">
-          到期前幾小時內的便利貼算「快到期」（卡片標黃色提醒）。這個門檻也是
-          Node-RED 之類的排程系統拿去判斷要不要發通知的依據——改這裡不用去動
-          Node-RED 那邊的流程，它下次拉資料時就會照新的門檻算。
-        </p>
         {isLoading || !settings ? (
           <p className="dim mono">載入中…</p>
         ) : (
@@ -52,15 +49,46 @@ export function ReminderSettingsDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+const CHANNEL_GROUPS: {
+  group: string
+  items: { key: keyof AlarmChannels; label: string; desc: string }[]
+}[] = [
+  {
+    group: '桌面牆',
+    items: [
+      { key: 'wallpaperToast', label: '系統通知', desc: '到期時右下角彈出 Windows 通知（可點開牆）' },
+      { key: 'wallpaperBadge', label: '系統匣角標', desc: '工作列圖示上顯示到期數量的紅色數字' },
+    ],
+  },
+  {
+    group: 'Node-RED（LINE／Discord）',
+    items: [
+      { key: 'nodeRedAlarm', label: '即時鬧鐘', desc: '每分鐘檢查，某則一到期就馬上推一次' },
+      { key: 'nodeRedDigest', label: '6 小時彙整', desc: '每 6 小時把當下所有到期／快到期彙整推一次' },
+    ],
+  },
+]
+
 function SettingsForm({ initial, onClose }: { initial: ReminderSettings; onClose: () => void }) {
   const save = useSetReminderSettings()
   // key="loaded" 上面保證這個元件只在 settings 真的載入後才掛載一次，
   // 直接拿 initial 當初始值就好，不需要另外用 effect 去同步——避免「setState
   // 寫在 effect 裡」這個常見的多餘重渲染陷阱（跟 AiSettingsDialog 同一招）。
   const [hours, setHours] = useState(initial.dueSoonHours)
-  const [muted, setMuted] = useState(initial.dueAlarmsMuted)
+  const [channels, setChannels] = useState<AlarmChannels>(initial.dueAlarmChannels)
 
   const invalid = !Number.isFinite(hours) || hours < 1 || hours > 720
+  const allOff = CHANNEL_GROUPS.every((g) => g.items.every((it) => !channels[it.key]))
+
+  const toggle = (key: keyof AlarmChannels) =>
+    setChannels((c) => ({ ...c, [key]: !c[key] }))
+  const setAll = (on: boolean) =>
+    setChannels({
+      wallpaperToast: on,
+      wallpaperBadge: on,
+      nodeRedAlarm: on,
+      nodeRedDigest: on,
+    })
 
   return (
     <form
@@ -68,7 +96,7 @@ function SettingsForm({ initial, onClose }: { initial: ReminderSettings; onClose
       onSubmit={(e) => {
         e.preventDefault()
         if (invalid) return
-        save.mutate({ dueSoonHours: hours, dueAlarmsMuted: muted }, { onSuccess: onClose })
+        save.mutate({ dueSoonHours: hours, dueAlarmChannels: channels }, { onSuccess: onClose })
       }}
     >
       <label>
@@ -84,16 +112,49 @@ function SettingsForm({ initial, onClose }: { initial: ReminderSettings; onClose
         {invalid && <span className="err">請輸入 1～720 之間的數字</span>}
       </label>
 
-      <label className="check-row">
-        <input type="checkbox" checked={muted} onChange={(e) => setMuted(e.target.checked)} />
-        <span>
-          靜音所有到期通知
-          <span className="dim">
-            關掉後：桌面牆的系統通知＋系統匣角標、Node-RED 的 LINE／Discord 鬧鐘與
-            6 小時彙整全部不發。便利貼卡片本身的紅／黃到期標色<b>仍然有效</b>。
+      <div className="chan-block">
+        <div className="chan-head">
+          <span>🔔 到期通知管道</span>
+          <span className="chan-bulk">
+            <button type="button" onClick={() => setAll(true)}>
+              全開
+            </button>
+            <button type="button" onClick={() => setAll(false)}>
+              全關
+            </button>
           </span>
-        </span>
-      </label>
+        </div>
+        <p className="dim">
+          各管道獨立開關。全部關掉也<b>不影響</b>便利貼卡片本身的紅（已逾期）／黃
+          （快到期）標色。
+        </p>
+
+        {CHANNEL_GROUPS.map((g) => (
+          <fieldset className="chan-group" key={g.group}>
+            <legend>{g.group}</legend>
+            {g.items.map((it) => (
+              <label className="chan-row" key={it.key}>
+                <span className="chan-text">
+                  <span className="chan-label">{it.label}</span>
+                  <span className="dim">{it.desc}</span>
+                </span>
+                <span className={`chan-sw${channels[it.key] ? ' on' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={channels[it.key]}
+                    onChange={() => toggle(it.key)}
+                  />
+                  <span className="chan-knob" aria-hidden />
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        ))}
+
+        {allOff && (
+          <p className="dim chan-warn">所有到期通知都關了——只剩卡片標色會提醒你。</p>
+        )}
+      </div>
 
       {save.error && <span className="err">{save.error.message}</span>}
 

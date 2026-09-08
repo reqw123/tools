@@ -39,6 +39,18 @@ import {
 // 才讀得懂、才會照同一套「到期日當天過完才算逾期」邏輯判斷。
 const DUE_AT_PATTERN = '^$|^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$'
 
+// 四個到期通知管道開關的 body schema——/reminder-settings 跟 /settings 共用。
+const ALARM_CHANNELS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    wallpaperToast: { type: 'boolean' },
+    wallpaperBadge: { type: 'boolean' },
+    nodeRedAlarm: { type: 'boolean' },
+    nodeRedDigest: { type: 'boolean' },
+  },
+} as const
+
 const noteBody = {
   type: 'object',
   additionalProperties: false,
@@ -61,18 +73,40 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
   // 東西。回應格式見 store.ts 的 DueSummary。「快到期」的門檻讀自
   // reminder-settings，Node-RED 不需要另外知道這個設定存在。
   //
-  // 預設只看「這個 request 的 x-note-collection」指到的那份（沒帶標頭＝生活），
-  // 跟改動前一模一樣——Node-RED 現有 flow 不用動。`?scope=all` 則把生活＋研究生
-  // 兩份的到期便利貼合在一起回傳（桌面牆的到期角標／鬧鐘用這個，見 wallpaper-app
-  // 的 pollDueSoon），每則多一個 collection 欄位標明來源。
-  app.get<{ Querystring: { scope?: string } }>('/notes/due-soon', async (req) =>
-    req.query.scope === 'all' ? dueSummaryAll() : dueSummary(),
+  // 預設只看「這個 request 的 x-note-collection」指到的那份（沒帶標頭＝生活）。
+  // `?scope=all`＝生活＋研究生兩份合起來（桌面牆的角標／鬧鐘用這個），每則多一個
+  // collection 欄位。回應一律夾帶 `alarms`（四個通知管道目前的開關）。
+  //
+  // `?channel=nodeRedAlarm|nodeRedDigest`＝便利參數給 Node-RED：那個管道被關掉時
+  // server 直接回空的 overdue/soon，下游 function「都是空的就 return null」的既有
+  // 邏輯就等於整條靜音，flow 不用自己判 flag。桌面牆兩個管道（toast/badge）由
+  // wallpaper-app 自己讀 `alarms` 判斷（一個 request 對兩個管道，沒法用參數切）。
+  app.get<{ Querystring: { scope?: string; channel?: string } }>(
+    '/notes/due-soon',
+    async (req) => {
+      const summary = req.query.scope === 'all' ? dueSummaryAll() : dueSummary()
+      const ch = req.query.channel
+      if ((ch === 'nodeRedAlarm' || ch === 'nodeRedDigest') && !summary.alarms[ch]) {
+        return { ...summary, overdue: [], soon: [] }
+      }
+      return summary
+    },
   )
 
   // 「快到期」門檻——使用者在設定視窗調整，卡片標色跟 due-soon 都用同一份。
   app.get('/reminder-settings', async () => getReminderSettings())
 
-  app.patch<{ Body: { dueSoonHours?: number; dueAlarmsMuted?: boolean } }>(
+  app.patch<{
+    Body: {
+      dueSoonHours?: number
+      dueAlarmChannels?: Partial<{
+        wallpaperToast: boolean
+        wallpaperBadge: boolean
+        nodeRedAlarm: boolean
+        nodeRedDigest: boolean
+      }>
+    }
+  }>(
     '/reminder-settings',
     {
       schema: {
@@ -81,8 +115,8 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
           additionalProperties: false,
           properties: {
             dueSoonHours: { type: 'number', minimum: 1, maximum: 720 },
-            // true＝靜音所有到期通知（系統通知＋角標＋Node-RED），卡片標色不受影響
-            dueAlarmsMuted: { type: 'boolean' },
+            // 四個到期通知管道的開關（true＝開）；卡片紅／黃標色不受影響
+            dueAlarmChannels: ALARM_CHANNELS_SCHEMA,
           },
         },
       },
@@ -96,7 +130,12 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
 
   app.patch<{
     Body: {
-      dueAlarmsMuted?: boolean
+      dueAlarmChannels?: Partial<{
+        wallpaperToast: boolean
+        wallpaperBadge: boolean
+        nodeRedAlarm: boolean
+        nodeRedDigest: boolean
+      }>
       tagSort?: { mode?: 'count' | 'manual' | 'recent'; order?: string[] }
       defaultNoteColor?: string
       wall?: { minColWidth?: number; masonry?: boolean }
@@ -116,7 +155,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
           type: 'object',
           additionalProperties: false,
           properties: {
-            dueAlarmsMuted: { type: 'boolean' },
+            dueAlarmChannels: ALARM_CHANNELS_SCHEMA,
             tagSort: {
               type: 'object',
               additionalProperties: false,

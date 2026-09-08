@@ -219,6 +219,10 @@ function refreshTray() {
 // 研究生模式的便利貼（C:\ai_project\.thesis_notes.json）設了到期日一樣要進
 // 角標、一樣要跳鬧鐘。每則回傳帶 collection 欄位（'life' / 'thesis'）。
 //
+// 回應還夾帶 `alarms` 物件（四個通知管道的開關，在 notes-web「⏰ 提醒設定」裡
+// 切）。桌面牆看自己那兩個：wallpaperToast（系統通知）、wallpaperBadge（角標）
+// ——見 pollDueSoon。Node-RED 的兩個管道跟這裡無關。
+//
 // 60 秒一次——到期提醒精確到分（notes-web 可填 HH:MM），輪詢也要跟上，不然
 // 「09:00 的鬧鐘」最晚可能拖到 09:05 才響。角標本身有 lastDueBadgeKey 擋著，
 // 數字沒變就不重畫，一分鐘一次不會有額外開銷。
@@ -349,14 +353,26 @@ async function pollDueSoon() {
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    await updateDueBadge(data.overdue?.length ?? 0, data.soon?.length ?? 0);
+    // 桌面牆的兩個通知管道各自有開關（notes-web「⏰ 提醒設定」裡切）——回應夾帶
+    // 的 alarms 物件說明現在哪些開著。沒有 alarms（舊 server）一律當開。
+    const alarms = data.alarms || {};
+    const toastOn = alarms.wallpaperToast !== false;
+    const badgeOn = alarms.wallpaperBadge !== false;
+
+    // 角標關掉時強制清成 0（不是「不更新」——不然關掉後還卡著舊數字）。
+    await updateDueBadge(
+      badgeOn ? (data.overdue?.length ?? 0) : 0,
+      badgeOn ? (data.soon?.length ?? 0) : 0,
+    );
 
     // 角標更新完，再看看有沒有「剛跨過到期時間」的要跳系統通知。整段各自
-    // try/catch——通知平台掛了也不該影響角標，反之亦然。
+    // try/catch——通知平台掛了也不該影響角標，反之亦然。detectFreshlyDue 一律
+    // 跑（把剛到期的標記成「已通知」並推進 lastAlarmCheck），只是通知關掉時
+    // 不真的跳 toast——這樣事後再打開，不會被積壓的一票舊到期一次炸出來。
     try {
       const now = Date.now();
       const fresh = detectFreshlyDue(data.overdue, now);
-      fireAlarmToasts(fresh);
+      if (toastOn) fireAlarmToasts(fresh);
       lastAlarmCheck = now;
       pruneNotifiedAlarms(now);
     } catch (alarmErr) {

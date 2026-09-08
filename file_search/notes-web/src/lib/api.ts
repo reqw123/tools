@@ -163,7 +163,10 @@ export const api = {
   purge: (id: string) => req<void>(`/notes/trash/${id}`, { method: 'DELETE' }),
   emptyTrash: () => req<{ removed: number }>('/notes/trash', { method: 'DELETE' }).then((r) => r.removed),
   getReminderSettings: () => req<ReminderSettings>('/reminder-settings'),
-  setReminderSettings: (patch: { dueSoonHours?: number; dueAlarmsMuted?: boolean }) =>
+  setReminderSettings: (patch: {
+    dueSoonHours?: number
+    dueAlarmChannels?: Partial<AlarmChannels>
+  }) =>
     req<ReminderSettings>('/reminder-settings', {
       method: 'PATCH',
       body: JSON.stringify(patch),
@@ -180,11 +183,22 @@ export const api = {
 
 /** 「快到期」門檻——卡片標色跟 /notes/due-soon（給 Node-RED 用）共用同一份，
  *  在「⏰ 提醒設定」對話框調整。 */
+/** 四個到期通知管道的獨立開關（true＝開著會發）。便利貼卡片的紅／黃標色
+ *  跟這四個開關全都無關。 */
+export interface AlarmChannels {
+  /** 桌面牆右下角彈出的 Windows 系統通知。 */
+  wallpaperToast: boolean
+  /** 系統匣圖示上的到期數字角標。 */
+  wallpaperBadge: boolean
+  /** Node-RED 每分鐘輪詢、到期即時發的 LINE／Discord 鬧鐘。 */
+  nodeRedAlarm: boolean
+  /** Node-RED 每 6 小時發一次的 LINE／Discord 彙整。 */
+  nodeRedDigest: boolean
+}
+
 export interface ReminderSettings {
   dueSoonHours: number
-  /** true＝靜音所有到期通知（桌面牆系統通知＋角標、Node-RED 的 LINE/Discord
-   *  鬧鐘與彙整）。便利貼卡片的紅／黃標色不受影響。 */
-  dueAlarmsMuted: boolean
+  dueAlarmChannels: AlarmChannels
 }
 
 export type TagSortMode = 'count' | 'manual' | 'recent'
@@ -192,8 +206,8 @@ export type TagSortMode = 'count' | 'manual' | 'recent'
 /** 「全域設定」——存在跟 dueSoonHours 同一份 .notes_settings.json。 */
 export interface AppSettings {
   dueSoonHours: number
-  /** true＝靜音所有到期通知；卡片標色不受影響。在「⏰ 提醒設定」對話框切換。 */
-  dueAlarmsMuted: boolean
+  /** 四個到期通知管道的開關；卡片標色不受影響。在「⏰ 提醒設定」對話框切換。 */
+  dueAlarmChannels: AlarmChannels
   tagSort: {
     mode: TagSortMode
     /** 手動排定的標籤順序；還存在且列到的排最前，其餘依 mode 遞補在後。 */
@@ -224,7 +238,7 @@ export interface AppSettings {
 
 /** PATCH /api/settings 的部分更新（dueSoonHours 走 /reminder-settings 舊路由）。 */
 export type AppSettingsPatch = {
-  dueAlarmsMuted?: boolean
+  dueAlarmChannels?: Partial<AlarmChannels>
   tagSort?: Partial<AppSettings['tagSort']>
   defaultNoteColor?: string
   wall?: Partial<AppSettings['wall']>

@@ -211,7 +211,7 @@ export function useReminderSettings() {
 export function useSetReminderSettings() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (patch: { dueSoonHours?: number; dueAlarmsMuted?: boolean }) =>
+    mutationFn: (patch: Parameters<typeof api.setReminderSettings>[0]) =>
       api.setReminderSettings(patch),
     onSuccess: (settings) => {
       qc.setQueryData(REMINDER_SETTINGS_KEY, settings)
@@ -240,7 +240,9 @@ export function mergeAppSettings(old: AppSettings | undefined, patch: AppSetting
   if (!old) return old
   return {
     ...old,
-    ...(patch.dueAlarmsMuted !== undefined ? { dueAlarmsMuted: patch.dueAlarmsMuted } : {}),
+    ...(patch.dueAlarmChannels
+      ? { dueAlarmChannels: { ...old.dueAlarmChannels, ...patch.dueAlarmChannels } }
+      : {}),
     ...(patch.defaultNoteColor ? { defaultNoteColor: patch.defaultNoteColor } : {}),
     ...(patch.tagSort ? { tagSort: { ...old.tagSort, ...patch.tagSort } } : {}),
     ...(patch.wall ? { wall: { ...old.wall, ...patch.wall } } : {}),
