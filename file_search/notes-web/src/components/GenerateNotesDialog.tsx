@@ -39,7 +39,7 @@ export function GenerateNotesDialog({
   const meta = useMemo(() => {
     const m = new Map<string, { icon: string; color: string }>()
     for (const c of scanCats ?? []) m.set(c.label, { icon: c.icon, color: c.color })
-    m.set('其他', { icon: '📁', color: '#94a3b8' })
+    if (!m.has('其他')) m.set('其他', { icon: '📦', color: '#64748b' }) // 舊後端沒回其他時的後備
     return m
   }, [scanCats])
   const colorFor = (label: string) => meta.get(label)?.color ?? '#64748b'

@@ -1161,21 +1161,61 @@ export function importNotesJson(text: string): ImportNotesResult {
 
 const SCAN_SOFT_LIMIT = 1000 // 可直接送給 AI 挑選的安全筆數
 const SCAN_WALK_HARD_LIMIT = 200_000 // 走檔迴圈的絕對上限，避免選到磁碟機根目錄卡死
+// 遞迴掃描時整個略過的資料夾——產出物／依賴／版控內部，裡面沒有使用者內容。
+const SCAN_SKIP_DIRS = new Set([
+  '.git', 'node_modules', '__pycache__', '.venv', 'venv', 'env', '.mypy_cache',
+  '.pytest_cache', '.ruff_cache', '.idea', '.vscode', 'dist', 'build', '.next',
+  '.cache', '.tox', 'site-packages', '.gradle', 'target', '.svn',
+])
 
-// label / icon / color 跟桌面版 config.EXT_CATEGORIES、files-web 對齊。
+// 「AI 生成便利貼」的資料夾掃描類型篩選。比桌面版 config.EXT_CATEGORIES /
+// files-web 多了「程式碼」「設定與資料」「筆記本」——那些是給「檔案索引」用的
+// （什麼檔案值得收進索引），這裡是「什麼檔案要讓 AI 讀來生成便利貼」，程式
+// 專案（例如論文專案 C:\ai_project）的 .py/.json/.ipynb 也在範圍內，所以刻意
+// 不共用同一份清單。「其他」是選得到的類型：符合＝副檔名不屬於下面任何一類
+// （.pt、.pyc、.db… 這種）。
 const EXT_CATEGORIES: { label: string; icon: string; color: string; exts: Set<string> }[] = [
-  { label: '文件', icon: '📄', color: '#2874a6', exts: new Set(['.doc', '.docx', '.rtf']) },
-  { label: '簡報', icon: '📊', color: '#ca6f1e', exts: new Set(['.ppt', '.pptx']) },
-  { label: '試算表', icon: '📈', color: '#1e8449', exts: new Set(['.xls', '.xlsx', '.csv']) },
+  { label: '文件', icon: '📄', color: '#2874a6', exts: new Set(['.doc', '.docx', '.rtf', '.odt']) },
+  { label: '簡報', icon: '📊', color: '#ca6f1e', exts: new Set(['.ppt', '.pptx', '.odp']) },
+  { label: '試算表', icon: '📈', color: '#1e8449', exts: new Set(['.xls', '.xlsx', '.csv', '.tsv', '.ods']) },
   { label: 'PDF', icon: '📕', color: '#c0392b', exts: new Set(['.pdf']) },
-  { label: '文字', icon: '📃', color: '#64748b', exts: new Set(['.txt', '.md']) },
+  { label: '文字', icon: '📃', color: '#64748b', exts: new Set(['.txt', '.md', '.rst', '.log', '.tex']) },
+  {
+    label: '程式碼',
+    icon: '💻',
+    color: '#0f766e',
+    exts: new Set([
+      '.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.ino', '.c', '.h', '.cpp', '.hpp',
+      '.cc', '.java', '.go', '.rs', '.rb', '.php', '.cs', '.swift', '.kt', '.sh', '.bat', '.ps1',
+      '.html', '.htm', '.css', '.scss', '.vue', '.sql', '.r', '.m', '.lua', '.pl',
+    ]),
+  },
+  {
+    label: '設定與資料',
+    icon: '⚙️',
+    color: '#a16207',
+    exts: new Set([
+      '.json', '.jsonl', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.env',
+      '.xml', '.properties', '.gitignore',
+    ]),
+  },
+  { label: '筆記本', icon: '📓', color: '#7c3aed', exts: new Set(['.ipynb']) },
   { label: '圖片', icon: '🖼️', color: '#7d3c98', exts: new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']) },
   { label: '音樂', icon: '🎵', color: '#0e9488', exts: new Set(['.mp3', '.wav', '.flac', '.m4a']) },
   { label: '影片', icon: '🎬', color: '#4f46b5', exts: new Set(['.mp4', '.mov', '.avi', '.mkv', '.wmv']) },
-  { label: '壓縮檔', icon: '🗜️', color: '#8b5a2b', exts: new Set(['.zip', '.rar', '.7z']) },
+  { label: '壓縮檔', icon: '🗜️', color: '#8b5a2b', exts: new Set(['.zip', '.rar', '.7z', '.tar', '.gz']) },
 ]
 
-export const scanCategories = EXT_CATEGORIES.map(({ label, icon, color }) => ({ label, icon, color }))
+/** 屬於任何一類的副檔名的聯集——「其他」＝不在這裡面。 */
+const KNOWN_EXTS = new Set<string>()
+for (const c of EXT_CATEGORIES) for (const e of c.exts) KNOWN_EXTS.add(e)
+
+const OTHER_CATEGORY = { label: '其他', icon: '📦', color: '#64748b' } as const
+
+export const scanCategories = [
+  ...EXT_CATEGORIES.map(({ label, icon, color }) => ({ label, icon, color })),
+  OTHER_CATEGORY,
+]
 
 export interface ScanResult {
   files: { path: string; name: string; size: number; ext: string }[]
@@ -1197,6 +1237,8 @@ export function scanFolder(
 
   const want = new Set<string>()
   for (const c of EXT_CATEGORIES) if (categories.includes(c.label)) for (const e of c.exts) want.add(e)
+  const wantOther = categories.includes(OTHER_CATEGORY.label)
+  const hasFilter = want.size > 0 || wantOther
 
   const files: ScanResult['files'] = []
   let walked = 0
@@ -1226,11 +1268,15 @@ export function scanFolder(
         }
       }
       if (isDir) {
-        if (recursive) stack.push(full)
+        // 產出物／依賴資料夾裡沒有「值得做成便利貼」的東西（.pyc、git 內部檔…），
+        // 遞迴時整個跳過，別讓它們洗版「其他」類。
+        if (recursive && !SCAN_SKIP_DIRS.has(de.name)) stack.push(full)
         continue
       }
-      const ext = extname(de.name).toLowerCase()
-      if (want.size && !want.has(ext)) continue
+      // Node 的 extname('.gitignore') 是 ''——沒有一般副檔名的 dotfile 用整個
+      // 檔名當作「副檔名」，讓 .gitignore / .env 這種能被歸類。
+      const ext = extname(de.name).toLowerCase() || (de.name.startsWith('.') ? de.name.toLowerCase() : '')
+      if (hasFilter && !want.has(ext) && !(wantOther && !KNOWN_EXTS.has(ext))) continue
       let st
       try {
         st = statSync(full)
