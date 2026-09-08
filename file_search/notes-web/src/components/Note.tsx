@@ -69,21 +69,36 @@ export function Note({
   useEffect(() => {
     if (!floatable || !onDragOut) return
 
+    // 拖曳中擋掉整頁文字選取——不然游標劃過標題／其他便利貼會反白一整片
+    // （回報的「錯誤反白」）。
+    const setNoSelect = (on: boolean) => {
+      const s = document.body.style as CSSStyleDeclaration & { webkitUserSelect?: string }
+      s.userSelect = on ? 'none' : ''
+      s.webkitUserSelect = on ? 'none' : ''
+    }
+
     const finish = (popOut: boolean) => {
       const el = ref.current
       const d = drag.current
       drag.current = null
+      setNoSelect(false)
       if (!el || !d) return
       justDragged.current = d.moved
+
       if (popOut) {
         const r = el.getBoundingClientRect()
+        // 這則要離開牆了——先直接隱形，再交給 onDragOut（會讓父層把它移出
+        // 清單、React 隨後卸載這個節點）。**不要**還原 inline 樣式＋叫牆重排：
+        // 那會讓卡片先「彈回牆上的原位」閃一下才消失（回報的邊界閃爍）。
+        el.style.visibility = 'hidden'
         onDragOut(note, r)
+        return
       }
-      // 收回牆上：先清掉拖曳時的 inline 樣式 → 立刻（同步）叫牆重排把位置補
-      // 回去 → 最後才移除 .dragging-out（它壓著 transition:none）。這三步之間
-      // 不讓瀏覽器 paint，卡片就不會先閃到 .wall 左上角、也不會開著 0.3s 過場
-      // 從那邊滑回來（＝之前回報的「拖一下閃到邊界再回來」）。真的彈出去的那
-      // 則之後會被父層從清單濾掉，這裡的還原只是保險。
+
+      // 沒彈出去、收回牆上：清掉拖曳時的 inline 樣式 → 立刻（同步）叫牆重排把
+      // 位置補回去 → 最後才移除 .dragging-out（它壓著 transition:none）。這三步
+      // 之間不讓瀏覽器 paint，卡片就不會先閃到 .wall 左上角、也不會開著 0.3s
+      // 過場從那邊滑回來。
       el.style.position = ''
       el.style.zIndex = ''
       el.style.left = ''
@@ -109,6 +124,8 @@ export function Note({
           return
         }
         d.moved = true
+        setNoSelect(true)
+        window.getSelection?.()?.removeAllRanges() // 按下到現在可能已經起頭選了一點
         const r = el.getBoundingClientRect()
         el.style.position = 'fixed'
         el.style.zIndex = '999'
@@ -135,6 +152,7 @@ export function Note({
     return () => {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+      setNoSelect(false) // 拖到一半元件重掛/卸載也要還原
     }
   }, [floatable, note, onDragOut, onGeometryChange])
 
