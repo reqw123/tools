@@ -331,12 +331,14 @@ export function GenerateNotesDialog({
                   ))}
                 </div>
                 {result.extCounts && result.extCounts.length > 0 && (
-                  <p className="ext-breakdown mono">
-                    副檔名：
-                    {result.extCounts
-                      .map((e) => `${e.ext || '(無)'} ${e.count}`)
-                      .join('　·　')}
-                  </p>
+                  <div className="ext-grid" aria-label="各副檔名數量">
+                    {result.extCounts.map((e) => (
+                      <span key={e.ext || '(無)'} className="ext-cell">
+                        <span className="ext-name mono">{e.ext || '(無副檔名)'}</span>
+                        <span className="ext-num">{e.count}</span>
+                      </span>
+                    ))}
+                  </div>
                 )}
                 {unreadableCount > 0 && (
                   <p className="scan-warn">

@@ -31,10 +31,16 @@ def render_category_counts(parent, files, font, scan_service: ScanService = None
         ).grid(row=row, column=col, padx=(0, 18), pady=2, sticky="w")
 
 
+_EXT_COLS = 5           # 副檔名細目一行排幾格
+_EXT_NUM_BG = "#dbe4ec"  # 數量小色塊底色（跟 COLOR_BG 有區隔，凸顯數字）
+_EXT_NUM_FG = "#1e3a5f"
+
+
 def render_ext_breakdown(parent, files, font):
-    """在類別數量格線底下多列一行「副檔名：.py 194　·　.json 38　…」——「文字」
-    「其他」這種含多種副檔名的類別，光看類別數量不知道實際是哪些檔案類型。
-    呼叫端負責清空 parent。沒有檔案就不畫（parent 保持 0 高度）。"""
+    """在類別數量格線底下畫一個「副檔名 → 數量」的對齊小格線——「文字」「其他」
+    這種含多種副檔名的類別，光看類別數量不知道實際是哪些檔案類型。每格左邊
+    是副檔名（淡色）、右邊是數量（深色小色塊），一行 _EXT_COLS 格、欄寬固定
+    對齊。呼叫端負責清空 parent。沒有檔案就不畫。"""
     if not files:
         return
     from pathlib import Path
@@ -43,14 +49,28 @@ def render_ext_breakdown(parent, files, font):
     for path in files:
         ext = Path(path).suffix.lower()
         counts[ext] = counts.get(ext, 0) + 1
-    parts = [
-        f"{ext or '(無)'} {n}"
-        for ext, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    ]
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+    box = tk.Frame(parent, bg=COLOR_BG)
+    box.grid(row=99, column=0, columnspan=3, sticky="ew", pady=(6, 0))
     tk.Label(
-        parent, text="副檔名：" + "　·　".join(parts), bg=COLOR_BG, fg=COLOR_STATUS_FG,
-        font=font, anchor="w", justify="left", wraplength=460,
-    ).grid(row=99, column=0, columnspan=3, padx=(0, 18), pady=(4, 0), sticky="w")
+        box, text="副檔名細目", bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font, anchor="w",
+    ).grid(row=0, column=0, columnspan=_EXT_COLS, sticky="w", pady=(0, 2))
+    for col in range(_EXT_COLS):
+        box.grid_columnconfigure(col, weight=1, uniform="ext")
+
+    num_font = tkfont.Font(font=font)
+    num_font.configure(weight="bold")
+    for idx, (ext, n) in enumerate(ordered):
+        r, c = divmod(idx, _EXT_COLS)
+        cell = tk.Frame(box, bg=COLOR_BG)
+        cell.grid(row=r + 1, column=c, sticky="w", padx=(0, 14), pady=1)
+        tk.Label(
+            cell, text=ext or "（無）", bg=COLOR_BG, fg=COLOR_STATUS_FG, font=font, anchor="w",
+        ).pack(side="left")
+        tk.Label(
+            cell, text=f" {n:,} ", bg=_EXT_NUM_BG, fg=_EXT_NUM_FG, font=num_font, anchor="e",
+        ).pack(side="left", padx=(5, 0))
 
 
 def run_scan_with_progress(parent, scan_service: ScanService, jobs, on_done):

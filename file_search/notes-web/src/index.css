@@ -1794,12 +1794,40 @@ body {
 
 /* 掃描結果的類別統計——同一套色，做成小藥丸；數量 0 的淡化 */
 .cat-pills { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.55rem 0 0.4rem; }
-.ext-breakdown {
-  margin: 0 0 0.8rem;
-  font-size: 0.72rem;
-  line-height: 1.7;
+/* 各副檔名數量——對齊的小格線，每格「副檔名 … 數量藥丸」，數量右對齊 */
+.ext-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  gap: 0.3rem 0.4rem;
+  margin: 0.1rem 0 0.8rem;
+}
+.ext-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.16rem 0.2rem 0.16rem 0.45rem;
+  border: 1px solid var(--hair);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.ext-name {
+  font-size: 0.74rem;
   color: var(--ink-soft);
-  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ext-num {
+  flex: none;
+  min-width: 1.4rem;
+  padding: 0.02rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 16%, var(--panel));
 }
 .cat-pill {
   display: inline-flex;
