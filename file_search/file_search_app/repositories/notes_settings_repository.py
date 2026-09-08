@@ -16,8 +16,22 @@ from pathlib import Path
 
 from file_search_app.config import (
     INDEXES_DIR, STICKY_DUE_SOON_HOURS_DEFAULT, STICKY_EMBED_MODEL_DEFAULT,
+    STICKY_TRASH_MAX_COUNT_DEFAULT, STICKY_TRASH_RETENTION_DAYS_DEFAULT,
 )
 from file_search_app.repositories.json_store import read_json
+
+
+def _non_negative_int(value, default: int) -> int:
+    """有限、非負的整數就取（浮點也吃、無條件捨去）；否則回 default。0 是
+    合法值（＝關掉那道門檻）。"""
+    if (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 0
+    ):
+        return int(value)
+    return default
 
 _SETTINGS_FILENAME = ".notes_settings.json"
 
@@ -52,3 +66,16 @@ class NotesSettingsRepository:
             if isinstance(value, str) and value.strip():
                 return value.strip()
         return STICKY_EMBED_MODEL_DEFAULT
+
+    def load_trash_retention_days(self) -> int:
+        """垃圾桶保留天數（deleted_at 超過這麼多天前的自動永久刪）。0＝不依
+        時間清。設定檔沒有這個鍵就回預設。"""
+        data = read_json(self.path, None)
+        raw = data.get("trashRetentionDays") if isinstance(data, dict) else None
+        return _non_negative_int(raw, STICKY_TRASH_RETENTION_DAYS_DEFAULT)
+
+    def load_trash_max_count(self) -> int:
+        """垃圾桶最多留幾則（超過從最舊的清起）。0＝不限筆數。"""
+        data = read_json(self.path, None)
+        raw = data.get("trashMaxCount") if isinstance(data, dict) else None
+        return _non_negative_int(raw, STICKY_TRASH_MAX_COUNT_DEFAULT)

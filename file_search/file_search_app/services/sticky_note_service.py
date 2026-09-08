@@ -212,6 +212,32 @@ def next_due(due_at: str, repeat: str, now: datetime = None) -> str:
     return dt.isoformat()
 
 
+# ── 垃圾桶自動清理 ────────────────────────────────────────────────────
+def prune_trash_list(trash, now: datetime, retention_days: int, max_count: int):
+    """回傳 `(kept, purged)`——兩道門檻，任一超過就把最舊的挑出來永久刪：
+      · retention_days > 0：deleted_at 在 now 之前超過這麼多天的
+      · max_count > 0：留最新的 max_count 則，其餘（依 deleted_at 最舊的）淘汰
+    `trash` 是 TrashedStickyNote 清單；`kept` 保持原本的順序（陣列裡是新增
+    順序＝大致由舊到新），呼叫端直接寫回。都不觸發時回 `(trash, [])`。
+    """
+    kept = list(trash)
+    purged = []
+
+    if retention_days and retention_days > 0:
+        cutoff = now - timedelta(days=retention_days)
+        fresh, expired = [], []
+        for t in kept:
+            (expired if t.deleted_at < cutoff else fresh).append(t)
+        kept, purged = fresh, purged + expired
+
+    if max_count and max_count > 0 and len(kept) > max_count:
+        kept.sort(key=lambda t: t.deleted_at)  # 舊 → 新
+        over, kept = kept[:-max_count], kept[-max_count:]
+        purged = purged + over
+
+    return kept, purged
+
+
 class StickyNoteService:
     def __init__(self, repo: StickyNoteRepository, notes_settings_repo: NotesSettingsRepository = None):
         self._repo = repo
@@ -436,11 +462,20 @@ class StickyNoteService:
         self._repo.mutate(apply)
         return changed
 
+    def _trash_limits(self):
+        return (
+            self._notes_settings.load_trash_retention_days(),
+            self._notes_settings.load_trash_max_count(),
+        )
+
     def delete_note(self, note_id: str) -> None:
         """「刪除」現在是「移到垃圾桶」，不是真的從資料裡消失——使用者按錯、
         手滑都還能在垃圾桶對話框復原，真正永久刪除要另外呼叫 purge_note()
-        或在垃圾桶按「永久刪除」。"""
+        或在垃圾桶按「永久刪除」。丟進垃圾桶的同時順手套用自動清理門檻
+        （見 prune_trash_list），把過期／超量的最舊那批一起永久刪掉。"""
         now = datetime.now()
+        retention_days, max_count = self._trash_limits()
+        purged_images = []
 
         def apply(notes, trash):
             target = next((n for n in notes if n.id == note_id), None)
@@ -450,11 +485,17 @@ class StickyNoteService:
             trashed = TrashedStickyNote(
                 id=target.id, title=target.title, body=target.body, tag=target.tag,
                 created_at=target.created_at, image=target.image, due_at=target.due_at,
-                pinned=target.pinned, deleted_at=now,
+                pinned=target.pinned, repeat=target.repeat, deleted_at=now,
             )
-            return remaining, trash + [trashed]
+            kept, purged = prune_trash_list(
+                trash + [trashed], now, retention_days, max_count,
+            )
+            purged_images.extend(t.image for t in purged if t.image)
+            return remaining, kept
 
         self._repo.mutate_all(apply)
+        for image in purged_images:
+            self._repo.remove_image_file(image)
 
     def delete_notes(self, note_ids) -> int:
         """批次「刪除」——同上，移到垃圾桶而不是永久刪除。一次讀寫，不是逐筆
@@ -463,6 +504,8 @@ class StickyNoteService:
         wanted = set(note_ids)
         removed = 0
         now = datetime.now()
+        retention_days, max_count = self._trash_limits()
+        purged_images = []
 
         def apply(notes, trash):
             nonlocal removed
@@ -475,13 +518,19 @@ class StickyNoteService:
                 TrashedStickyNote(
                     id=n.id, title=n.title, body=n.body, tag=n.tag,
                     created_at=n.created_at, image=n.image, due_at=n.due_at,
-                    pinned=n.pinned, deleted_at=now,
+                    pinned=n.pinned, repeat=n.repeat, deleted_at=now,
                 )
                 for n in to_trash
             ]
-            return remaining, trash + newly_trashed
+            kept, purged = prune_trash_list(
+                trash + newly_trashed, now, retention_days, max_count,
+            )
+            purged_images.extend(t.image for t in purged if t.image)
+            return remaining, kept
 
         self._repo.mutate_all(apply)
+        for image in purged_images:
+            self._repo.remove_image_file(image)
         return removed
 
     # ── 垃圾桶 ───────────────────────────────────────────────────────
@@ -533,6 +582,30 @@ class StickyNoteService:
         if found:
             self._repo.remove_image_file(image_to_remove)
         return found
+
+    def prune_trash(self) -> int:
+        """把垃圾桶裡過期／超量的最舊那批永久刪掉（連插圖），回傳刪了幾筆。
+        刪除當下已經會順手清一次（見 delete_note/delete_notes），這個是給
+        「開著沒動、時間到了」的情況補刀——面板啟動時、開垃圾桶視窗前呼叫。
+        沒有東西要清就不寫檔（mutate_all 回 None）。"""
+        now = datetime.now()
+        retention_days, max_count = self._trash_limits()
+        purged_images = []
+        pruned_count = 0
+
+        def apply(notes, trash):
+            nonlocal pruned_count
+            kept, purged = prune_trash_list(trash, now, retention_days, max_count)
+            if not purged:
+                return None
+            pruned_count = len(purged)
+            purged_images.extend(t.image for t in purged if t.image)
+            return notes, kept
+
+        self._repo.mutate_all(apply)
+        for image in purged_images:
+            self._repo.remove_image_file(image)
+        return pruned_count
 
     def empty_trash(self) -> int:
         """清空整個垃圾桶、連帶清掉所有插圖檔案。回傳清掉幾筆便利貼（不是

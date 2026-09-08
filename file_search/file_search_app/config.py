@@ -153,6 +153,18 @@ STICKY_TOOLTIP_FG = "#ffffff"
 # NotesSettingsRepository 讀同一份值（唯讀），兩邊看到的「快到期」定義才一致。
 # 下面這個常數只是「設定檔還不存在時的預設」（48 小時＝2 天）。
 STICKY_DUE_SOON_HOURS_DEFAULT = 48
+
+# 垃圾桶自動清理——刪掉的便利貼進 trash 陣列（跟 notes 同一個檔案），不會
+# 自己消失，一直累積會拖慢每次讀寫。兩道門檻，任一超過就把最舊的永久刪除
+# （連插圖檔一起）：
+#   · RETENTION_DAYS：deleted_at 超過幾天前就清掉（0＝不依時間清）
+#   · MAX_COUNT：垃圾桶最多留幾則，超過的從最舊的清起（0＝不限筆數）
+# 使用者在 notes-web「全域設定 → 垃圾桶」調整，寫進 .notes_settings.json；
+# 桌面版透過 NotesSettingsRepository 讀同一份值（唯讀）。下面是設定檔還沒有
+# 這些鍵時的預設。
+STICKY_TRASH_RETENTION_DAYS_DEFAULT = 30
+STICKY_TRASH_MAX_COUNT_DEFAULT = 200
+
 STICKY_DUE_OVERDUE_BG = "#fecaca"
 STICKY_DUE_OVERDUE_FG = "#991b1b"
 STICKY_DUE_SOON_BG = "#fde68a"

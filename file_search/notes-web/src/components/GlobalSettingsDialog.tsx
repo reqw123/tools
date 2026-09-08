@@ -2,19 +2,22 @@ import { useEffect, useRef, useState } from 'react'
 import { AiSettingsPanel } from './AiSettingsDialog'
 import { TagSortSettings } from './TagSortSettings'
 import { AppearanceSettings } from './AppearanceSettings'
+import { TrashSettings } from './TrashSettings'
 
-export type SettingsTab = 'ai' | 'tags' | 'appearance'
+export type SettingsTab = 'ai' | 'tags' | 'appearance' | 'trash'
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'ai', label: 'AI 請求' },
   { id: 'tags', label: '標籤排序' },
   { id: 'appearance', label: '外觀' },
+  { id: 'trash', label: '垃圾桶' },
 ]
 
 /**
  * 「全域設定」——原本的「AI 設定」擴充成分頁對話框：AI 請求設定、標籤橫向列
- * 的排序、牆面外觀（預設便利貼顏色、欄寬、動態排版開關）。全部存在跟桌面版
- * 共用的檔案裡（AI 設定 → .ai_settings.json；其餘 → .notes_settings.json）。
+ * 的排序、牆面外觀（預設便利貼顏色、欄寬、動態排版開關）、垃圾桶自動清理
+ * 門檻。全部存在跟桌面版共用的檔案裡（AI 設定 → .ai_settings.json；其餘 →
+ * .notes_settings.json）。
  */
 export function GlobalSettingsDialog({
   onClose,
@@ -76,6 +79,9 @@ export function GlobalSettingsDialog({
         </div>
         <div hidden={tab !== 'appearance'}>
           <AppearanceSettings />
+        </div>
+        <div hidden={tab !== 'trash'}>
+          <TrashSettings />
         </div>
       </div>
     </div>

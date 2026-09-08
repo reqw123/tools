@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import json
+
 from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
 from file_search_app.services.sticky_note_service import (
     AI_SEARCH_BODY_SNIPPET_CHARS,
@@ -9,6 +11,7 @@ from file_search_app.services.sticky_note_service import (
     next_due,
     parse_due_date,
     preview_text,
+    prune_trash_list,
     uncheck_all_lines,
 )
 
@@ -409,6 +412,80 @@ def test_list_trash_newest_deleted_first(data_dir, monkeypatch):
     s.delete_note(a.id)
     s.delete_note(b.id)
     assert [t.title for t in s.list_trash()] == ["second-deleted", "first-deleted"]
+
+
+# ── 垃圾桶自動清理 ────────────────────────────────────────────────
+
+def _settings(data_dir, **kw):
+    (data_dir / ".notes_settings.json").write_text(json.dumps(kw), encoding="utf-8")
+
+
+def _trashed(deleted_at, image=""):
+    from file_search_app.models import TrashedStickyNote
+    return TrashedStickyNote(
+        id="x", title="t", body="", tag="", created_at=datetime(2026, 1, 1),
+        image=image, deleted_at=deleted_at,
+    )
+
+
+def test_prune_trash_list_by_max_count_keeps_newest():
+    trash = [_trashed(datetime(2026, 1, d)) for d in (1, 2, 3, 4, 5)]
+    kept, purged = prune_trash_list(trash, datetime(2026, 6, 1), retention_days=0, max_count=2)
+    assert [t.deleted_at.day for t in kept] == [4, 5]
+    assert [t.deleted_at.day for t in purged] == [1, 2, 3]
+
+
+def test_prune_trash_list_by_retention_days():
+    trash = [_trashed(datetime(2026, 1, d)) for d in (1, 10, 20)]
+    # now = 1/25，保留 10 天 → 只有 1/20 那則還在
+    kept, purged = prune_trash_list(trash, datetime(2026, 1, 25), retention_days=10, max_count=0)
+    assert [t.deleted_at.day for t in kept] == [20]
+    assert {t.deleted_at.day for t in purged} == {1, 10}
+
+
+def test_prune_trash_list_zero_thresholds_keep_everything():
+    trash = [_trashed(datetime(2020, 1, d)) for d in (1, 2, 3)]
+    kept, purged = prune_trash_list(trash, datetime(2026, 1, 1), retention_days=0, max_count=0)
+    assert kept == trash and purged == []
+
+
+def test_delete_note_prunes_trash_to_max_count(data_dir):
+    _settings(data_dir, trashMaxCount=2, trashRetentionDays=0)
+    s = svc(data_dir)
+    ids = [s.add_note(str(i), "", "").id for i in range(5)]
+    for i in ids:
+        s.delete_note(i)
+    # 只留最後刪的 2 則
+    assert sorted(t.title for t in s.list_trash()) == ["3", "4"]
+
+
+def test_prune_trash_removes_orphan_image_files(data_dir):
+    _settings(data_dir, trashMaxCount=1, trashRetentionDays=0)
+    images = data_dir / ".sticky_note_images"
+    images.mkdir(parents=True)
+    (images / "a.png").write_bytes(b"A")
+    (images / "b.png").write_bytes(b"B")
+    s = svc(data_dir)
+    n1 = s.add_note("n1", "", "")
+    n2 = s.add_note("n2", "", "")
+    s._repo.mutate(lambda notes: [
+        (n.__class__(**{**n.__dict__, "image": "a.png"}) if n.id == n1.id else
+         n.__class__(**{**n.__dict__, "image": "b.png"}) if n.id == n2.id else n)
+        for n in notes
+    ])
+    s.delete_note(n1.id)
+    s.delete_note(n2.id)  # 這步把 n1（含 a.png）擠出垃圾桶
+    assert not (images / "a.png").exists()
+    assert (images / "b.png").exists()  # 還在垃圾桶裡，圖也還在
+
+
+def test_prune_trash_method_noop_when_nothing_to_clean(data_dir):
+    _settings(data_dir, trashMaxCount=0, trashRetentionDays=0)
+    s = svc(data_dir)
+    a = s.add_note("a", "", "")
+    s.delete_note(a.id)
+    assert s.prune_trash() == 0
+    assert len(s.list_trash()) == 1
 
 
 # ── 匯出/匯入含插圖 ───────────────────────────────────────────────

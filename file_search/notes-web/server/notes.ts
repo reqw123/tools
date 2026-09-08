@@ -18,6 +18,7 @@ import {
   listSnapshots,
   listTrash,
   patchAppSettings,
+  pruneTrash,
   purgeNote,
   restoreNote,
   restoreSnapshot,
@@ -87,6 +88,8 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       defaultNoteColor?: string
       wall?: { minColWidth?: number; masonry?: boolean }
       embedModel?: string
+      trashRetentionDays?: number
+      trashMaxCount?: number
     }
   }>(
     '/settings',
@@ -107,6 +110,9 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
             defaultNoteColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
             // 空字串是合法的「恢復預設」意圖；上限給寬一點，coerce 會再夾成 120
             embedModel: { type: 'string', maxLength: 200 },
+            // 0＝關掉那道門檻；coerce 會夾範圍
+            trashRetentionDays: { type: 'number', minimum: 0, maximum: 3650 },
+            trashMaxCount: { type: 'number', minimum: 0, maximum: 100000 },
             wall: {
               type: 'object',
               additionalProperties: false,
@@ -248,7 +254,10 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
   // ── 垃圾桶（靜態路徑 /notes/trash*，Fastify 會排在 /notes/:id 前面比對，
   //    不會被吃掉）── 「刪除」上面已經改成移到這裡，這幾支負責復原／永久刪除。
 
-  app.get('/notes/trash', async () => ({ notes: listTrash() }))
+  app.get('/notes/trash', async () => {
+    pruneTrash() // 開垃圾桶前先套一次自動清理（過期／超量的最舊那批永久刪）
+    return { notes: listTrash() }
+  })
 
   app.post<{ Params: { id: string } }>('/notes/trash/:id/restore', async (req, reply) => {
     const note = restoreNote(req.params.id)

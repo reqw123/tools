@@ -327,6 +327,13 @@ class StickyNotePanel:
             self.frame, bg=STICKY_TOAST_BG, fg=STICKY_TOAST_FG, font=font_hint, pady=4,
         )
 
+        # 啟動時清一次垃圾桶（過期／超量的最舊那批永久刪）——桌面版可能好幾天
+        # 沒開，靠刪除當下順手清的機制補不到「時間到了但期間沒刪東西」的情況。
+        try:
+            self._service.prune_trash()
+        except Exception:  # noqa: BLE001 — 清理失敗不該擋住面板初始化
+            pass
+
         self._refresh()
         self._schedule_due_tick()
 
@@ -775,6 +782,9 @@ class StickyNotePanel:
         self._refresh()
 
     def _on_trash(self):
+        # 開視窗前先套一次自動清理（過期／超量的最舊那批永久刪）——避免使用者
+        # 打開垃圾桶看到一堆早該清掉的舊便利貼。
+        self._service.prune_trash()
         StickyNoteTrashDialog(
             self.frame, self._service, self._service.color_for_tag,
             on_change=lambda: (self._invalidate_ai_results(), self._refresh()),

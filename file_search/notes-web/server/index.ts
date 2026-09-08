@@ -2,7 +2,7 @@ import Fastify from 'fastify'
 import fastifyStatic from '@fastify/static'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { listNotes, noteImagesDir, notesFilePath, projectRoot } from './store'
+import { listNotes, noteImagesDir, notesFilePath, projectRoot, pruneTrash } from './store'
 import { notesRoutes } from './notes'
 import { noteImageRoutes } from './note-image-routes'
 import { aiRoutes } from './ai-routes'
@@ -16,6 +16,12 @@ const app = Fastify({ logger: true })
 app.log.info(`便利貼資料檔：${notesFilePath}`)
 if (existsSync(notesFilePath)) {
   app.log.info(`目前 ${listNotes().length} 則（跟桌面版共用這一份，改動會互相看到）`)
+  try {
+    const n = pruneTrash() // 啟動時清一次垃圾桶（過期／超量的最舊那批永久刪）
+    if (n > 0) app.log.info(`垃圾桶自動清理：永久刪除 ${n} 則`)
+  } catch (err) {
+    app.log.warn({ err }, '垃圾桶自動清理失敗（不影響啟動）')
+  }
 } else {
   app.log.warn('資料檔還不存在——第一次新增便利貼時會建立')
 }

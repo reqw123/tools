@@ -62,7 +62,10 @@ export function TrashDialog({ onClose }: { onClose: () => void }) {
           ×
         </button>
         <h2>垃圾桶</h2>
-        <p className="dim">被刪除的便利貼會先放在這裡，可以復原或永久刪除。</p>
+        <p className="dim">
+          被刪除的便利貼會先放在這裡，可以復原或永久刪除。超過保留天數或筆數上限的
+          最舊那批會自動永久刪除（在「全域設定 → 垃圾桶」調整）。
+        </p>
 
         {isLoading ? (
           <p className="dim mono">// 讀取中…</p>

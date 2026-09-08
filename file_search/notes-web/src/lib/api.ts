@@ -174,6 +174,10 @@ export interface AppSettings {
   /** 「語意搜尋」用的本機 Ollama embedding 模型名稱（位址沿用 AI 設定的
    *  ollama.base_url）。空字串＝用預設 bge-m3。 */
   embedModel: string
+  /** 垃圾桶自動清理：刪掉超過這麼多天的自動永久刪。0＝不依時間清。 */
+  trashRetentionDays: number
+  /** 垃圾桶最多留幾則，超過從最舊的清起。0＝不限筆數。 */
+  trashMaxCount: number
 }
 
 /** PATCH /api/settings 的部分更新（dueSoonHours 走 /reminder-settings 舊路由）。 */
@@ -182,6 +186,8 @@ export type AppSettingsPatch = {
   defaultNoteColor?: string
   wall?: Partial<AppSettings['wall']>
   embedModel?: string
+  trashRetentionDays?: number
+  trashMaxCount?: number
 }
 
 /** 標籤→自訂顏色（hex）。沒自訂過的標籤不會出現在這裡，colorForTag() 拿不

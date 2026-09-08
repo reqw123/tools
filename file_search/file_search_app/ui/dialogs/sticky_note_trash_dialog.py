@@ -48,7 +48,10 @@ class StickyNoteTrashDialog(tk.Toplevel):
 
         tk.Label(
             pad,
-            text="被刪除的便利貼會先放在這裡，可以復原或永久刪除。",
+            text=(
+                "被刪除的便利貼會先放在這裡，可以復原或永久刪除。超過保留天數或"
+                "筆數上限的最舊那批會自動永久刪除（在 notes-web「全域設定 → 垃圾桶」調整）。"
+            ),
             bg=COLOR_BG, font=self._font_hint, fg=COLOR_STATUS_FG, justify="left", anchor="w", wraplength=440,
         ).pack(fill="x", pady=(0, 10))
 

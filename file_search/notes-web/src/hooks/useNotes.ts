@@ -236,6 +236,10 @@ export function mergeAppSettings(old: AppSettings | undefined, patch: AppSetting
     ...(patch.tagSort ? { tagSort: { ...old.tagSort, ...patch.tagSort } } : {}),
     ...(patch.wall ? { wall: { ...old.wall, ...patch.wall } } : {}),
     ...(patch.embedModel !== undefined ? { embedModel: patch.embedModel } : {}),
+    ...(patch.trashRetentionDays !== undefined
+      ? { trashRetentionDays: patch.trashRetentionDays }
+      : {}),
+    ...(patch.trashMaxCount !== undefined ? { trashMaxCount: patch.trashMaxCount } : {}),
   }
 }
 

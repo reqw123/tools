@@ -557,9 +557,23 @@ export function deleteNote(id: string): boolean {
   const target = raw.notes.map(parseNote).find((n) => n?.id === id)
   if (!target) return false
   raw.notes = raw.notes.filter((x) => (parseNote(x)?.id ?? null) !== id)
-  raw.trash = [...raw.trash, serializeTrashed({ ...target, deleted_at: localIso() })]
+  const trashed = [
+    ...raw.trash.map(parseTrashedNote).filter((t): t is TrashedNote => t !== null),
+    { ...target, deleted_at: localIso() },
+  ]
+  const purged = applyTrashLimits(raw, trashed)
   writeRaw(raw)
+  for (const t of purged) if (t.image) unlinkImage(t.image)
   return true
+}
+
+/** 把新的垃圾桶清單套上自動清理門檻、寫回 raw.trash，回傳被永久刪的那批
+ *  （呼叫端負責 unlinkImage）。deleteNote/deleteNotes 共用。 */
+function applyTrashLimits(raw: RawFile, trashed: TrashedNote[]): TrashedNote[] {
+  const { trashRetentionDays, trashMaxCount } = getAppSettings()
+  const { kept, purged } = pruneTrashList(trashed, new Date(), trashRetentionDays, trashMaxCount)
+  raw.trash = kept.map(serializeTrashed)
+  return purged
 }
 
 /** 批次新增——整份檔案只讀一次、寫一次。時間戳給每筆錯開 1ms，讓第 1 筆在最上面。 */
@@ -620,12 +634,65 @@ export function deleteNotes(ids: string[]): number {
   if (toTrash.length === 0) return 0
   raw.notes = raw.notes.filter((x) => !want.has(parseNote(x)?.id ?? ''))
   const now = localIso()
-  raw.trash = [...raw.trash, ...toTrash.map((n) => serializeTrashed({ ...n, deleted_at: now }))]
+  const trashed = [
+    ...raw.trash.map(parseTrashedNote).filter((t): t is TrashedNote => t !== null),
+    ...toTrash.map((n) => ({ ...n, deleted_at: now })),
+  ]
+  const purged = applyTrashLimits(raw, trashed)
   writeRaw(raw)
+  for (const t of purged) if (t.image) unlinkImage(t.image)
   return toTrash.length
 }
 
 // ── 垃圾桶 ───────────────────────────────────────────────────────
+
+/** 兩道門檻，任一超過就把最舊的挑出來永久刪（見桌面版 prune_trash_list）：
+ *  retentionDays>0＝deleted_at 太舊的、maxCount>0＝留最新的 maxCount 則。
+ *  `kept` 保持傳入順序；都不觸發就回原陣列 + 空 purged。 */
+function pruneTrashList(
+  trash: TrashedNote[],
+  now: Date,
+  retentionDays: number,
+  maxCount: number,
+): { kept: TrashedNote[]; purged: TrashedNote[] } {
+  let kept = trash
+  let purged: TrashedNote[] = []
+
+  if (retentionDays > 0) {
+    const cutoffMs = now.getTime() - retentionDays * 86_400_000
+    const fresh: TrashedNote[] = []
+    const expired: TrashedNote[] = []
+    for (const t of kept) {
+      ;(new Date(t.deleted_at).getTime() < cutoffMs ? expired : fresh).push(t)
+    }
+    kept = fresh
+    purged = expired
+  }
+
+  if (maxCount > 0 && kept.length > maxCount) {
+    const byOld = [...kept].sort((a, b) => (a.deleted_at < b.deleted_at ? -1 : 1)) // 舊→新
+    purged = [...purged, ...byOld.slice(0, byOld.length - maxCount)]
+    kept = byOld.slice(byOld.length - maxCount)
+  }
+
+  return { kept, purged }
+}
+
+/** 讀設定 → 依門檻清一次垃圾桶（過期／超量的最舊那批永久刪，連插圖）。
+ *  沒東西要清就不寫檔。刪除當下已順手清一次（見 deleteNote/deleteNotes），
+ *  這個給「開著沒動、時間到了」的情況補刀——server 啟動時、GET /notes/trash
+ *  之前呼叫。 */
+export function pruneTrash(): number {
+  const { trashRetentionDays, trashMaxCount } = getAppSettings()
+  const raw = readRaw()
+  const parsed = raw.trash.map(parseTrashedNote).filter((t): t is TrashedNote => t !== null)
+  const { kept, purged } = pruneTrashList(parsed, new Date(), trashRetentionDays, trashMaxCount)
+  if (purged.length === 0) return 0
+  raw.trash = kept.map(serializeTrashed)
+  writeRaw(raw)
+  for (const t of purged) if (t.image) unlinkImage(t.image)
+  return purged.length
+}
 
 export function listTrash(): TrashedNote[] {
   const trash = readRaw().trash.map(parseTrashedNote).filter((t): t is TrashedNote => t !== null)
@@ -842,12 +909,26 @@ export interface AppSettings {
    *  空字串＝用預設（DEFAULT_EMBED_MODEL）。ai_bridge.py 的 semantic-* 指令會
    *  一起收到這個值。 */
   embedModel: string
+  /** 垃圾桶自動清理：deleted_at 超過這麼多天前的自動永久刪。0＝不依時間清。 */
+  trashRetentionDays: number
+  /** 垃圾桶最多留幾則，超過從最舊的清起。0＝不限筆數。 */
+  trashMaxCount: number
 }
 
 const DEFAULT_NOTE_COLOR = '#e5e7eb' // = notes-web lib/color.ts NEUTRAL / 桌面版 STICKY_NEUTRAL_COLOR
 const DEFAULT_MIN_COL_WIDTH = 240
 // = 桌面版 config.py STICKY_EMBED_MODEL_DEFAULT（多語言、中文效果好）
 const DEFAULT_EMBED_MODEL = 'bge-m3'
+// = 桌面版 config.py STICKY_TRASH_*_DEFAULT
+const DEFAULT_TRASH_RETENTION_DAYS = 30
+const DEFAULT_TRASH_MAX_COUNT = 200
+
+/** 有限、非負整數就取（浮點無條件捨去）；否則回 fallback。0 合法（＝關掉那道門檻）。 */
+function coerceNonNegInt(v: unknown, fallback: number, cap: number): number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0
+    ? Math.min(cap, Math.round(v))
+    : fallback
+}
 
 function coerceAppSettings(data: unknown): AppSettings {
   const o = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
@@ -885,6 +966,8 @@ function coerceAppSettings(data: unknown): AppSettings {
       typeof o.embedModel === 'string' && o.embedModel.trim()
         ? o.embedModel.trim().slice(0, 120)
         : DEFAULT_EMBED_MODEL,
+    trashRetentionDays: coerceNonNegInt(o.trashRetentionDays, DEFAULT_TRASH_RETENTION_DAYS, 3650),
+    trashMaxCount: coerceNonNegInt(o.trashMaxCount, DEFAULT_TRASH_MAX_COUNT, 100000),
   }
 }
 
@@ -902,6 +985,8 @@ export interface AppSettingsPatch {
   defaultNoteColor?: string
   wall?: Partial<WallPref>
   embedModel?: string
+  trashRetentionDays?: number
+  trashMaxCount?: number
 }
 
 /** 只覆寫 patch 帶到的欄位，其餘沿用目前值；驗證/夾範圍後原子寫回，
@@ -931,6 +1016,9 @@ export function patchAppSettings(patch: AppSettingsPatch | null | undefined): Ap
     wall: { ...cur.wall, ...p.wall },
     // 空字串是「恢復預設」的合法意圖 → 傳到 coerceAppSettings 會落回 DEFAULT_EMBED_MODEL
     embedModel: p.embedModel !== undefined ? p.embedModel : cur.embedModel,
+    trashRetentionDays:
+      p.trashRetentionDays !== undefined ? p.trashRetentionDays : cur.trashRetentionDays,
+    trashMaxCount: p.trashMaxCount !== undefined ? p.trashMaxCount : cur.trashMaxCount,
   })
   atomicWriteFile(SETTINGS_FILE, JSON.stringify({ ...rawObj, ...clean }, null, 1))
   return clean
