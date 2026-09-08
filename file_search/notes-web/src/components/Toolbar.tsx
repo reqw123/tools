@@ -1,6 +1,6 @@
 import {
-  AlarmClock, Bot, CopyPlus, Download, HardDriveDownload, History, Plus, Recycle, Search, Settings2, Sparkles, Sprout,
-  Tags, Timer, Trash2, Upload,
+  AlarmClock, Bot, CopyPlus, CornerDownLeft, Download, HardDriveDownload, History, Plus, Recycle, Search, Settings2,
+  Sparkles, Sprout, Tags, Timer, Trash2, Upload,
 } from 'lucide-react'
 import type { AiTarget } from '../lib/ai'
 import type { TagCount } from './TagBar'
@@ -109,6 +109,20 @@ export function Toolbar({
                 }
               }}
             />
+            {aiMode && (
+              // AI 模式下打完問題要「送出」才會呼叫模型——光按 Enter 不夠明顯，
+              // 補一顆看得到的送出鈕（Enter 仍然可用）。
+              <button
+                type="button"
+                className="ai-send"
+                disabled={!query.trim() || aiSearching}
+                onClick={() => onAiSearch(query)}
+                title="送出問題給 AI（也可以按 Enter）"
+              >
+                <CornerDownLeft size={14} strokeWidth={2.6} aria-hidden />
+                {aiSearching ? '詢問中…' : '送出'}
+              </button>
+            )}
           </label>
           <button
             className={`btn ghost icon${aiMode ? ' on' : ''}`}
@@ -210,7 +224,7 @@ export function Toolbar({
                   ? '⚠️ 尚未設定 AI '
                   : `會把 ${sendCount} 則送到 ${aiTarget.label}（${aiTarget.model}）· ${
                       aiTarget.leaves_machine ? '內容會離開這台電腦' : '內容不離開這台電腦'
-                    } · 累計第 ${aiTarget.call_count + 1} 次 · Enter 送出`}
+                    } · 累計第 ${aiTarget.call_count + 1} 次 · 按右側「送出」或 Enter 才會呼叫`}
             {!aiSearching && (
               <button className="link" onClick={() => onOpenSettings('ai')}>
                 設定
