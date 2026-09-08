@@ -125,10 +125,14 @@ export const aiApi = {
       body: JSON.stringify({ query, tag: tag ?? '' }),
     }),
   semanticStatus: () => req<SemanticStatus>('/ai/semantic-status'),
-  thesisSeed: () =>
-    req<{ drafts: NoteDraft[]; error: string | null; call_count: number }>('/ai/thesis-seed', {
-      method: 'POST',
-    }),
+  /** 研究生模式「從專案生成」。source＝資料夾或 .zip 的路徑（空＝用設定的
+   *  thesisProjectDir）。signal＝按「中斷」時 abort 掉這個 fetch，後端會
+   *  連帶殺掉子行程。 */
+  thesisSeed: (source: string, signal?: AbortSignal) =>
+    req<{ drafts: NoteDraft[]; used_files: string[]; error: string | null; call_count: number }>(
+      '/ai/thesis-seed',
+      { method: 'POST', body: JSON.stringify({ source }), signal },
+    ),
   generateNote: (path: string, category: string) =>
     req<AiGenerateNoteResult>('/ai/generate-note', {
       method: 'POST',

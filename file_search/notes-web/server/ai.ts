@@ -26,11 +26,13 @@ export function runBridge<T>(
   command: string,
   payload?: unknown,
   extraArgs: string[] = [],
+  opts: { signal?: AbortSignal } = {},
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const child = spawn(PY, [BRIDGE, command, ...extraArgs], { windowsHide: true })
     let out = ''
     let err = ''
+    let aborted = false
     child.stdout.setEncoding('utf-8')
     child.stderr.setEncoding('utf-8')
     child.stdout.on('data', (d: string) => (out += d))
@@ -38,7 +40,22 @@ export function runBridge<T>(
     child.on('error', (e) =>
       reject(new BridgeError(`無法啟動 Python（${PY}）：${e.message}。可用環境變數 PYTHON 指定路徑。`, -1)),
     )
+
+    // 呼叫端中斷（前端關掉連線／按「中斷」）→ 殺掉子行程，別讓 Python 繼續
+    // 跑那個十幾秒的 AI 呼叫、白白佔著 Ollama。
+    const onAbort = () => {
+      aborted = true
+      child.kill()
+      reject(new BridgeError('已中斷', -2))
+    }
+    if (opts.signal) {
+      if (opts.signal.aborted) return onAbort()
+      opts.signal.addEventListener('abort', onAbort, { once: true })
+    }
+
     child.on('close', (code) => {
+      opts.signal?.removeEventListener('abort', onAbort)
+      if (aborted) return
       let parsed: unknown = null
       try {
         parsed = JSON.parse(out.trim())

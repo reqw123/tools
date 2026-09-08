@@ -57,3 +57,45 @@ def test_tag_from_context_maps_known_terms():
     assert ai_bridge._tag_from_context("消融實驗設計") == "實驗"
     assert ai_bridge._tag_from_context("未來工作方向") == "未來工作"
     assert ai_bridge._tag_from_context("隨便一句") == "其他"
+
+
+# ── _collect_seed_docs：自選資料夾 / .zip ──────────────────────────
+
+def test_collect_seed_docs_from_folder_prioritises_docs(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "0_overview.md").write_text("# 總覽\n" + "貓咪行為辨識研究。" * 20, encoding="utf-8")
+    (tmp_path / "docs" / "dataset.md").write_text("# 資料\n" + "500 段影片待標註。" * 20, encoding="utf-8")
+    (tmp_path / "main.py").write_text("print('code, 不該被挑')" * 5, encoding="utf-8")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "junk.md").write_text("套件的 readme" * 30, encoding="utf-8")
+
+    text, used = ai_bridge._collect_seed_docs(str(tmp_path))
+    assert "0_overview.md" in " ".join(used)
+    assert "dataset.md" in " ".join(used)
+    assert not any("main.py" in u for u in used)          # .py 不在候選副檔名
+    assert not any("node_modules" in u for u in used)     # skip dir
+    assert "貓咪行為辨識研究" in text
+
+
+def test_collect_seed_docs_from_zip(tmp_path):
+    import zipfile
+
+    zp = tmp_path / "proj.zip"
+    with zipfile.ZipFile(zp, "w") as z:
+        z.writestr("docs/0_進度.md", "# 進度\n" + "第三章方法要補寫。" * 20)
+        z.writestr("README.md", "# 專案\n" + "個體化基線 30 天。" * 20)
+        z.writestr("src/x.py", "code" * 50)
+    text, used = ai_bridge._collect_seed_docs(str(zp))
+    assert any("0_進度.md" in u for u in used)
+    assert any("README.md" in u for u in used)
+    assert not any(u.endswith(".py") for u in used)
+    assert "第三章方法要補寫" in text
+
+
+def test_collect_seed_docs_missing_source():
+    assert ai_bridge._collect_seed_docs("C:/nope/not/here") == ("", [])
+
+
+def test_seed_score_ranks_overview_over_random():
+    assert ai_bridge._seed_score("docs/0_overview.md", 2000) > ai_bridge._seed_score("src/util.md", 2000)
+    assert ai_bridge._seed_score("paper/CONTEXT.md", 1000) > ai_bridge._seed_score("changelog.md", 1000)

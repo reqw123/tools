@@ -38,10 +38,14 @@ export function useSaveGeneratedNotes() {
   })
 }
 
-/** 研究生模式「從專案生成」——AI 讀論文專案文件產出一批任務便利貼草稿。
- *  一次呼叫可能要跑十幾秒（讀檔 + 生成），前端顯示進度。 */
+/** 研究生模式「從專案生成」——AI 讀來源（資料夾／.zip）文件產出一批任務
+ *  便利貼草稿。一次呼叫可能要跑十幾秒；傳 signal 進去可中斷（後端連帶殺
+ *  子行程）。 */
 export function useThesisSeed() {
-  return useMutation({ mutationFn: () => aiApi.thesisSeed() })
+  return useMutation({
+    mutationFn: ({ source, signal }: { source: string; signal?: AbortSignal }) =>
+      aiApi.thesisSeed(source, signal),
+  })
 }
 
 /** 語意搜尋可用性——Ollama 連得上、embedding 模型下載了嗎。輪詢頻率低；

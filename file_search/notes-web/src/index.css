@@ -1304,6 +1304,27 @@ body {
 .sheet.plain.wide { width: min(40rem, 100%); }
 
 /* 研究生模式「從專案生成」草稿審核 */
+.seed-source {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.6rem 0;
+}
+.seed-source > span {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  flex: none;
+}
+.seed-source input {
+  flex: 1;
+  font: inherit;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--hair);
+  border-radius: 3px;
+  background: var(--paper-filter, #fff);
+  color: var(--paper-ink);
+}
 .seed-list {
   display: flex;
   flex-direction: column;

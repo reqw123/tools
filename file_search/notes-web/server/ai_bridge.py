@@ -283,31 +283,38 @@ def cmd_semantic_status(payload, notes_file):
     return svc.status(_embed_model(payload))
 
 
-# ── 研究生模式：從論文專案文件生成一批任務便利貼 ──────────────────────
-_THESIS_SEED_FILES = [
-    "paper/CONTEXT.md",
-    "paper/docs/0_進度彙整.md",
-    "paper/docs/0_AI_專案導覽地圖.md",
-    "paper/docs/adr/0001-統一健康風險評分引擎.md",
-    "CLAUDE.md",
-]
-_THESIS_SEED_PER_FILE = 9000
-_THESIS_SEED_TOTAL = 30000
+# ── 研究生模式：從專案文件生成一批任務便利貼 ──────────────────────────
+_THESIS_SEED_PER_FILE = 9000       # 每個檔案最多餵這麼多字
+_THESIS_SEED_TOTAL = 30000         # 全部合起來的上限
+_THESIS_SEED_MAX_FILES = 8         # 最多挑幾個檔案
+_THESIS_SEED_SCAN_CAP = 400        # 掃描時最多看幾個候選檔（避免超大專案卡住）
+_SEED_EXTS = (".md", ".txt", ".docx", ".rst")
+# 檔名／路徑帶這些字的優先（進度、大綱、架構、說明類文件對「產任務」最有料）
+_SEED_NAME_HINTS = (
+    "readme", "context", "overview", "outline", "architecture", "design",
+    "roadmap", "proposal", "進度", "彙整", "導覽", "大綱", "架構", "摘要",
+    "設計", "規劃", "計畫", "todo", "backlog", "adr",
+)
+_SEED_DIR_HINTS = ("doc", "docs", "paper", "notes", "spec")
+_SEED_SKIP_DIRS = {
+    ".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build",
+    ".pytest_cache", "site-packages", ".mypy_cache",
+}
+
 _THESIS_TAGS = [
     "緒論", "文獻探討", "研究方法", "研究結果", "討論",
     "實驗", "資料", "寫作", "未來工作", "其他",
 ]
 
 
-def _docx_text(path: Path) -> str:
-    """從 .docx 抽段落純文字（不裝 python-docx，直接讀 zip 裡的 document.xml）。"""
-    import re
+def _docx_text_from_bytes(data: bytes) -> str:
+    import io
     import zipfile
 
     try:
-        with zipfile.ZipFile(path) as z:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
             xml = z.read("word/document.xml").decode("utf-8", "ignore")
-    except (OSError, KeyError, zipfile.BadZipFile):
+    except (KeyError, zipfile.BadZipFile):
         return ""
     out = []
     for para in re.findall(r"<w:p[ >].*?</w:p>", xml, re.S):
@@ -318,22 +325,99 @@ def _docx_text(path: Path) -> str:
     return "\n".join(out)
 
 
-def _read_thesis_docs(project_dir: str) -> str:
-    root = Path(project_dir)
-    parts = []
-    for rel in _THESIS_SEED_FILES:
-        p = root / rel
-        if p.is_file():
+def _seed_score(rel_path: str, size: int) -> int:
+    """rel_path 這個候選文件有多值得餵給 AI——名字/資料夾像文件的加分，
+    docx 略加分（多半是論文草稿），太大的稍微減分（tie-break 用）。"""
+    low = rel_path.replace("\\", "/").lower()
+    name = low.rsplit("/", 1)[-1]
+    dirs = low.split("/")[:-1]
+    score = 0
+    if any(h in name for h in _SEED_NAME_HINTS):
+        score += 5
+    if any(any(h in d for h in _SEED_DIR_HINTS) for d in dirs):
+        score += 3
+    if re.match(r"^(0[_-]|\d)", name):
+        score += 2
+    if name.endswith(".docx"):
+        score += 1
+    if size > 60000:
+        score -= 1
+    return score
+
+
+def _extract_text(name: str, data: bytes) -> str:
+    if name.lower().endswith(".docx"):
+        return _docx_text_from_bytes(data)
+    return data.decode("utf-8", errors="ignore")
+
+
+def _collect_seed_docs(source: str):
+    """source 是一個資料夾或一個 .zip。挑出最多 _THESIS_SEED_MAX_FILES 個
+    文件類檔案（依 _seed_score 排序），組成餵給 AI 的文字。回傳
+    `(text, used_files)`；找不到任何可讀文件回 ("", [])。"""
+    import zipfile
+
+    src = Path(source)
+    candidates = []  # (score, size, label, getter)
+
+    if src.is_file() and src.suffix.lower() == ".zip":
+        try:
+            zf = zipfile.ZipFile(src)
+        except (OSError, zipfile.BadZipFile):
+            return "", []
+        with zf:
+            for info in zf.infolist():
+                if info.is_dir() or len(candidates) >= _THESIS_SEED_SCAN_CAP:
+                    continue
+                rel = info.filename
+                if not rel.lower().endswith(_SEED_EXTS):
+                    continue
+                if any(part in _SEED_SKIP_DIRS for part in rel.replace("\\", "/").split("/")):
+                    continue
+                data = zf.read(info)
+                candidates.append((
+                    _seed_score(rel, info.file_size), info.file_size, rel,
+                    (lambda d=data, n=rel: _extract_text(n, d)),
+                ))
+    elif src.is_dir():
+        for path in src.rglob("*"):
+            if len(candidates) >= _THESIS_SEED_SCAN_CAP:
+                break
+            if not path.is_file() or path.suffix.lower() not in _SEED_EXTS:
+                continue
+            if any(part in _SEED_SKIP_DIRS for part in path.parts):
+                continue
             try:
-                parts.append(f"===== {rel} =====\n{p.read_text('utf-8', errors='ignore')[:_THESIS_SEED_PER_FILE]}")
+                size = path.stat().st_size
             except OSError:
-                pass
-    for docx in root.glob("*.docx"):
-        body = _docx_text(docx)
-        if body:
-            parts.append(f"===== 論文草稿 {docx.name}（節錄）=====\n{body[:_THESIS_SEED_PER_FILE]}")
-            break
-    return "\n\n".join(parts)[:_THESIS_SEED_TOTAL]
+                continue
+            rel = str(path.relative_to(src))
+            candidates.append((
+                _seed_score(rel, size), size, rel,
+                (lambda p=path, n=rel: _extract_text(n, p.read_bytes())),
+            ))
+    else:
+        return "", []
+
+    # 分數高→低，同分小檔優先；docx 至少留一個（論文草稿）
+    candidates.sort(key=lambda c: (-c[0], c[1]))
+    picked = candidates[:_THESIS_SEED_MAX_FILES]
+    if not any(lbl.lower().endswith(".docx") for _s, _z, lbl, _g in picked):
+        docx = next((c for c in candidates if c[2].lower().endswith(".docx")), None)
+        if docx:
+            picked = picked[:_THESIS_SEED_MAX_FILES - 1] + [docx]
+
+    parts, used = [], []
+    for _score, _size, label, getter in picked:
+        try:
+            text = (getter() or "").strip()
+        except (OSError, UnicodeError):
+            continue
+        if len(text) < 40:
+            continue
+        parts.append(f"===== {label} =====\n{text[:_THESIS_SEED_PER_FILE]}")
+        used.append(label)
+    return "\n\n".join(parts)[:_THESIS_SEED_TOTAL], used
 
 
 def _build_thesis_seed_prompt(docs: str) -> str:
@@ -458,39 +542,44 @@ def _parse_thesis_seed(raw: str):
 
 
 def cmd_thesis_seed(payload, _notes_file):
-    """stdin: {projectDir} → {drafts: [{title,tag,body}], error, call_count}。
-    讀論文專案的幾份關鍵文件 + 論文草稿，一次 AI 呼叫產出一批任務便利貼草稿。
-    不寫入——前端審核過再走既有的 /api/ai/save-notes（會存進目前作用中的
-    便利貼集合，也就是研究生那份）。"""
-    project_dir = ((payload or {}).get("projectDir") or "").strip()
-    if not project_dir or not Path(project_dir).is_dir():
-        return {"drafts": [], "error": f"找不到論文專案資料夾：{project_dir or '(未設定)'}", "call_count": 0}
+    """stdin: {source} → {drafts: [{title,tag,body}], used_files, error, call_count}。
+    `source` 是一個資料夾或一個 .zip；自動挑出裡面最像「文件」的幾個檔案
+    （.md/.txt/.docx/.rst，依檔名/路徑評分），一次 AI 呼叫產出一批任務便利貼
+    草稿。不寫入——前端審核過再走既有的 /api/ai/save-notes（會存進目前作用中
+    的便利貼集合，也就是研究生那份）。"""
+    source = ((payload or {}).get("source") or (payload or {}).get("projectDir") or "").strip()
+    p = Path(source) if source else None
+    if not source or not (p.is_dir() or (p.is_file() and p.suffix.lower() == ".zip")):
+        return {"drafts": [], "used_files": [], "error": f"找不到資料夾或 .zip：{source or '(未設定)'}", "call_count": 0}
 
-    docs = _read_thesis_docs(project_dir)
+    docs, used_files = _collect_seed_docs(source)
     if len(docs) < 200:
-        return {"drafts": [], "error": "在專案資料夾裡找不到可讀的文件（paper/docs/、CONTEXT.md、*.docx）", "call_count": 0}
+        return {"drafts": [], "used_files": used_files,
+                "error": "在這個來源裡找不到可讀的文件（.md / .txt / .docx / .rst）", "call_count": 0}
 
     ai = _ai()
     ok, reason = ai.is_configured()
     if not ok:
-        return {"drafts": [], "error": f"{reason}，請先設定好 AI", "call_count": ai.get_call_count()}
+        return {"drafts": [], "used_files": used_files, "error": f"{reason}，請先設定好 AI", "call_count": ai.get_call_count()}
     try:
         provider = ai.build_provider()
     except AIProviderError as exc:
-        return {"drafts": [], "error": str(exc), "call_count": ai.get_call_count()}
+        return {"drafts": [], "used_files": used_files, "error": str(exc), "call_count": ai.get_call_count()}
 
     ai.record_call()
     try:
         response = provider.generate_description(_build_thesis_seed_prompt(docs))
     except AIProviderError as exc:
-        return {"drafts": [], "error": str(exc), "call_count": ai.get_call_count()}
+        return {"drafts": [], "used_files": used_files, "error": str(exc), "call_count": ai.get_call_count()}
     except Exception as exc:  # noqa: BLE001
-        return {"drafts": [], "error": f"{type(exc).__name__}: {exc}", "call_count": ai.get_call_count()}
+        return {"drafts": [], "used_files": used_files,
+                "error": f"{type(exc).__name__}: {exc}", "call_count": ai.get_call_count()}
 
     drafts = _parse_thesis_seed(response)
     if not drafts:
-        return {"drafts": [], "error": "AI 回應無法解析成便利貼清單", "call_count": ai.get_call_count()}
-    return {"drafts": drafts, "error": None, "call_count": ai.get_call_count()}
+        return {"drafts": [], "used_files": used_files,
+                "error": "AI 回應無法解析成便利貼清單", "call_count": ai.get_call_count()}
+    return {"drafts": drafts, "used_files": used_files, "error": None, "call_count": ai.get_call_count()}
 
 
 COMMANDS = {
