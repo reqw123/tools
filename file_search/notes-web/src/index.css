@@ -744,6 +744,18 @@ body {
   background: #fde68a;
   color: #92400e;
 }
+/* 重複到期——中性藍灰，跟 overdue/soon 的紅黃分開（它不是「快到了」的警示，
+   是「這則會一直回來」的資訊）。也在便利貼紙面上，深淺主題都是深字淺底。 */
+.repeat-badge {
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.18rem 0.5rem;
+  border-radius: 3px;
+  margin: 0.3rem 0 0;
+  width: fit-content;
+  background: rgba(31, 41, 55, 0.09);
+  color: rgba(31, 41, 55, 0.82);
+}
 
 @media (prefers-reduced-motion: no-preference) {
   .wall.enter .note {
@@ -973,6 +985,23 @@ body {
 }
 .due-row input[type='time']:disabled {
   opacity: 0.5;
+}
+.due-repeat {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.due-repeat select {
+  width: auto;
+  flex: 0 1 auto;
+  font-size: 0.88rem;
+}
+.due-repeat .hint {
+  flex: 1 1 100%;
 }
 
 /* 分類欄旁邊的自訂顏色色塊——.tag-color-row-input 讓 TagInput 的外層

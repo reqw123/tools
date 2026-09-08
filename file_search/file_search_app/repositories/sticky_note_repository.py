@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from file_search_app.config import INDEXES_DIR
-from file_search_app.models import StickyNote, TrashedStickyNote
+from file_search_app.models import REPEAT_VALUES, StickyNote, TrashedStickyNote
 from file_search_app.repositories.atomic_io import atomic_write_text
 from file_search_app.repositories.json_store import read_json, write_json
 from file_search_app.repositories.sticky_note_history_repository import StickyNoteHistoryRepository
@@ -255,6 +255,7 @@ class StickyNoteRepository:
         tag = item.get("tag", "")
         image = item.get("image", "")
         due_at = item.get("due_at", "")
+        repeat = item.get("repeat", "")
         created_raw = item.get("created_at", "")
         try:
             created_at = datetime.fromisoformat(created_raw)
@@ -269,6 +270,7 @@ class StickyNoteRepository:
             image=image if isinstance(image, str) else "",
             due_at=due_at if isinstance(due_at, str) else "",
             pinned=item.get("pinned") is True,
+            repeat=repeat if repeat in REPEAT_VALUES else "",
         )
 
     @staticmethod
@@ -281,6 +283,7 @@ class StickyNoteRepository:
             "image": note.image,
             "due_at": note.due_at,
             "pinned": note.pinned,
+            "repeat": note.repeat,
             "created_at": note.created_at.isoformat(),
         }
 
@@ -297,7 +300,7 @@ class StickyNoteRepository:
         return TrashedStickyNote(
             id=note.id, title=note.title, body=note.body, tag=note.tag,
             created_at=note.created_at, image=note.image, due_at=note.due_at,
-            pinned=note.pinned, deleted_at=deleted_at,
+            pinned=note.pinned, repeat=note.repeat, deleted_at=deleted_at,
         )
 
     @staticmethod
@@ -310,6 +313,7 @@ class StickyNoteRepository:
             "image": t.image,
             "due_at": t.due_at,
             "pinned": t.pinned,
+            "repeat": t.repeat,
             "created_at": t.created_at.isoformat(),
             "deleted_at": t.deleted_at.isoformat(),
         }

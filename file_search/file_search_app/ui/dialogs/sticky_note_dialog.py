@@ -24,8 +24,11 @@ from file_search_app.config import (
 )
 from file_search_app.models import IndexEntry
 from file_search_app.services.sticky_note_service import (
-    format_due_date, format_due_time, parse_due_date,
+    REPEAT_LABELS, format_due_date, format_due_time, parse_due_date,
 )
+
+_REPEAT_CHOICES = list(REPEAT_LABELS.items())  # (存檔值, 顯示字)
+_REPEAT_VALUE_BY_LABEL = {label: value for value, label in _REPEAT_CHOICES}
 from file_search_app.ui.async_task import poll_queue, start_worker
 from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
 from file_search_app.ui.styles import styled_button
@@ -36,6 +39,7 @@ class StickyNoteDialog(tk.Toplevel):
         self, parent, known_tags, on_confirm, ai_description, sticky_service,
         title="新增便利貼", confirm_text="新增",
         initial_title="", initial_body="", initial_tag="", initial_due_at="",
+        initial_repeat="",
     ):
         super().__init__(parent)
         self.title(title)
@@ -139,7 +143,7 @@ class StickyNoteDialog(tk.Toplevel):
         ).pack(side="left", padx=(4, 0))
 
         due_quick_row = tk.Frame(pad, bg=COLOR_BG)
-        due_quick_row.pack(fill="x", pady=(0, 10))
+        due_quick_row.pack(fill="x", pady=(0, 4))
         for label, days in (("今天", 0), ("明天", 1), ("3天後", 3), ("一週後", 7)):
             styled_button(
                 due_quick_row, label, lambda d=days: self._set_due_in(d),
@@ -148,6 +152,21 @@ class StickyNoteDialog(tk.Toplevel):
         styled_button(
             due_quick_row, "清除", self._clear_due,
             BTN_SECONDARY_BG, BTN_SECONDARY_ACTIVE, self._font_hint,
+        ).pack(side="left")
+
+        # 重複到期：設了之後，卡片右鍵「✅ 這次完成」會把到期日排下一次、內文
+        # [x] 清回 [ ]。跟 notes-web 共用同一個 repeat 欄位。
+        repeat_row = tk.Frame(pad, bg=COLOR_BG)
+        repeat_row.pack(fill="x", pady=(0, 10))
+        tk.Label(
+            repeat_row, text="🔁 重複：", bg=COLOR_BG, font=font_label,
+        ).pack(side="left")
+        self.repeat_var = tk.StringVar(
+            value=REPEAT_LABELS.get(initial_repeat, "不重複")
+        )
+        ttk.Combobox(
+            repeat_row, textvariable=self.repeat_var, state="readonly",
+            values=[label for _v, label in _REPEAT_CHOICES], width=16, font=self._font_hint,
         ).pack(side="left")
 
         tk.Label(
@@ -188,8 +207,13 @@ class StickyNoteDialog(tk.Toplevel):
             self._due_entry.focus_set()
             return
         body_value = self.body_text.get("1.0", "end-1c")
+        repeat_value = _REPEAT_VALUE_BY_LABEL.get(self.repeat_var.get(), "")
+        if not due_value:
+            repeat_value = ""  # 沒有到期日就沒有「重複」概念
         self._apply_pending_tag_colors()
-        self._on_confirm(title_value, body_value, self.tag_var.get(), due_value)
+        self._on_confirm(
+            title_value, body_value, self.tag_var.get(), due_value, repeat_value
+        )
         self.destroy()
 
     def _set_due_in(self, days: int):
@@ -199,6 +223,7 @@ class StickyNoteDialog(tk.Toplevel):
     def _clear_due(self):
         self.due_var.set("")
         self.due_time_var.set("")
+        self.repeat_var.set("不重複")
 
     def _effective_tag_color(self, tag):
         """考慮這次對話框裡還沒送出的暫存改動（_pending_tag_colors）後，這個

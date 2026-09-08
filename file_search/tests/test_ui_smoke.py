@@ -415,7 +415,7 @@ def test_sticky_note_dialog_due_time_field(tk_root, data_dir):
     # 帶時間的既有到期日 → 日期欄／時間欄都要正確帶入。
     dlg = StickyNoteDialog(
         tk_root, known_tags=[],
-        on_confirm=lambda t, b, tag, due: captured.update(due=due),
+        on_confirm=lambda t, b, tag, due, rep: captured.update(due=due, repeat=rep),
         ai_description=None, sticky_service=svc,
         title="編輯便利貼", initial_title="A",
         initial_due_at=parse_due_date("2026-09-10", "09:30"),
@@ -433,7 +433,7 @@ def test_sticky_note_dialog_due_time_field(tk_root, data_dir):
     captured.clear()
     dlg2 = StickyNoteDialog(
         tk_root, known_tags=[],
-        on_confirm=lambda t, b, tag, due: captured.update(due=due),
+        on_confirm=lambda t, b, tag, due, rep: captured.update(due=due, repeat=rep),
         ai_description=None, sticky_service=svc, initial_title="B",
         initial_due_at=parse_due_date("2026-09-10"),
     )
@@ -446,7 +446,7 @@ def test_sticky_note_dialog_due_time_field(tk_root, data_dir):
     captured.clear()
     dlg3 = StickyNoteDialog(
         tk_root, known_tags=[],
-        on_confirm=lambda t, b, tag, due: captured.update(due=due),
+        on_confirm=lambda t, b, tag, due, rep: captured.update(due=due, repeat=rep),
         ai_description=None, sticky_service=svc, initial_title="C",
         initial_due_at=parse_due_date("2026-09-10", "09:30"),
     )
@@ -455,6 +455,32 @@ def test_sticky_note_dialog_due_time_field(tk_root, data_dir):
     assert dlg3.due_var.get() == "" and dlg3.due_time_var.get() == ""
     dlg3._confirm()
     assert captured["due"] == ""
+
+    # 重複到期：選了「每週」→ _confirm 回傳的 repeat 是 "weekly"；清掉到期日
+    # 後 repeat 也要跟著歸零（沒有到期日就沒有「重複」概念）。
+    captured.clear()
+    dlg4 = StickyNoteDialog(
+        tk_root, known_tags=[],
+        on_confirm=lambda t, b, tag, due, rep: captured.update(due=due, repeat=rep),
+        ai_description=None, sticky_service=svc, initial_title="D",
+        initial_due_at=parse_due_date("2026-09-10"), initial_repeat="daily",
+    )
+    tk_root.update()
+    assert dlg4.repeat_var.get() == "每天"
+    dlg4.repeat_var.set("每週")
+    dlg4._confirm()
+    assert captured == {"due": "2026-09-10T23:59:59", "repeat": "weekly"}
+    captured.clear()
+    dlg5 = StickyNoteDialog(
+        tk_root, known_tags=[],
+        on_confirm=lambda t, b, tag, due, rep: captured.update(due=due, repeat=rep),
+        ai_description=None, sticky_service=svc, initial_title="E",
+        initial_due_at=parse_due_date("2026-09-10"), initial_repeat="weekly",
+    )
+    tk_root.update()
+    dlg5._clear_due()
+    dlg5._confirm()
+    assert captured == {"due": "", "repeat": ""}
 
 
 def test_sticky_trash_dialog_restore(tk_root, data_dir):

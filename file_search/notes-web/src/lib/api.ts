@@ -11,6 +11,18 @@ export interface Note {
   due_at: string
   /** 釘選——永遠排在清單最上面（見 server listNotes）。切換釘選不動 created_at。 */
   pinned: boolean
+  /** 重複到期：'' | 'daily' | 'weekly' | 'monthly' | 'weekday'。只在 due_at 有值時
+   *  有意義；按「這次完成」→ advanceRepeat 把 due_at 滾到下一次、內文 [x] 清回 [ ]。 */
+  repeat: string
+}
+
+/** 重複規則 → 顯示字。'' 代表不重複。 */
+export const REPEAT_LABELS: Record<string, string> = {
+  '': '不重複',
+  daily: '每天',
+  weekly: '每週',
+  monthly: '每月',
+  weekday: '平日（週一至五）',
 }
 
 /** 垃圾桶裡的便利貼——「刪除」現在是先搬到這裡，不是真的消失，可以復原或
@@ -38,6 +50,7 @@ export interface NoteInput {
   body: string
   tag: string
   due_at: string
+  repeat: string
 }
 
 const BASE = '/api'
@@ -87,6 +100,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ pinned }),
     }).then((r) => r.note),
+  advanceRepeat: (id: string) =>
+    req<{ note: Note }>(`/notes/${id}/advance-repeat`, { method: 'POST' }).then((r) => r.note),
   bulkCreate: (input: { tag: string; count: number; titlePrefix?: string }) =>
     req<{ created: Note[] }>('/notes/bulk', {
       method: 'POST',

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { noteThumbUrl, type Note as NoteT } from '../lib/api'
+import { noteThumbUrl, REPEAT_LABELS, type Note as NoteT } from '../lib/api'
 import { paperVars } from '../lib/color'
 import { dueLabel, dueStatus, seedOf, stamp, tiltOf } from '../lib/format'
 import {
@@ -227,6 +227,12 @@ export function Note({
       {due && (
         <p className={`due-badge ${due}`}>
           {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{dueLabel(note.due_at)}
+        </p>
+      )}
+      {note.repeat && note.due_at && (
+        <p className="repeat-badge" title={`重複到期：${REPEAT_LABELS[note.repeat] ?? note.repeat}`}>
+          🔁 {REPEAT_LABELS[note.repeat] ?? note.repeat}
+          {!due && `　·　下次 ${dueLabel(note.due_at)}`}
         </p>
       )}
       <footer>

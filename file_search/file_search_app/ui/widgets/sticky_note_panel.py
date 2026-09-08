@@ -35,7 +35,9 @@ from file_search_app.config import (
 )
 from file_search_app.models import format_added_at
 from file_search_app.platform import file_actions
-from file_search_app.services.sticky_note_service import due_status, format_due_label, preview_text
+from file_search_app.services.sticky_note_service import (
+    REPEAT_LABELS, due_status, format_due_label, preview_text,
+)
 from file_search_app.ui.async_task import poll_queue, start_worker
 from file_search_app.ui.dialogs.ai_confirm_dialog import ask_ai_confirm
 from file_search_app.ui.dialogs.scrollable_message_dialog import show_scrollable_message
@@ -456,6 +458,14 @@ class StickyNotePanel:
             due_badge.pack(fill="x", padx=8, pady=(0, 4))
             labels_to_wrap.append(due_badge)
 
+        if note.repeat and note.due_at:
+            repeat_badge = tk.Label(
+                card, text=f"🔁 {REPEAT_LABELS.get(note.repeat, note.repeat)}",
+                bg=color, fg=COLOR_STATUS_FG, font=self._font_hint, anchor="w",
+            )
+            repeat_badge.pack(fill="x", padx=8, pady=(0, 4))
+            labels_to_wrap.append(repeat_badge)
+
         footer = tk.Frame(card, bg=color)
         footer.pack(fill="x", padx=8, pady=(0, 8))
         footer_widgets = [footer]
@@ -534,6 +544,11 @@ class StickyNotePanel:
     def _popup_card_menu(self, event, note):
         menu = tk.Menu(self.frame, tearoff=0, font=self._font_hint)
         menu.add_command(label="📋 複製", command=lambda: self._copy(note))
+        if note.repeat and note.due_at:
+            menu.add_command(
+                label="✅ 這次完成（排下一次、清單重來）",
+                command=lambda: self._on_advance_repeat(note),
+            )
         menu.add_command(
             label="📌 取消釘選" if note.pinned else "📌 釘選（排到最上面）",
             command=lambda: self._on_toggle_pin(note),
@@ -542,6 +557,12 @@ class StickyNotePanel:
         menu.add_command(label="✏️ 編輯", command=lambda: self._on_edit(note))
         menu.add_command(label="🗑️ 刪除", command=lambda: self._on_delete(note))
         menu.tk_popup(event.x_root, event.y_root)
+
+    def _on_advance_repeat(self, note):
+        """「這次完成」——把重複便利貼的到期日排到下一次、內文 [x] 清回 [ ]。
+        不算「編輯」（不更新 created_at），也不讓 AI 搜尋結果失效。"""
+        self._service.advance_repeat(note.id)
+        self._refresh()
 
     def _on_toggle_pin(self, note):
         """釘選／取消釘選——只動排序，不算「編輯」（不更新 created_at）。
@@ -568,23 +589,25 @@ class StickyNotePanel:
         self._ai_result_ids = None
         self._ai_query_snapshot = None
 
-    def _confirm_add(self, title, body, tag, due_at):
-        self._service.add_note(title, body, tag, due_at)
+    def _confirm_add(self, title, body, tag, due_at, repeat=""):
+        self._service.add_note(title, body, tag, due_at, repeat)
         self._invalidate_ai_results()
         self._refresh()
 
     def _on_edit(self, note):
         StickyNoteDialog(
             self.frame, self._service.known_tags(),
-            lambda title, body, tag, due_at: self._confirm_edit(note.id, title, body, tag, due_at),
+            lambda title, body, tag, due_at, repeat: self._confirm_edit(
+                note.id, title, body, tag, due_at, repeat
+            ),
             self._ai_description, self._service,
             title="編輯便利貼", confirm_text="儲存",
             initial_title=note.title, initial_body=note.body, initial_tag=note.tag,
-            initial_due_at=note.due_at,
+            initial_due_at=note.due_at, initial_repeat=note.repeat,
         )
 
-    def _confirm_edit(self, note_id, title, body, tag, due_at):
-        if not self._service.update_note(note_id, title, body, tag, due_at):
+    def _confirm_edit(self, note_id, title, body, tag, due_at, repeat=""):
+        if not self._service.update_note(note_id, title, body, tag, due_at, repeat):
             messagebox.showinfo("編輯便利貼", "這則便利貼已經不存在了（可能在其他視窗被刪除），沒有任何變更。")
         self._invalidate_ai_results()
         self._refresh()

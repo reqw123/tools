@@ -5,6 +5,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+# 便利貼「重複到期」認得的規則。放這裡（無其他 import）讓 repository 跟
+# service 都能引用、不會循環 import。跟 notes-web server/store.ts 的
+# REPEAT_VALUES 一致。
+REPEAT_VALUES = frozenset({"daily", "weekly", "monthly", "weekday"})
+
 
 @dataclass
 class IndexEntry:
@@ -72,6 +77,11 @@ class StickyNote:
     # 「編輯」，不更新 created_at（跟 image 一樣是附加狀態）。跟 notes-web
     # 共用同一個 pinned 欄位。
     pinned: bool = False
+    # 重複到期規則：""＝不重複、"daily"、"weekly"、"monthly"、"weekday"（平日）。
+    # 只在 due_at 有值時有意義。使用者按「這次完成」時，due_at 依這個規則往前
+    # 滾到下一次、內文的 [x] 全部清回 [ ]（見 sticky_note_service.advance_repeat）。
+    # 跟 notes-web 共用同一個欄位。
+    repeat: str = ""
 
 
 @dataclass
@@ -93,6 +103,7 @@ class TrashedStickyNote:
     deleted_at: datetime
     due_at: str = ""
     pinned: bool = False
+    repeat: str = ""
 
 
 @dataclass

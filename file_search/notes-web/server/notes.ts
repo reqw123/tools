@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import {
+  advanceRepeat,
   clearTagColor,
   createNote,
   createNotes,
@@ -44,6 +45,7 @@ const noteBody = {
     body: { type: 'string', maxLength: 10_000 },
     tag: { type: 'string', maxLength: 60 },
     due_at: { type: 'string', pattern: DUE_AT_PATTERN },
+    repeat: { type: 'string', enum: ['', 'daily', 'weekly', 'monthly', 'weekday'] },
   },
 } as const
 
@@ -150,18 +152,29 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
     return { note }
   })
 
-  app.post<{ Body: { title?: string; body?: string; tag?: string; due_at?: string } }>(
+  app.post<{
+    Body: { title?: string; body?: string; tag?: string; due_at?: string; repeat?: string }
+  }>(
     '/notes',
     { schema: { body: { ...noteBody, required: ['title'] } } },
     async (req, reply) => {
       const title = (req.body.title ?? '').trim()
       if (!title) return reply.code(422).send({ error: '標題不能留空' })
-      const note = createNote({ title, body: req.body.body, tag: req.body.tag, due_at: req.body.due_at })
+      const note = createNote({
+        title,
+        body: req.body.body,
+        tag: req.body.tag,
+        due_at: req.body.due_at,
+        repeat: req.body.repeat,
+      })
       return reply.code(201).send({ note })
     },
   )
 
-  app.patch<{ Params: { id: string }; Body: { title?: string; body?: string; tag?: string; due_at?: string } }>(
+  app.patch<{
+    Params: { id: string }
+    Body: { title?: string; body?: string; tag?: string; due_at?: string; repeat?: string }
+  }>(
     '/notes/:id',
     { schema: { body: noteBody } },
     async (req, reply) => {
@@ -199,6 +212,14 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       return { note }
     },
   )
+
+  // 「這次完成」——把重複便利貼的 due_at 滾到下一次、內文 [x] 清回 [ ]。
+  // 獨立端點，不算「編輯」，不更新 created_at（見 store.ts advanceRepeat）。
+  app.post<{ Params: { id: string } }>('/notes/:id/advance-repeat', async (req, reply) => {
+    const note = advanceRepeat(req.params.id)
+    if (!note) return reply.code(404).send({ error: 'not found' })
+    return { note }
+  })
 
   // 牆上／詳細視窗直接點便利貼裡的待辦方框——切換那一行的 [x] 勾選。
   // 走獨立端點（不是 PATCH /notes/:id）是因為打勾不算「編輯」，不更新

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { noteImageUrl, type Note, type NoteInput } from '../lib/api'
+import { noteImageUrl, REPEAT_LABELS, type Note, type NoteInput } from '../lib/api'
 import { paperVars } from '../lib/color'
 import { dueLabel, dueStatus, stamp } from '../lib/format'
 import {
+  useAdvanceRepeat,
   useAppSettings,
   useCreateNote,
   useDeleteNote,
@@ -90,6 +91,7 @@ export function NoteDialog({
   const remove = useDeleteNote()
   const toggleLine = useToggleNoteLine()
   const setPinned = useSetNotePinned()
+  const advanceRepeat = useAdvanceRepeat()
   const setImage = useSetNoteImage()
   const removeImage = useRemoveNoteImage()
 
@@ -154,6 +156,7 @@ export function NoteDialog({
     create.isPending ||
     update.isPending ||
     remove.isPending ||
+    advanceRepeat.isPending ||
     setImage.isPending ||
     removeImage.isPending
   const err = (create.error || update.error || remove.error || removeImage.error)?.message
@@ -219,12 +222,28 @@ export function NoteDialog({
                 {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{dueLabel(note.due_at)}
               </p>
             )}
+            {note.repeat && note.due_at && (
+              <p className="repeat-badge">
+                🔁 {REPEAT_LABELS[note.repeat] ?? note.repeat}
+                　·　{due ? '這次' : '下次'} {dueLabel(note.due_at)}
+              </p>
+            )}
             <footer>
               <span className="tag-pill">{note.tag || '未分類'}</span>
               <span className="stamp">{stamp(note.created_at)}</span>
             </footer>
             {(err || imgErr) && <p className="err">{err || imgErr}</p>}
             <div className="sheet-actions">
+              {note.repeat && note.due_at && (
+                <button
+                  className="btn"
+                  disabled={busy}
+                  title="把到期日排到下一次、清單重新開始"
+                  onClick={() => advanceRepeat.mutate(note.id)}
+                >
+                  ✅ 這次完成
+                </button>
+              )}
               <button className="btn ghost" onClick={() => setMode('edit')}>
                 編輯
               </button>

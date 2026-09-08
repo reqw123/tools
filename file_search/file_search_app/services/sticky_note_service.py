@@ -1,6 +1,7 @@
 """便利貼業務邏輯——新增／編輯／刪除、關鍵字＋標籤篩選、標籤自動配色、既有
 標籤清單（給新增/編輯對話框跟篩選下拉選單做自動完成用）。不依賴 Tkinter。"""
 
+import calendar
 import json
 import re
 import uuid
@@ -10,7 +11,7 @@ from file_search_app.colors import hash_hsl_hex
 from file_search_app.config import (
     STICKY_DUE_SOON_HOURS_DEFAULT, STICKY_NEUTRAL_COLOR, STICKY_TAG_LIGHTNESS, STICKY_TAG_SATURATION,
 )
-from file_search_app.models import StickyNote, TrashedStickyNote
+from file_search_app.models import REPEAT_VALUES, StickyNote, TrashedStickyNote
 from file_search_app.repositories.notes_settings_repository import NotesSettingsRepository
 from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
 
@@ -139,6 +140,78 @@ def due_status(due_at: str, now: datetime = None, soon_hours: float = None) -> s
     return ""
 
 
+# ── 重複到期 ──────────────────────────────────────────────────────────
+# 便利貼設了 repeat（daily/weekly/monthly/weekday）後，使用者按「這次完成」
+# 就把 due_at 往前滾到「現在之後的第一次」、內文的 [x] 全部清回 [ ]。
+# 跟 notes-web src/lib/format.ts 的 nextDueAt / uncheckAllLines 同一套規則。
+
+# 顯示字——空字串＝不重複。跟 notes-web src/lib/api.ts 的 REPEAT_LABELS 對應。
+REPEAT_LABELS = {
+    "": "不重複",
+    "daily": "每天",
+    "weekly": "每週",
+    "monthly": "每月",
+    "weekday": "平日（週一至五）",
+}
+
+# 一行待辦的勾選標記（前綴＋[x]/[ ]）——跟 _TASK_MARKER_RE 同構，但這裡只把
+# [x] 換成 [ ]（保留成待辦、只重設勾選），標記後面的內容原樣不動。
+_TASK_CHECKBOX_RE = re.compile(r"^(\s*(?:\d+[.、)]|[-•])?\s*)\[[ xX]\]")
+
+
+def uncheck_all_lines(body: str) -> str:
+    """把內文每一行的 `[x]`／`[X]` 都換回 `[ ]`（下一輪清單重新開始）。沒有
+    勾選標記的行原樣不動。"""
+    return "\n".join(
+        _TASK_CHECKBOX_RE.sub(r"\1[ ]", line) for line in body.split("\n")
+    )
+
+
+def _step_due(dt: datetime, repeat: str) -> datetime:
+    if repeat == "daily":
+        return dt + timedelta(days=1)
+    if repeat == "weekly":
+        return dt + timedelta(days=7)
+    if repeat == "weekday":
+        nxt = dt + timedelta(days=1)
+        while nxt.weekday() >= 5:  # 5=六、6=日
+            nxt += timedelta(days=1)
+        return nxt
+    # monthly：同一個「日」往後推一個月，該月沒那麼多天就夾到月底（29–31
+    # 號的便利貼會停在月底、之後不會再回到 31 號——這是已知取捨）。
+    year, month = dt.year, dt.month + 1
+    if month > 12:
+        year, month = year + 1, 1
+    last_day = calendar.monthrange(year, month)[1]
+    return dt.replace(year=year, month=month, day=min(dt.day, last_day))
+
+
+def next_due(due_at: str, repeat: str, now: datetime = None) -> str:
+    """`due_at` 依 `repeat` 往前滾到「`now` 之後的第一次」。`repeat` 不認得、
+    `due_at` 空或格式壞掉都原樣回傳。"""
+    if repeat not in REPEAT_VALUES or not due_at:
+        return due_at
+    try:
+        dt = datetime.fromisoformat(due_at)
+    except ValueError:
+        return due_at
+    now = now or datetime.now()
+    # daily / weekly 可以直接算出要跳幾步，不用一步步逼近（避免「一年沒動過的
+    # 每日便利貼」要跑 365 圈）。
+    if repeat in ("daily", "weekly") and dt <= now:
+        step = timedelta(days=1 if repeat == "daily" else 7)
+        jumps = (now - dt) // step + 1
+        dt = dt + step * jumps
+        while dt <= now:  # 邊界保險
+            dt += step
+        return dt.isoformat()
+    for _ in range(500):  # weekday / monthly：一步步推，上限夠涵蓋任何現實情況
+        dt = _step_due(dt, repeat)
+        if dt > now:
+            break
+    return dt.isoformat()
+
+
 class StickyNoteService:
     def __init__(self, repo: StickyNoteRepository, notes_settings_repo: NotesSettingsRepository = None):
         self._repo = repo
@@ -255,15 +328,20 @@ class StickyNoteService:
             del colors[tag]
             self._repo.save_tag_colors(colors)
 
-    def add_note(self, title: str, body: str, tag: str, due_at: str = "") -> StickyNote:
+    def add_note(
+        self, title: str, body: str, tag: str, due_at: str = "", repeat: str = "",
+    ) -> StickyNote:
         note = StickyNote(
             id=uuid.uuid4().hex, title=title.strip(), body=body.strip(), tag=tag.strip(),
             created_at=datetime.now(), due_at=due_at,
+            repeat=repeat if repeat in REPEAT_VALUES else "",
         )
         self._repo.mutate(lambda notes: notes + [note])
         return note
 
-    def update_note(self, note_id: str, title: str, body: str, tag: str, due_at: str = "") -> bool:
+    def update_note(
+        self, note_id: str, title: str, body: str, tag: str, due_at: str = "", repeat: str = "",
+    ) -> bool:
         """回傳有沒有真的改到——`note_id` 不在清單裡（例如卡片在別的視窗剛被
         刪掉）就回 False 且完全不寫檔，不會白白重寫一份一模一樣的內容。
 
@@ -281,6 +359,7 @@ class StickyNoteService:
                     note.body = body.strip()
                     note.tag = tag.strip()
                     note.due_at = due_at
+                    note.repeat = repeat if repeat in REPEAT_VALUES else ""
                     note.created_at = datetime.now()
                     found = True
                     return notes
@@ -303,6 +382,32 @@ class StickyNoteService:
                     note.pinned = pinned
                     changed = True
                     return notes
+            return None
+
+        self._repo.mutate(apply)
+        return changed
+
+    def advance_repeat(self, note_id: str) -> bool:
+        """使用者按「這次完成」——把這則的 due_at 依 repeat 往前滾到下一次、
+        內文的 [x] 全部清回 [ ]。**不改 created_at**（跟釘選一樣是附加狀態，
+        不算「編輯」，卡片不用浮到最上面）。回傳有沒有真的改到（id 不存在、
+        沒設 repeat/due_at、或算出來的下一次跟現在一樣都回 False 且不寫檔）。"""
+        changed = False
+
+        def apply(notes):
+            nonlocal changed
+            for note in notes:
+                if note.id != note_id:
+                    continue
+                if note.repeat not in REPEAT_VALUES or not note.due_at:
+                    return None
+                nxt = next_due(note.due_at, note.repeat)
+                if nxt == note.due_at:
+                    return None
+                note.due_at = nxt
+                note.body = uncheck_all_lines(note.body)
+                changed = True
+                return notes
             return None
 
         self._repo.mutate(apply)

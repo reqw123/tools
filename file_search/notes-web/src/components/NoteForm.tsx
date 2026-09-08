@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import type { NoteInput, TagColors } from '../lib/api'
+import { REPEAT_LABELS, type NoteInput, type TagColors } from '../lib/api'
 import { colorForTag } from '../lib/color'
 import { fromStoredDueAt, timeFromStoredDueAt, toStoredDueAt } from '../lib/format'
 import {
@@ -33,6 +33,7 @@ export function NoteForm({
   const [body, setBody] = useState(initial?.body ?? '')
   const [dueDate, setDueDate] = useState(fromStoredDueAt(initial?.due_at ?? ''))
   const [dueTime, setDueTime] = useState(timeFromStoredDueAt(initial?.due_at ?? ''))
+  const [repeat, setRepeat] = useState(initial?.repeat ?? '')
   const [touched, setTouched] = useState(false)
 
   const titleError = touched && !title.trim() ? '標題不能留空' : ''
@@ -92,7 +93,13 @@ export function NoteForm({
         e.preventDefault()
         setTouched(true)
         if (!title.trim()) return
-        onSubmit({ title: title.trim(), tag: tag.trim(), body, due_at: toStoredDueAt(dueDate, dueTime) })
+        onSubmit({
+          title: title.trim(),
+          tag: tag.trim(),
+          body,
+          due_at: toStoredDueAt(dueDate, dueTime),
+          repeat: dueDate ? repeat : '', // 沒有到期日就沒有「重複」概念
+        })
       }}
     >
       <label>
@@ -187,12 +194,30 @@ export function NoteForm({
               onClick={() => {
                 setDueDate('')
                 setDueTime('')
+                setRepeat('')
               }}
             >
               清除
             </button>
           )}
         </div>
+        {dueDate && (
+          <span className="due-repeat">
+            🔁 重複
+            <select value={repeat} onChange={(e) => setRepeat(e.target.value)}>
+              {Object.entries(REPEAT_LABELS).map(([v, label]) => (
+                <option key={v} value={v}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            {repeat && (
+              <span className="hint">
+                之後在便利貼上按「這次完成」，到期日就自動排下一次、清單重新開始。
+              </span>
+            )}
+          </span>
+        )}
       </label>
 
       <label>

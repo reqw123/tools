@@ -46,7 +46,15 @@ export interface Note {
   /** 釘選——不管到期日/建立時間，永遠排在清單最上面（見 listNotes）。
    *  切換釘選不算「編輯」，不更新 created_at。跟桌面版共用同一個欄位。 */
   pinned: boolean
+  /** 重複到期規則：'' | 'daily' | 'weekly' | 'monthly' | 'weekday'（平日）。
+   *  只在 due_at 有值時有意義。使用者按「這次完成」→ advanceRepeat 把 due_at
+   *  依這個往前滾、內文 [x] 清回 [ ]。跟桌面版共用同一個欄位。 */
+  repeat: string
 }
+
+/** 認得的重複規則——存/讀時都過濾成這幾個。跟桌面版 models.py 的
+ *  REPEAT_VALUES 一致。 */
+export const REPEAT_VALUES = new Set(['daily', 'weekly', 'monthly', 'weekday'])
 
 /** 垃圾桶裡的便利貼——刪除（單筆或批次）不是真的消失，先搬到這裡，可以
  *  復原或永久刪除（見「垃圾桶」那一節）。deleted_at 是進垃圾桶的時間。 */
@@ -245,6 +253,7 @@ function parseNote(x: unknown): Note | null {
     image: typeof o.image === 'string' ? o.image : '',
     due_at: typeof o.due_at === 'string' ? o.due_at : '',
     pinned: o.pinned === true,
+    repeat: typeof o.repeat === 'string' && REPEAT_VALUES.has(o.repeat) ? o.repeat : '',
     created_at: typeof o.created_at === 'string' && o.created_at ? o.created_at : localIso(),
   }
 }
@@ -252,7 +261,7 @@ function parseNote(x: unknown): Note | null {
 function serialize(n: Note): Record<string, unknown> {
   return {
     id: n.id, title: n.title, body: n.body, tag: n.tag, image: n.image,
-    due_at: n.due_at, pinned: n.pinned, created_at: n.created_at,
+    due_at: n.due_at, pinned: n.pinned, repeat: n.repeat, created_at: n.created_at,
   }
 }
 
@@ -346,7 +355,13 @@ export function getNote(id: string): Note | undefined {
   return listNotes().find((n) => n.id === id)
 }
 
-export function createNote(input: { title: string; body?: string; tag?: string; due_at?: string }): Note {
+export function createNote(input: {
+  title: string
+  body?: string
+  tag?: string
+  due_at?: string
+  repeat?: string
+}): Note {
   const note: Note = {
     id: crypto.randomUUID().replace(/-/g, ''),
     title: input.title.trim(),
@@ -355,6 +370,7 @@ export function createNote(input: { title: string; body?: string; tag?: string; 
     image: '',
     due_at: input.due_at ?? '',
     pinned: false,
+    repeat: input.repeat && REPEAT_VALUES.has(input.repeat) ? input.repeat : '',
     created_at: localIso(),
   }
   const raw = readRaw()
@@ -428,9 +444,85 @@ export function toggleNoteLine(id: string, srcIndex: number): Note | undefined {
   return updated
 }
 
+// ── 重複到期 ──────────────────────────────────────────────────────────
+// 跟桌面版 sticky_note_service.py 的 next_due / uncheck_all_lines、以及前端
+// src/lib/format.ts 的 nextDueAt / repeatLabel 同一套規則——三處各留一份、
+// 不跨層 import（同 ADR 0001）。
+
+const UNCHECK_LINE_RE = /^(\s*(?:\d+[.、)]|[-•])?\s*)\[[ xX]\]/
+
+/** 內文每一行的 `[x]`／`[X]` 都換回 `[ ]`（下一輪清單重新開始）。 */
+export function uncheckAllLines(body: string): string {
+  return body
+    .split('\n')
+    .map((l) => l.replace(UNCHECK_LINE_RE, '$1[ ]'))
+    .join('\n')
+}
+
+/** `dueAt` 依 `repeat` 往前滾到「`now` 之後的第一次」（至少推一步——「這次
+ *  完成」的語意就是「換下一次」，就算目前那次還沒到）。repeat 不認得、dueAt
+ *  空或壞掉都原樣回傳。 */
+export function nextDueAt(dueAt: string, repeat: string, now = new Date()): string {
+  if (!REPEAT_VALUES.has(repeat) || !dueAt) return dueAt
+  const d = new Date(dueAt)
+  if (Number.isNaN(d.getTime())) return dueAt
+
+  const step = (dt: Date): Date => {
+    const n = new Date(dt)
+    if (repeat === 'daily') n.setDate(n.getDate() + 1)
+    else if (repeat === 'weekly') n.setDate(n.getDate() + 7)
+    else if (repeat === 'weekday') {
+      do {
+        n.setDate(n.getDate() + 1)
+      } while (n.getDay() === 0 || n.getDay() === 6)
+    } else {
+      // monthly：同一個「日」往後推一個月，該月沒那麼多天就夾到月底
+      const targetDay = dt.getDate()
+      n.setDate(1)
+      n.setMonth(n.getMonth() + 1)
+      const lastDay = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate()
+      n.setDate(Math.min(targetDay, lastDay))
+    }
+    return n
+  }
+
+  let d2 = step(d)
+  for (let i = 0; i < 500 && d2 <= now; i += 1) d2 = step(d2)
+  return isoLocal(d2)
+}
+
+/** Date → 本地時間的 ISO（無時區，跟 due_at 的存檔格式一致）。 */
+function isoLocal(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+    `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+  )
+}
+
+/**
+ * 使用者按「這次完成」——把這則的 due_at 依 repeat 往前滾到下一次、內文
+ * 的 [x] 全部清回 [ ]。**不動 created_at**（跟釘選一樣是附加狀態）。回傳
+ * 更新後的便利貼；找不到 id 回 undefined；沒設 repeat/due_at 或算出來沒變
+ * → 回傳現況、不寫檔。
+ */
+export function advanceRepeat(id: string): Note | undefined {
+  const raw = readRaw()
+  const idx = raw.notes.findIndex((x) => parseNote(x)?.id === id)
+  if (idx < 0) return undefined
+  const n = parseNote(raw.notes[idx])!
+  if (!REPEAT_VALUES.has(n.repeat) || !n.due_at) return n
+  const nextDue = nextDueAt(n.due_at, n.repeat)
+  if (nextDue === n.due_at) return n
+  const updated: Note = { ...n, due_at: nextDue, body: uncheckAllLines(n.body) }
+  raw.notes[idx] = serialize(updated)
+  writeRaw(raw)
+  return updated
+}
+
 export function updateNote(
   id: string,
-  patch: { title?: string; body?: string; tag?: string; due_at?: string },
+  patch: { title?: string; body?: string; tag?: string; due_at?: string; repeat?: string },
 ): Note | undefined {
   const raw = readRaw()
   let updated: Note | undefined
@@ -443,6 +535,12 @@ export function updateNote(
       body: patch.body !== undefined ? patch.body.trim() : n.body,
       tag: patch.tag !== undefined ? patch.tag.trim() : n.tag,
       due_at: patch.due_at !== undefined ? patch.due_at : n.due_at,
+      repeat:
+        patch.repeat !== undefined
+          ? REPEAT_VALUES.has(patch.repeat)
+            ? patch.repeat
+            : ''
+          : n.repeat,
       created_at: localIso(), // 編輯視同重新建立
     }
     return serialize(updated)
@@ -478,6 +576,7 @@ export function createNotes(
     image: '',
     due_at: '',
     pinned: false,
+    repeat: '',
     created_at: localIso(new Date(base - i)),
   }))
   const raw = readRaw()
@@ -544,7 +643,7 @@ export function restoreNote(id: string): Note | undefined {
   const restored: Note = {
     id: target.id, title: target.title, body: target.body,
     tag: target.tag, image: target.image, due_at: target.due_at,
-    pinned: target.pinned, created_at: target.created_at,
+    pinned: target.pinned, repeat: target.repeat, created_at: target.created_at,
   }
   raw.notes = [...raw.notes, serialize(restored)]
   writeRaw(raw)

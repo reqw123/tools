@@ -1,11 +1,15 @@
+from datetime import datetime
+
 from file_search_app.repositories.sticky_note_repository import StickyNoteRepository
 from file_search_app.services.sticky_note_service import (
     AI_SEARCH_BODY_SNIPPET_CHARS,
     StickyNoteService,
     due_status,
     format_due_date,
+    next_due,
     parse_due_date,
     preview_text,
+    uncheck_all_lines,
 )
 
 
@@ -771,3 +775,73 @@ def test_restore_snapshot_rejects_bad_id(data_dir):
     s.add_note("A", "", "")
     assert s.restore_snapshot("nope") is False
     assert s.restore_snapshot("20260101T000000000000") is False  # 格式對但檔案不存在
+
+
+# ── 重複到期 ─────────────────────────────────────────────────────────
+_NOW = datetime(2026, 9, 8, 12, 0, 0)  # 週二
+
+
+def test_next_due_daily_weekly_jump_past():
+    assert next_due("2026-09-05T09:00:00", "daily", _NOW) == "2026-09-09T09:00:00"
+    assert next_due("2026-09-01T09:00:00", "weekly", _NOW) == "2026-09-15T09:00:00"
+    # 一年沒動過的每日便利貼——直接算，不會逾時
+    assert next_due("2025-09-08T08:00:00", "daily", _NOW) == "2026-09-09T08:00:00"
+
+
+def test_next_due_weekday_skips_weekend():
+    # 週五 → 下一個平日（週一）還在 _NOW 之前，再一步到週二
+    assert next_due("2026-09-04T17:00:00", "weekday", _NOW) == "2026-09-08T17:00:00"
+
+
+def test_next_due_monthly_preserves_day_and_clamps():
+    assert next_due("2026-08-15T08:30:00", "monthly", _NOW) == "2026-09-15T08:30:00"
+    # 31 號的便利貼滾過 2 月會被夾到月底、之後停在該日
+    assert next_due("2026-07-31T09:00:00", "monthly", _NOW) == "2026-09-30T09:00:00"
+
+
+def test_next_due_always_advances_at_least_one_step():
+    # 「這次完成」的語意＝換下一次，就算目前那次還沒到
+    assert next_due("2026-12-25T10:00:00", "weekly", _NOW) == "2027-01-01T10:00:00"
+
+
+def test_next_due_ignores_unknown_or_empty():
+    assert next_due("2026-09-05T09:00:00", "", _NOW) == "2026-09-05T09:00:00"
+    assert next_due("2026-09-05T09:00:00", "hourly", _NOW) == "2026-09-05T09:00:00"
+    assert next_due("", "daily", _NOW) == ""
+
+
+def test_uncheck_all_lines():
+    body = "買牛奶\n[x] 領包裹\n[ ] 繳費\n- [X] 打掃\n預約看牙："
+    assert uncheck_all_lines(body) == "買牛奶\n[ ] 領包裹\n[ ] 繳費\n- [ ] 打掃\n預約看牙："
+
+
+def test_advance_repeat_rolls_due_unchecks_and_keeps_created_at(data_dir):
+    s = svc(data_dir)
+    n = s.add_note("每週採買", "牛奶\n[x] 蛋", "食", parse_due_date("2026-01-01"), "weekly")
+    created0 = n.created_at
+    assert s.advance_repeat(n.id) is True
+    got = next(x for x in s.list_notes() if x.id == n.id)
+    assert datetime.fromisoformat(got.due_at) > datetime.now()
+    assert got.body == "牛奶\n[ ] 蛋"
+    assert got.created_at == created0  # 不算「編輯」，不更新
+
+
+def test_advance_repeat_noop_without_repeat(data_dir):
+    s = svc(data_dir)
+    n = s.add_note("一次性", "x", "", parse_due_date("2026-01-01"))
+    assert s.advance_repeat(n.id) is False
+    assert s.advance_repeat("no-such-id") is False
+
+
+def test_repeat_survives_reload(data_dir):
+    s = svc(data_dir)
+    n = s.add_note("R", "", "", parse_due_date("2026-10-01"), "monthly")
+    reloaded = next(x for x in svc(data_dir).list_notes() if x.id == n.id)
+    assert reloaded.repeat == "monthly"
+    # 不認得的 repeat 值讀檔時要被清成 ""
+    import json
+    f = data_dir / ".sticky_notes.json"
+    raw = json.loads(f.read_text(encoding="utf-8"))
+    raw["notes"][0]["repeat"] = "bogus"
+    f.write_text(json.dumps(raw), encoding="utf-8")
+    assert next(x for x in svc(data_dir).list_notes() if x.id == n.id).repeat == ""

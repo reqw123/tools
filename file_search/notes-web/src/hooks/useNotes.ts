@@ -97,6 +97,19 @@ export function useSetNotePinned() {
   })
 }
 
+/** 「這次完成」——重複便利貼的 due_at 滾到下一次、內文 [x] 清回 [ ]。不算
+ *  「編輯」，不動 created_at、牆上位置不變（見 server/store.ts advanceRepeat）。 */
+export function useAdvanceRepeat() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.advanceRepeat(id),
+    onSuccess: (note) => {
+      qc.setQueryData<Note[]>(KEY, (old) => old?.map((n) => (n.id === note.id ? note : n)))
+      qc.invalidateQueries({ queryKey: KEY })
+    },
+  })
+}
+
 export function useRemoveNoteImage() {
   const qc = useQueryClient()
   return useMutation({
