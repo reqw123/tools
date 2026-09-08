@@ -243,6 +243,12 @@ export function mergeAppSettings(old: AppSettings | undefined, patch: AppSetting
     ...(patch.thesisProjectDir !== undefined
       ? { thesisProjectDir: patch.thesisProjectDir }
       : {}),
+    ...(patch.thesisSeedPerFileChars !== undefined
+      ? { thesisSeedPerFileChars: patch.thesisSeedPerFileChars }
+      : {}),
+    ...(patch.thesisSeedTotalChars !== undefined
+      ? { thesisSeedTotalChars: patch.thesisSeedTotalChars }
+      : {}),
   }
 }
 

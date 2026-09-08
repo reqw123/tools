@@ -117,7 +117,8 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
    *  一批任務便利貼草稿（不寫入，前端審核過再走 /ai/save-notes）。
    *  前端關掉連線 / 按「中斷」→ req.raw 'close' → 殺掉那個十幾秒的子行程。 */
   app.post<{ Body?: { source?: string } }>('/ai/thesis-seed', async (req, reply) => {
-    const source = (req.body?.source || '').trim() || getAppSettings().thesisProjectDir
+    const s = getAppSettings()
+    const source = (req.body?.source || '').trim() || s.thesisProjectDir
     const ctrl = new AbortController()
     let settled = false
     // reply.raw 'close'：連線在回應送完前被切斷（前端按「中斷」abort 掉 fetch、
@@ -133,7 +134,12 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
         used_files: string[]
         error: string | null
         call_count: number
-      }>('thesis-seed', { source }, ['--notes-file', activeNotesFile()], { signal: ctrl.signal })
+      }>(
+        'thesis-seed',
+        { source, perFileChars: s.thesisSeedPerFileChars, totalChars: s.thesisSeedTotalChars },
+        ['--notes-file', activeNotesFile()],
+        { signal: ctrl.signal },
+      )
     } finally {
       settled = true
       reply.raw.off('close', onClientGone)

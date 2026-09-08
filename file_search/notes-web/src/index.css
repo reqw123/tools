@@ -1777,7 +1777,14 @@ body {
 .type-btn.on .type-ico { background: #fff; border-radius: 5px; padding: 0.08rem 0.16rem; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); }
 
 /* 掃描結果的類別統計——同一套色，做成小藥丸；數量 0 的淡化 */
-.cat-pills { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.55rem 0 0.9rem; }
+.cat-pills { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.55rem 0 0.4rem; }
+.ext-breakdown {
+  margin: 0 0 0.8rem;
+  font-size: 0.72rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  word-break: break-all;
+}
 .cat-pill {
   display: inline-flex;
   align-items: center;

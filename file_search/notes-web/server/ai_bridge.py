@@ -351,11 +351,15 @@ def _extract_text(name: str, data: bytes) -> str:
     return data.decode("utf-8", errors="ignore")
 
 
-def _collect_seed_docs(source: str):
+def _collect_seed_docs(source: str, per_file: int = _THESIS_SEED_PER_FILE, total: int = _THESIS_SEED_TOTAL):
     """source 是一個資料夾或一個 .zip。挑出最多 _THESIS_SEED_MAX_FILES 個
-    文件類檔案（依 _seed_score 排序），組成餵給 AI 的文字。回傳
-    `(text, used_files)`；找不到任何可讀文件回 ("", [])。"""
+    文件類檔案（依 _seed_score 排序），組成餵給 AI 的文字。`per_file`／`total`
+    是每檔／全部的字數上限（使用者可在 notes-web「全域設定 → 研究生」調）。
+    回傳 `(text, used_files)`；找不到任何可讀文件回 ("", [])。"""
     import zipfile
+
+    per_file = max(1000, int(per_file or _THESIS_SEED_PER_FILE))
+    total = max(2000, int(total or _THESIS_SEED_TOTAL))
 
     src = Path(source)
     candidates = []  # (score, size, label, getter)
@@ -415,9 +419,9 @@ def _collect_seed_docs(source: str):
             continue
         if len(text) < 40:
             continue
-        parts.append(f"===== {label} =====\n{text[:_THESIS_SEED_PER_FILE]}")
+        parts.append(f"===== {label} =====\n{text[:per_file]}")
         used.append(label)
-    return "\n\n".join(parts)[:_THESIS_SEED_TOTAL], used
+    return "\n\n".join(parts)[:total], used
 
 
 def _build_thesis_seed_prompt(docs: str) -> str:
@@ -552,7 +556,11 @@ def cmd_thesis_seed(payload, _notes_file):
     if not source or not (p.is_dir() or (p.is_file() and p.suffix.lower() == ".zip")):
         return {"drafts": [], "used_files": [], "error": f"找不到資料夾或 .zip：{source or '(未設定)'}", "call_count": 0}
 
-    docs, used_files = _collect_seed_docs(source)
+    docs, used_files = _collect_seed_docs(
+        source,
+        per_file=(payload or {}).get("perFileChars") or _THESIS_SEED_PER_FILE,
+        total=(payload or {}).get("totalChars") or _THESIS_SEED_TOTAL,
+    )
     if len(docs) < 200:
         return {"drafts": [], "used_files": used_files,
                 "error": "在這個來源裡找不到可讀的文件（.md / .txt / .docx / .rst）", "call_count": 0}

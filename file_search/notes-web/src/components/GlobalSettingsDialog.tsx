@@ -3,14 +3,16 @@ import { AiSettingsPanel } from './AiSettingsDialog'
 import { TagSortSettings } from './TagSortSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { TrashSettings } from './TrashSettings'
+import { ThesisSettings } from './ThesisSettings'
 
-export type SettingsTab = 'ai' | 'tags' | 'appearance' | 'trash'
+export type SettingsTab = 'ai' | 'tags' | 'appearance' | 'trash' | 'thesis'
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'ai', label: 'AI 請求' },
   { id: 'tags', label: '標籤排序' },
   { id: 'appearance', label: '外觀' },
   { id: 'trash', label: '垃圾桶' },
+  { id: 'thesis', label: '研究生' },
 ]
 
 /**
@@ -82,6 +84,9 @@ export function GlobalSettingsDialog({
         </div>
         <div hidden={tab !== 'trash'}>
           <TrashSettings />
+        </div>
+        <div hidden={tab !== 'thesis'}>
+          <ThesisSettings />
         </div>
       </div>
     </div>

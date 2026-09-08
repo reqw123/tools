@@ -193,11 +193,11 @@ export function BatchImportDialog({
                       </>
                     ) : (
                       <>
-                        找到 <b>{result.files.length}</b> 個檔案
+                        掃到 <b>{result.files.length}</b> 個檔案
                         {skipped > 0 && (
                           <>
                             {' '}
-                            · <b>{skipped}</b> 個已在索引中略過
+                            · <b>{skipped}</b> 個索引項目已在清單內（略過不重複加）
                           </>
                         )}{' '}
                         · 將新增 <b>{fresh.length}</b> 筆

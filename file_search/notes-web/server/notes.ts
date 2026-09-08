@@ -90,6 +90,9 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       embedModel?: string
       trashRetentionDays?: number
       trashMaxCount?: number
+      thesisProjectDir?: string
+      thesisSeedPerFileChars?: number
+      thesisSeedTotalChars?: number
     }
   }>(
     '/settings',
@@ -113,6 +116,9 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
             // 0＝關掉那道門檻；coerce 會夾範圍
             trashRetentionDays: { type: 'number', minimum: 0, maximum: 3650 },
             trashMaxCount: { type: 'number', minimum: 0, maximum: 100000 },
+            thesisProjectDir: { type: 'string', maxLength: 500 },
+            thesisSeedPerFileChars: { type: 'number', minimum: 1000, maximum: 60000 },
+            thesisSeedTotalChars: { type: 'number', minimum: 2000, maximum: 300000 },
             wall: {
               type: 'object',
               additionalProperties: false,

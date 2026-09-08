@@ -193,14 +193,16 @@ class ImportFolderDialog(tk.Toplevel):
         new_files = [p for p in found if path_key(p) not in self._existing_paths]
         skipped = len(found) - len(new_files)
         self._scanned_new = new_files
-        self._result_var.set(f"找到 {len(found)} 個檔案，{skipped} 個已在索引中略過，將新增 {len(new_files)} 筆")
+        self._result_var.set(
+            f"掃到 {len(found)} 個檔案，其中 {skipped} 個的索引項目已在清單內（略過不重複加），將新增 {len(new_files)} 筆"
+        )
         self._result_label.config(
             fg=COLOR_MISSING_FG if skipped else COLOR_STATUS_FG,
             font=self._font_result_warning if skipped else self._font_result_normal,
         )
         self._confirm_btn.config(state="normal" if new_files else "disabled")
         if found and not new_files:
-            self._result_var.set(f"找到 {len(found)} 個檔案，全部都已經在索引中，沒有新的可匯入")
+            self._result_var.set(f"掃到 {len(found)} 個檔案，索引項目全部已在清單內，沒有新的可匯入")
             self._result_label.config(fg=COLOR_MISSING_FG, font=self._font_result_warning)
 
     def _confirm(self):

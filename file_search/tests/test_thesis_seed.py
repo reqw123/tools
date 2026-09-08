@@ -99,3 +99,18 @@ def test_collect_seed_docs_missing_source():
 def test_seed_score_ranks_overview_over_random():
     assert ai_bridge._seed_score("docs/0_overview.md", 2000) > ai_bridge._seed_score("src/util.md", 2000)
     assert ai_bridge._seed_score("paper/CONTEXT.md", 1000) > ai_bridge._seed_score("changelog.md", 1000)
+
+
+def test_collect_seed_docs_honours_char_limits(tmp_path):
+    (tmp_path / "docs").mkdir()
+    for i in range(4):
+        (tmp_path / "docs" / f"0_doc{i}.md").write_text("內容 " * 5000, encoding="utf-8")
+
+    big, _ = ai_bridge._collect_seed_docs(str(tmp_path), per_file=9000, total=30000)
+    small, _ = ai_bridge._collect_seed_docs(str(tmp_path), per_file=1500, total=4000)
+    assert len(small) <= 4000
+    assert len(big) <= 30000
+    assert len(big) > len(small)
+    # 下限保護：塞太小的值不會爆
+    tiny, _ = ai_bridge._collect_seed_docs(str(tmp_path), per_file=1, total=1)
+    assert len(tiny) <= 2000

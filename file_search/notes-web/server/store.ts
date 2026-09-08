@@ -964,9 +964,17 @@ export interface AppSettings {
   /** 「研究生模式」的論文專案資料夾——研究生便利貼存在
    *  `<thesisProjectDir>/.thesis_notes.json`，「從專案生成」也讀這裡的文件。 */
   thesisProjectDir: string
+  /** 「從專案生成」每個檔案最多讀多少字餵給 AI（越大 = 內容越完整但越吃
+   *  token / 越慢，小模型可能塞爆）。 */
+  thesisSeedPerFileChars: number
+  /** 「從專案生成」全部檔案合起來最多讀多少字。 */
+  thesisSeedTotalChars: number
 }
 
 const DEFAULT_THESIS_PROJECT_DIR = 'C:\\ai_project'
+// = ai_bridge.py 的 _THESIS_SEED_PER_FILE / _THESIS_SEED_TOTAL
+const DEFAULT_THESIS_SEED_PER_FILE = 9000
+const DEFAULT_THESIS_SEED_TOTAL = 30000
 const DEFAULT_NOTE_COLOR = '#e5e7eb' // = notes-web lib/color.ts NEUTRAL / 桌面版 STICKY_NEUTRAL_COLOR
 const DEFAULT_MIN_COL_WIDTH = 240
 // = 桌面版 config.py STICKY_EMBED_MODEL_DEFAULT（多語言、中文效果好）
@@ -1024,6 +1032,16 @@ function coerceAppSettings(data: unknown): AppSettings {
       typeof o.thesisProjectDir === 'string' && o.thesisProjectDir.trim()
         ? o.thesisProjectDir.trim().slice(0, 500)
         : DEFAULT_THESIS_PROJECT_DIR,
+    thesisSeedPerFileChars: Math.max(
+      1000,
+      coerceNonNegInt(o.thesisSeedPerFileChars, DEFAULT_THESIS_SEED_PER_FILE, 60000)
+        || DEFAULT_THESIS_SEED_PER_FILE,
+    ),
+    thesisSeedTotalChars: Math.max(
+      2000,
+      coerceNonNegInt(o.thesisSeedTotalChars, DEFAULT_THESIS_SEED_TOTAL, 300000)
+        || DEFAULT_THESIS_SEED_TOTAL,
+    ),
   }
 }
 
@@ -1044,6 +1062,8 @@ export interface AppSettingsPatch {
   trashRetentionDays?: number
   trashMaxCount?: number
   thesisProjectDir?: string
+  thesisSeedPerFileChars?: number
+  thesisSeedTotalChars?: number
 }
 
 /** 只覆寫 patch 帶到的欄位，其餘沿用目前值；驗證/夾範圍後原子寫回，
@@ -1078,6 +1098,10 @@ export function patchAppSettings(patch: AppSettingsPatch | null | undefined): Ap
     trashMaxCount: p.trashMaxCount !== undefined ? p.trashMaxCount : cur.trashMaxCount,
     thesisProjectDir:
       p.thesisProjectDir !== undefined ? p.thesisProjectDir : cur.thesisProjectDir,
+    thesisSeedPerFileChars:
+      p.thesisSeedPerFileChars !== undefined ? p.thesisSeedPerFileChars : cur.thesisSeedPerFileChars,
+    thesisSeedTotalChars:
+      p.thesisSeedTotalChars !== undefined ? p.thesisSeedTotalChars : cur.thesisSeedTotalChars,
   })
   atomicWriteFile(SETTINGS_FILE, JSON.stringify({ ...rawObj, ...clean }, null, 1))
   return clean
@@ -1221,6 +1245,9 @@ export interface ScanResult {
   files: { path: string; name: string; size: number; ext: string }[]
   truncated: boolean // 超過軟上限、結果不完整（不該拿去送給 AI）
   categoryCounts: { label: string; count: number }[]
+  /** 每個副檔名各幾個（多到少）——「程式碼」「設定與資料」這種含多種副檔名的
+   *  類別，用這個看實際是哪些檔案類型。無副檔名的 ext 是 ''。 */
+  extCounts: { ext: string; count: number }[]
 }
 
 export function scanFolder(
@@ -1294,15 +1321,20 @@ export function scanFolder(
 
   const counts = EXT_CATEGORIES.map((c) => ({ label: c.label, count: 0 }))
   let other = 0
+  const extMap = new Map<string, number>()
   for (const f of files) {
     const i = EXT_CATEGORIES.findIndex((c) => c.exts.has(f.ext))
     if (i >= 0) counts[i].count += 1
     else other += 1
+    extMap.set(f.ext, (extMap.get(f.ext) ?? 0) + 1)
   }
   counts.push({ label: '其他', count: other })
+  const extCounts = [...extMap.entries()]
+    .map(([ext, count]) => ({ ext, count }))
+    .sort((a, b) => b.count - a.count || a.ext.localeCompare(b.ext))
 
   files.sort((a, b) => a.path.localeCompare(b.path, 'zh-Hant', { numeric: true }))
-  return { files, truncated, categoryCounts: counts }
+  return { files, truncated, categoryCounts: counts, extCounts }
 }
 
 // ── 檔案總管（給「AI 生成便利貼」的選檔／選資料夾視窗用）───────────────

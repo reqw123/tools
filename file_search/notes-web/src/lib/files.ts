@@ -28,6 +28,8 @@ export interface ScanResult {
   files: { path: string; name: string; size: number; ext: string }[]
   truncated: boolean
   categoryCounts: { label: string; count: number }[]
+  /** 每個副檔名各幾個（多到少）——看含多種副檔名的類別實際有哪些檔案類型。 */
+  extCounts: { ext: string; count: number }[]
 }
 
 const BASE = '/api'
