@@ -306,6 +306,21 @@ body {
 :root:not([data-theme='light']) .btn.danger {
   color: #e8897f;
 }
+/* .sheet（便利貼紙張樣式，底色永遠是淺色 pastel，不隨主題——.plain / .answer
+   才是深色 panel）裡的 ghost / danger 按鈕，文字要用「紙上」的深色。吃 --ink
+   的話深色模式下是淺色，疊在淺紙上整排按鈕都看不到（便利貼檢視底下的
+   編輯／釘選／插入圖片／刪除）。 */
+.sheet:not(.plain):not(.answer) .btn.ghost {
+  color: var(--paper-ink);
+  border-color: color-mix(in srgb, var(--paper-ink) 26%, transparent);
+}
+.sheet:not(.plain):not(.answer) .btn.ghost:hover {
+  border-color: color-mix(in srgb, var(--paper-ink) 55%, transparent);
+}
+:root[data-theme='dark'] .sheet:not(.plain):not(.answer) .btn.danger,
+:root:not([data-theme='light']) .sheet:not(.plain):not(.answer) .btn.danger {
+  color: #b1372a; /* 紙面永遠淺色 → 用深紅，不要用給深底 panel 的亮 salmon */
+}
 .chips {
   display: flex;
   gap: 0.4rem;
@@ -1417,6 +1432,10 @@ body {
 .bd-list li {
   border-radius: 2px;
   filter: var(--paper-filter);
+  /* 淺色「紙」底——版本記錄的列沒有 per-row inline 背景，少了這個在深色模式
+     下就是深底疊 .tr-row 的深字、整列看不到。垃圾桶／批次刪除的 <li> 有
+     inline 的 pastel 背景會蓋過這行。 */
+  background: #ecebe4;
 }
 .bd-list li label {
   display: flex;
@@ -1473,6 +1492,21 @@ body {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+/* .bd-list 的列都是淺色「紙卡」（垃圾桶／批次刪除靠 inline pastel，版本記錄
+   靠上面 .bd-list li 的 #ecebe4）——列裡的 ghost / danger 按鈕文字要用紙上的
+   深色，不能吃 --ink（深色模式下是淺色 → 淺字疊淺卡看不到，例如垃圾桶的
+   「復原」、版本記錄的「還原到這個版本」）。 */
+.bd-list .btn.ghost {
+  color: var(--paper-ink);
+  border-color: color-mix(in srgb, var(--paper-ink) 26%, transparent);
+}
+.bd-list .btn.ghost:hover {
+  border-color: color-mix(in srgb, var(--paper-ink) 55%, transparent);
+}
+:root[data-theme='dark'] .bd-list .btn.danger,
+:root:not([data-theme='light']) .bd-list .btn.danger {
+  color: #b1372a;
 }
 .bd-empty {
   padding: 1.2rem 0.6rem;
