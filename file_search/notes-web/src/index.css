@@ -1165,6 +1165,17 @@ body {
 .sheet.plain .form select:focus {
   border-color: var(--brass);
 }
+/* .form label 平常用 --paper-ink（設計給淺色紙面）——非紙面的 .sheet.plain
+   對話框在深色模式下 panel 是深的，深字疊深底整個看不到。改吃 --ink。
+   包含 .check-inline（它本身就是個 <label>）。 */
+.sheet.plain .form label,
+.sheet.answer .form label {
+  color: color-mix(in srgb, var(--ink) 84%, transparent);
+}
+:root[data-theme='dark'] .sheet.plain .form .err,
+:root:not([data-theme='light']) .sheet.plain .form .err {
+  color: #e58175;
+}
 .ok-msg {
   color: #2e7d4f;
   font-size: 0.82rem;

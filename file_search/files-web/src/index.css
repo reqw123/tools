@@ -607,7 +607,10 @@ code {
   border-radius: 999px;
   background: color-mix(in srgb, var(--marker) 20%, var(--raise));
   border: 1px solid color-mix(in srgb, var(--marker) 38%, transparent);
-  color: var(--marker-ink);
+  /* 文字＝分類色相 42% + 主題文字色 58%——淺色模式偏深、深色模式偏亮，
+     兩邊都疊在 20% 淡化的同色底上都讀得清楚（分類 chip 的 --marker 是
+     EntryRow 依名稱雜湊塞的；一般 chip 沒塞就吃 :root 的 --marker）。 */
+  color: color-mix(in srgb, var(--marker) 42%, var(--ink));
   white-space: nowrap;
 }
 .desc {

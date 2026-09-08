@@ -1,10 +1,11 @@
 import { md5 } from './md5'
 
 /**
- * 分類 → 一組顏色，塞進 `.chip` 的 CSS 自訂屬性（`--marker` 底/框、
- * `--marker-ink` 文字）。色相取自 md5(分類)，跟桌面版
- * `file_search_app/colors.py` 的 `hash_hsl_hex` 與便利貼標籤同一套公式——
- * 同一個分類在桌面清單、files-web、便利貼看到的都是同一個色相。
+ * 分類 → 一個代表色（`.chip` 的 `--marker`：底色 / 框線 / 文字都從它 color-mix
+ * 出來）。色相取自 md5(分類)，跟桌面版 `file_search_app/colors.py` 的
+ * `hash_hsl_hex` 與便利貼標籤同一套公式——同一個分類在桌面清單、files-web、
+ * 便利貼看到的都是同一個色相。文字色由 CSS 用 `--ink`（跟主題走）調出來，
+ * 不在這裡算死，不然深色模式下深字疊深晶片會看不到。
  */
 
 function hue2rgb(m1: number, m2: number, h: number): number {
@@ -29,17 +30,8 @@ function hslHex(h: number, l: number, s: number): string {
   )
 }
 
-export interface CategoryColors {
-  /** `.chip` 的 `--marker`——底色 / 框線的來源（CSS 再各自 color-mix 淡化）。 */
-  marker: string
-  /** `.chip` 的 `--marker-ink`——晶片上的文字色（深、讀得清楚）。 */
-  ink: string
-}
-
-export function categoryColors(category: string): CategoryColors {
+/** 分類名稱 → `.chip` 的 `--marker`（#rrggbb）。 */
+export function categoryColor(category: string): string {
   const hue = Number(BigInt('0x' + md5(category)) % 360n) / 360
-  return {
-    marker: hslHex(hue, 0.55, 0.55),
-    ink: hslHex(hue, 0.28, 0.6),
-  }
+  return hslHex(hue, 0.55, 0.55)
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { Entry, PathStat } from '../lib/api'
 import type { Group } from './Toolbar'
-import { categoryColors } from '../lib/catColor'
+import { categoryColor } from '../lib/catColor'
 import { EntryRow } from './EntryRow'
 
 interface Bucket {
@@ -187,7 +187,7 @@ export function EntryList({
               {group === 'category' && b.key !== '未分類' && (
                 <span
                   className="bucket-dot"
-                  style={{ background: categoryColors(b.key).marker }}
+                  style={{ background: categoryColor(b.key) }}
                   aria-hidden
                 />
               )}

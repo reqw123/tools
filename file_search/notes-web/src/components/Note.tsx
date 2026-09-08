@@ -8,8 +8,16 @@ import {
 import { Body } from './Body'
 
 const EDGE_MARGIN = 24 // 拖到離視窗邊緣多近算「要彈出去變懸浮視窗」
+const DRAG_THRESHOLD = 6 // 游標從按下點移動超過這麼多 px 才算「開始拖」，不然單純點一下的微小抖動會被誤判成拖曳
 
-type DragState = { offsetX: number; offsetY: number; moved: boolean }
+type DragState = {
+  offsetX: number
+  offsetY: number
+  moved: boolean
+  /** 按下當下的游標位置——用來跟 DRAG_THRESHOLD 比對。 */
+  startX: number
+  startY: number
+}
 
 export function Note({
   note,
@@ -88,6 +96,16 @@ export function Note({
       const el = ref.current
       if (!d || !el) return
       if (!d.moved) {
+        // 還沒離開按下點超過門檻 → 當成「只是按著、可能只是點一下」，先不動它。
+        // 少了這道門檻，單純點一下時游標的一兩 px 抖動就會把卡片瞬間切成
+        // position:fixed 跳到游標處再彈回（看起來像「空白處閃過一張便利貼」），
+        // 而且 justDragged 被設成 true，這一下 click 就不會開啟便利貼。
+        if (
+          Math.abs(e.clientX - d.startX) < DRAG_THRESHOLD &&
+          Math.abs(e.clientY - d.startY) < DRAG_THRESHOLD
+        ) {
+          return
+        }
         d.moved = true
         const r = el.getBoundingClientRect()
         el.style.position = 'fixed'
@@ -124,7 +142,13 @@ export function Note({
     const el = ref.current
     if (!el) return
     const r = el.getBoundingClientRect()
-    drag.current = { offsetX: e.clientX - r.left, offsetY: e.clientY - r.top, moved: false }
+    drag.current = {
+      offsetX: e.clientX - r.left,
+      offsetY: e.clientY - r.top,
+      moved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+    }
   }
 
   return (

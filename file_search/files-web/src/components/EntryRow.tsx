@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Clipboard, Eye, FolderOpen, Pencil, Pin, SquareArrowOutUpRight, Trash2 } from 'lucide-react'
 import type { Entry, PathStat } from '../lib/api'
-import { categoryColors } from '../lib/catColor'
+import { categoryColor } from '../lib/catColor'
 import { humanSize, kindLabel, kindOf, stampOf } from '../lib/format'
 import { FilePreview } from './FilePreview'
 
@@ -77,11 +77,11 @@ export function EntryRow({
   const kind = kindOf(entry.ext)
   const missing = stat && !stat.exists
 
-  // 分類晶片依名稱雜湊配色（跟桌面版清單、便利貼標籤同一套色相）。
+  // 分類晶片依名稱雜湊配色（跟桌面版清單、便利貼標籤同一套色相）。只丟
+  // `--marker`；文字/底/框由 .chip 的 CSS 用 --ink（跟主題走）color-mix 出來。
   const chipStyle = useMemo<CSSProperties | undefined>(() => {
     if (!entry.category) return undefined
-    const c = categoryColors(entry.category)
-    return { '--marker': c.marker, '--marker-ink': c.ink } as CSSProperties
+    return { '--marker': categoryColor(entry.category) } as CSSProperties
   }, [entry.category])
   const previewable = ['image', 'video', 'audio', 'pdf', 'text', 'code'].includes(kind)
 
