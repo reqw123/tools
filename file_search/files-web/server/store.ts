@@ -772,3 +772,55 @@ export function openInExplorer(target: string, select: boolean): boolean {
   }
   return true
 }
+
+// ── 分類自訂顏色 ─────────────────────────────────────────────────────
+// 獨立小檔案 `indexes/.index_category_colors.json`，格式 {"<分類>": "#rrggbb"}
+// ——顯示偏好，不是索引資料本身，壞掉不影響索引。跟桌面版
+// `IndexCategoryColorRepository`、便利貼的 `.sticky_tag_colors.json` 同一套
+// 想法：沒自訂過的分類不會在檔案裡，前端 categoryColor() 拿不到就退回雜湊配色。
+const CATEGORY_COLORS_FILE = join(indexDir, '.index_category_colors.json')
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
+
+export type CategoryColors = Record<string, string>
+
+export function getCategoryColors(): CategoryColors {
+  try {
+    const data = JSON.parse(readFileSync(CATEGORY_COLORS_FILE, 'utf8')) as unknown
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const out: CategoryColors = {}
+      for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+        if (typeof v === 'string' && HEX_COLOR_RE.test(v)) out[k] = v
+      }
+      return out
+    }
+  } catch {
+    /* 不存在或壞掉 → 空物件，不擋索引本身 */
+  }
+  return {}
+}
+
+function writeCategoryColors(colors: CategoryColors): void {
+  mkdirSync(dirname(CATEGORY_COLORS_FILE), { recursive: true })
+  atomicWriteText(CATEGORY_COLORS_FILE, JSON.stringify(colors, null, 1))
+}
+
+/** 指定某個分類固定用這個顏色。格式不對（color 必須 #rrggbb）就原樣回傳目前的表。 */
+export function setCategoryColor(category: string, color: string): CategoryColors {
+  const trimmed = category.trim()
+  if (!trimmed || !HEX_COLOR_RE.test(color)) return getCategoryColors()
+  const colors = getCategoryColors()
+  colors[trimmed] = color.toLowerCase()
+  writeCategoryColors(colors)
+  return colors
+}
+
+/** 拿掉某分類的自訂顏色，改回雜湊配色。 */
+export function clearCategoryColor(category: string): CategoryColors {
+  const trimmed = category.trim()
+  const colors = getCategoryColors()
+  if (trimmed in colors) {
+    delete colors[trimmed]
+    writeCategoryColors(colors)
+  }
+  return colors
+}

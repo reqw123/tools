@@ -21,6 +21,41 @@ export function useIndex(name: string | null) {
   })
 }
 
+export const CATEGORY_COLORS_KEY = ['category-colors'] as const
+
+/** 分類→自訂顏色（hex）對照表。categoryColor() 拿不到就退回雜湊配色。 */
+export function useCategoryColors() {
+  return useQuery({
+    queryKey: CATEGORY_COLORS_KEY,
+    queryFn: api.categoryColors,
+    staleTime: 60_000,
+  })
+}
+
+/** 樂觀更新：色點/晶片立刻換色，失敗再還原。`color` 傳 null＝清掉自訂、退回雜湊。 */
+export function useSetCategoryColor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ category, color }: { category: string; color: string | null }) =>
+      color === null ? api.clearCategoryColor(category) : api.setCategoryColor(category, color),
+    onMutate: async ({ category, color }) => {
+      await qc.cancelQueries({ queryKey: CATEGORY_COLORS_KEY })
+      const prev = qc.getQueryData<Record<string, string>>(CATEGORY_COLORS_KEY)
+      qc.setQueryData<Record<string, string>>(CATEGORY_COLORS_KEY, (old) => {
+        const next = { ...(old ?? {}) }
+        if (color === null) delete next[category]
+        else next[category] = color
+        return next
+      })
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(CATEGORY_COLORS_KEY, ctx.prev)
+    },
+    onSuccess: (colors) => qc.setQueryData(CATEGORY_COLORS_KEY, colors),
+  })
+}
+
 /** 選檔視窗的目錄內容。dir 空字串 → 磁碟機／根目錄清單。 */
 export function useBrowse(dir: string) {
   return useQuery({

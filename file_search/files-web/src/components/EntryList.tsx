@@ -22,6 +22,8 @@ export function EntryList({
   editingPath,
   editError,
   categories,
+  categoryColors,
+  onSetCategoryColor,
   onDelete,
   deletingPath,
   onPin,
@@ -39,6 +41,10 @@ export function EntryList({
   editError?: string | null
   /** 分類欄 datalist 的建議值。 */
   categories?: string[]
+  /** 分類→自訂顏色（hex）；沒有的分類退回雜湊配色。 */
+  categoryColors?: Record<string, string>
+  /** 設定/清除某分類的自訂顏色（color=null＝清掉退回雜湊）；未提供＝不顯示挑色。 */
+  onSetCategoryColor?: (category: string, color: string | null) => void
   /** 移除一列索引項目；未提供＝唯讀，不顯示移除鈕。 */
   onDelete?: (entry: Entry) => void
   deletingPath?: string | null
@@ -153,6 +159,8 @@ export function EntryList({
       editing={editingPath === e.path}
       editError={editingPath === e.path ? editError : null}
       categories={categories}
+      categoryColors={categoryColors}
+      onSetCategoryColor={onSetCategoryColor}
       onDelete={onDelete ? () => onDelete(e) : undefined}
       deleting={deletingPath === e.path}
       onPin={onPin ? (rect) => onPin(e, rect) : undefined}
@@ -187,7 +195,7 @@ export function EntryList({
               {group === 'category' && b.key !== '未分類' && (
                 <span
                   className="bucket-dot"
-                  style={{ background: categoryColor(b.key) }}
+                  style={{ background: categoryColor(b.key, categoryColors) }}
                   aria-hidden
                 />
               )}

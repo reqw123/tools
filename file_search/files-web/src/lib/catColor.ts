@@ -30,8 +30,12 @@ function hslHex(h: number, l: number, s: number): string {
   )
 }
 
-/** 分類名稱 → `.chip` 的 `--marker`（#rrggbb）。 */
-export function categoryColor(category: string): string {
+/** 分類名稱 → `.chip` 的 `--marker`（#rrggbb）。`overrides` 有這個分類的
+ *  自訂色（files-web「分類顏色」挑的，存 `.index_category_colors.json`）就用
+ *  它，否則名稱雜湊配色。 */
+export function categoryColor(category: string, overrides?: Record<string, string>): string {
+  const custom = overrides?.[category]
+  if (custom) return custom
   const hue = Number(BigInt('0x' + md5(category)) % 360n) / 360
   return hslHex(hue, 0.55, 0.55)
 }

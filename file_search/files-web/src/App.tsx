@@ -1,7 +1,14 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import type { Entry } from './lib/api'
 import { api } from './lib/api'
-import { useDeleteEntry, useIndex, useIndexList, useUpdateEntry } from './hooks/useIndexes'
+import {
+  useCategoryColors,
+  useDeleteEntry,
+  useIndex,
+  useIndexList,
+  useSetCategoryColor,
+  useUpdateEntry,
+} from './hooks/useIndexes'
 import { useExists } from './hooks/useExists'
 import { hasDesktopWall } from './lib/desktopWall'
 import { getLastIndex, setLastIndex } from './lib/lastIndex'
@@ -191,6 +198,16 @@ export function App() {
     [edit, flash],
   )
   const editingPath = edit.isPending ? (edit.variables?.path ?? null) : null
+
+  const { data: categoryColors } = useCategoryColors()
+  const setCatColor = useSetCategoryColor()
+  const onSetCategoryColor = useCallback(
+    (category: string, color: string | null) => {
+      if (!category.trim()) return
+      setCatColor.mutate({ category: category.trim(), color })
+    },
+    [setCatColor],
+  )
   const editError = edit.isError ? (edit.error?.message ?? '更新失敗') : null
 
   const onCopy = useCallback(
@@ -315,6 +332,8 @@ export function App() {
                 editingPath={editingPath}
                 editError={editError}
                 categories={rawCategories}
+                categoryColors={categoryColors ?? {}}
+                onSetCategoryColor={onSetCategoryColor}
                 onDelete={onDelete}
                 deletingPath={deletingPath}
                 onPin={canFloat ? onPin : undefined}

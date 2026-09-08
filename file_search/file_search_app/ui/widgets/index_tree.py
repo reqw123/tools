@@ -16,6 +16,7 @@ from file_search_app.config import (
     COLOR_MISSING_FG, INDEX_CHIP_LIGHTNESS, INDEX_CHIP_SATURATION, MISSING_ICON,
 )
 from file_search_app.models import format_added_at
+from file_search_app.repositories.index_category_color_repository import IndexCategoryColorRepository
 from file_search_app.ui.styles import icon_for
 
 _COLUMNS = ("serial", "icon", "name", "category", "desc", "path", "source", "added_at")
@@ -64,6 +65,10 @@ class IndexTree:
         self._tree.heading("#0", text="")
         self._tree.column("#0", width=26, minwidth=26, stretch=False, anchor="center")
         self._cat_swatches = {}  # 分類名稱 -> tk.PhotoImage（實心色點），建一次重複用
+        # 分類自訂顏色（跟 files-web 共用的 .index_category_colors.json）——每次
+        # set_entries() 重讀，變了就清掉色點快取重建（使用者可能在 files-web 改色）。
+        self._cat_color_repo = IndexCategoryColorRepository()
+        self._cat_colors = {}
         for col in _COLUMNS:
             self._tree.heading(col, text=_HEADINGS[col])
             self._tree.column(col, width=_WIDTHS[col], anchor="w", stretch=(col in ("desc", "path")))
@@ -106,12 +111,15 @@ class IndexTree:
 
     def _category_swatch(self, category: str):
         """回傳這個分類對應的實心色點 PhotoImage；分類留空回 ""（#0 欄不放圖）。
-        同一個分類永遠同一個顏色（雜湊自名稱，跟便利貼標籤／files-web 一致）。"""
+        有自訂顏色（files-web「分類顏色」挑的）就用它，否則名稱雜湊配色——同
+        一個分類在桌面清單、files-web、便利貼看到的都是同一個色。"""
         if not category:
             return ""
         img = self._cat_swatches.get(category)
         if img is None:
-            color = hash_hsl_hex(category, INDEX_CHIP_LIGHTNESS, INDEX_CHIP_SATURATION)
+            color = self._cat_colors.get(category) or hash_hsl_hex(
+                category, INDEX_CHIP_LIGHTNESS, INDEX_CHIP_SATURATION,
+            )
             img = tk.PhotoImage(master=self._tree, width=12, height=12)
             img.put(color, to=(0, 0, 12, 12))
             self._cat_swatches[category] = img
@@ -137,6 +145,11 @@ class IndexTree:
         命中」才出現的項目，把片段接在「說明」欄後面（前面加 🔎），讓使用者
         一眼看出這筆是內文提到、而不是欄位對到；完整內容右邊預覽面板會標色。"""
         snippets = content_snippets or {}
+        # files-web 可能改過分類自訂色——變了就把色點快取清掉重建。
+        latest_colors = self._cat_color_repo.load()
+        if latest_colors != self._cat_colors:
+            self._cat_colors = latest_colors
+            self._cat_swatches.clear()
         self._tree.delete(*self._tree.get_children())
         self._entries_by_iid = {}
         for entry in entries:

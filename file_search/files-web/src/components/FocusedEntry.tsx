@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
-import { useIndex, useDeleteEntry, useUpdateEntry } from '../hooks/useIndexes'
+import {
+  useCategoryColors,
+  useDeleteEntry,
+  useIndex,
+  useSetCategoryColor,
+  useUpdateEntry,
+} from '../hooks/useIndexes'
 import { useExists } from '../hooks/useExists'
 import { EntryRow } from './EntryRow'
 
@@ -51,6 +57,8 @@ export function FocusedEntry({ indexName, path }: { indexName: string; path: str
 
   const edit = useUpdateEntry(indexName)
   const del = useDeleteEntry(indexName)
+  const { data: categoryColors } = useCategoryColors()
+  const setCatColor = useSetCategoryColor()
 
   // 還在載入，或這一列已經被移除——這個小視窗不需要專門的空狀態畫面，
   // 保持透明背景讓桌面牆的視窗看起來像還沒出現一樣，不會閃一個奇怪的畫面。
@@ -86,6 +94,10 @@ export function FocusedEntry({ indexName, path }: { indexName: string; path: str
           editing={edit.isPending}
           editError={edit.isError ? (edit.error?.message ?? '更新失敗') : null}
           categories={categories}
+          categoryColors={categoryColors ?? {}}
+          onSetCategoryColor={(c, color) =>
+            c.trim() && setCatColor.mutate({ category: c.trim(), color })
+          }
           onDelete={() => del.mutate({ serial: entry.serial, path: entry.path })}
           deleting={del.isPending}
           register={() => undefined}

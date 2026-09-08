@@ -146,6 +146,18 @@ export const api = {
       { method: 'DELETE' },
     ),
 
+  // ── 分類自訂顏色 ────────────────────────────────────────────────
+  categoryColors: () => req<Record<string, string>>('/category-colors'),
+  setCategoryColor: (category: string, color: string) =>
+    req<Record<string, string>>('/category-colors', {
+      method: 'PATCH',
+      body: JSON.stringify({ category, color }),
+    }),
+  clearCategoryColor: (category: string) =>
+    req<Record<string, string>>(`/category-colors/${encodeURIComponent(category)}`, {
+      method: 'DELETE',
+    }),
+
   // ── 批次 ────────────────────────────────────────────────────────
   scanCategories: () =>
     req<{ categories: ScanCategory[] }>('/scan-categories').then((r) => r.categories),

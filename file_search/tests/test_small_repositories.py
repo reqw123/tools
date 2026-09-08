@@ -1,10 +1,11 @@
-"""cache / ai_usage / app_prefs / ai_settings repository。"""
+"""cache / ai_usage / app_prefs / ai_settings / index_category_color repository。"""
 import threading
 
 from file_search_app.repositories.ai_settings_repository import AISettingsRepository
 from file_search_app.repositories.ai_usage_repository import AIUsageRepository
 from file_search_app.repositories.app_prefs_repository import AppPrefsRepository
 from file_search_app.repositories.cache_repository import CacheRepository
+from file_search_app.repositories.index_category_color_repository import IndexCategoryColorRepository
 
 
 # ── CacheRepository ─────────────────────────────────────────────────
@@ -165,3 +166,35 @@ def test_ai_settings_tolerates_garbage(data_dir, tmp_path):
     (data_dir / ".ai_settings.json").write_text("nonsense", encoding="utf-8")
     r = AISettingsRepository(indexes_dir=data_dir, secrets_dir=tmp_path / "sec")
     assert r.load()["provider"] == "openai"
+
+
+# ── IndexCategoryColorRepository ────────────────────────────────────
+
+def test_index_category_color_set_get_clear(data_dir):
+    r = IndexCategoryColorRepository(indexes_dir=data_dir)
+    assert r.load() == {}
+    r.set_color("研究", "#A74DCB")
+    assert r.load() == {"研究": "#A74DCB"}
+    r.set_color("工作", "#123456")
+    assert r.load()["工作"] == "#123456"
+    r.clear_color("研究")
+    assert r.load() == {"工作": "#123456"}
+    r.clear_color("不存在的分類")  # no-op, no raise
+
+
+def test_index_category_color_rejects_bad_input(data_dir):
+    r = IndexCategoryColorRepository(indexes_dir=data_dir)
+    r.set_color("", "#abcdef")          # 空分類 → 不寫
+    r.set_color("x", "red")             # 非 #rrggbb → 不寫
+    r.set_color("y", "#abc")            # 短碼 → 不寫
+    assert r.load() == {}
+
+
+def test_index_category_color_tolerates_garbage(data_dir):
+    (data_dir / ".index_category_colors.json").write_text("not json", encoding="utf-8")
+    assert IndexCategoryColorRepository(indexes_dir=data_dir).load() == {}
+    # 混入型別不對的值也要濾掉
+    (data_dir / ".index_category_colors.json").write_text(
+        '{"good": "#ffffff", "bad": 123, "also-bad": "green"}', encoding="utf-8",
+    )
+    assert IndexCategoryColorRepository(indexes_dir=data_dir).load() == {"good": "#ffffff"}

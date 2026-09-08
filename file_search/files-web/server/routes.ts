@@ -4,8 +4,10 @@ import {
   appendEntry,
   blankSuggestions,
   browseDir,
+  clearCategoryColor,
   createIndexFile,
   fileStream,
+  getCategoryColors,
   listIndexes,
   mimeOf,
   openInExplorer,
@@ -15,6 +17,7 @@ import {
   resolveFile,
   scanCategories,
   scanFolder,
+  setCategoryColor,
   statPaths,
   updateRowsByOccurrences,
   validateIndexName,
@@ -249,6 +252,32 @@ export const routes: FastifyPluginAsync = async (app) => {
 
   // 批次匯入的檔案類型篩選按鈕用（跟 scanFolder 同一份 EXT_CATEGORIES）。
   app.get('/scan-categories', async () => ({ categories: scanCategories }))
+
+  // 分類自訂顏色——沒自訂過的分類不會在回應裡，前端 categoryColor() 拿不到
+  // 就退回雜湊配色。桌面版 IndexTree 讀同一份檔案。
+  app.get('/category-colors', async () => getCategoryColors())
+
+  app.patch<{ Body: { category?: string; color?: string } }>(
+    '/category-colors',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['category', 'color'],
+          properties: {
+            category: { type: 'string', minLength: 1, maxLength: 200 },
+            color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
+          },
+        },
+      },
+    },
+    async (req) => setCategoryColor(req.body.category ?? '', req.body.color ?? ''),
+  )
+
+  // Fastify 已先解碼路徑參數，這裡不再 decodeURIComponent（含 % 的分類名會雙重解碼壞掉）。
+  app.delete<{ Params: { category: string } }>('/category-colors/:category', async (req) =>
+    clearCategoryColor(req.params.category),
+  )
 
   // 選檔視窗用的目錄瀏覽（?path 空 → 磁碟機／根目錄清單）。
   app.get<{ Querystring: { path?: string } }>('/browse', async (req) =>

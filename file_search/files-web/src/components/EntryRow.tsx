@@ -17,6 +17,8 @@ export function EntryRow({
   editing,
   editError,
   categories,
+  categoryColors,
+  onSetCategoryColor,
   onDelete,
   deleting,
   onPin,
@@ -34,6 +36,10 @@ export function EntryRow({
   editError?: string | null
   /** 分類欄 datalist 的建議值（目前這份索引集已用過的分類）。 */
   categories?: string[]
+  /** 分類→自訂顏色（hex）；沒有的分類退回雜湊配色。 */
+  categoryColors?: Record<string, string>
+  /** 設定/清除分類自訂顏色（null＝清掉退回雜湊）；未提供＝編輯區不顯示挑色。 */
+  onSetCategoryColor?: (category: string, color: string | null) => void
   /** 從索引集移除這一列（只動 .md，不碰實體檔案）。未提供＝不顯示按鈕。 */
   onDelete?: () => void
   deleting?: boolean
@@ -81,8 +87,8 @@ export function EntryRow({
   // `--marker`；文字/底/框由 .chip 的 CSS 用 --ink（跟主題走）color-mix 出來。
   const chipStyle = useMemo<CSSProperties | undefined>(() => {
     if (!entry.category) return undefined
-    return { '--marker': categoryColor(entry.category) } as CSSProperties
-  }, [entry.category])
+    return { '--marker': categoryColor(entry.category, categoryColors) } as CSSProperties
+  }, [entry.category, categoryColors])
   const previewable = ['image', 'video', 'audio', 'pdf', 'text', 'code'].includes(kind)
 
   return (
@@ -228,6 +234,33 @@ export function EntryRow({
                   </datalist>
                 )}
               </label>
+              {onSetCategoryColor && draftCat.trim() && (
+                <label className="re-field re-color">
+                  <span>分類顏色</span>
+                  <span className="re-color-controls">
+                    <input
+                      type="color"
+                      className="cat-color-swatch"
+                      disabled={editing}
+                      value={categoryColor(draftCat.trim(), categoryColors)}
+                      onChange={(e) => onSetCategoryColor(draftCat.trim(), e.target.value)}
+                    />
+                    {categoryColors?.[draftCat.trim()] && (
+                      <button
+                        type="button"
+                        className="btn sm"
+                        disabled={editing}
+                        onClick={() => onSetCategoryColor(draftCat.trim(), null)}
+                      >
+                        重設
+                      </button>
+                    )}
+                    <span className="re-note mono">
+                      // 套用到「{draftCat.trim()}」這個分類的所有項目、色點與晶片
+                    </span>
+                  </span>
+                </label>
+              )}
               <label className="re-field">
                 <span>說明</span>
                 <textarea
