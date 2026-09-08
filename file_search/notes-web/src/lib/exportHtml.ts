@@ -101,10 +101,12 @@ main.is-masonry > .note { position: absolute; }
   margin: 0 0 .55rem; text-wrap: balance;
 }
 .note .note-img {
-  display: block; width: 100%; max-height: 168px; object-fit: cover;
+  /* 固定高度（不是 max-height）——這樣 JS 量卡片高度時，就算圖片 data URI
+     還沒解碼完成，卡片高度也已經是最終值，column 版面不會先錯位再跳。 */
+  display: block; width: 100%; height: 168px; object-fit: cover;
   border-radius: 2px; margin: 0 0 .6rem; background: rgba(31,41,55,.06);
 }
-.lb-content .note .note-img { max-height: 60vh; object-fit: contain; }
+.lb-content .note .note-img { height: auto; max-height: 70vh; object-fit: contain; }
 .note .para { margin: 0; font-size: .9rem; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
 .lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .32rem; font-size: .88rem; }
 .lines li { display: flex; gap: .5rem; align-items: baseline; line-height: 1.5; }
@@ -168,7 +170,8 @@ main.is-masonry > .note { position: absolute; }
      才不會把單張便利貼切成兩半。script 寫的 inline left/top/width 在
      position:static 下自動失效。 */
   main.is-masonry { display: grid; position: static; height: auto !important; gap: 1.8rem; }
-  main.is-masonry > .note { position: static; left: auto; top: auto; width: auto; }
+  /* !important 才蓋得過 script 寫在 .note 上的 inline left/top/width */
+  main.is-masonry > .note { position: static !important; left: auto !important; top: auto !important; width: auto !important; }
   .pinned-row { grid-column: 1 / -1; }
   main { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
   .note { box-shadow: none; border: 1px solid rgba(0,0,0,.18); }
@@ -191,6 +194,9 @@ const SCRIPT = `
     var clone = note.cloneNode(true);
     clone.removeAttribute('tabindex');
     clone.removeAttribute('role');
+    // layout() 會在牆上的 .note 寫死 inline left/top/width；.note 本身是
+    // position:relative，複製到燈箱裡這些偏移會把大卡片推到畫面外。清掉。
+    clone.style.left = clone.style.top = clone.style.width = '';
     box.setAttribute('aria-label', note.getAttribute('aria-label') || '便利貼');
     content.innerHTML = '';
     content.appendChild(clone);
@@ -280,10 +286,16 @@ const SCRIPT = `
   function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(layout); }
   layout();
   window.addEventListener('resize', schedule);
+  // 圖片／字型載入完會改變卡片高度——每種都重排一次。window load 是最後保險
+  // （所有子資源都到齊了），另外補兩個延遲重排，處理離線開啟時字型晚套用。
+  window.addEventListener('load', schedule);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
   [].slice.call(wall.querySelectorAll('img')).forEach(function (img) {
-    if (!img.complete) img.addEventListener('load', schedule);
+    img.addEventListener('load', schedule);
+    img.addEventListener('error', schedule);
   });
+  setTimeout(schedule, 250);
+  setTimeout(schedule, 1500);
 })();
 `.trim()
 
