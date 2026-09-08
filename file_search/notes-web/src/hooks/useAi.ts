@@ -38,6 +38,31 @@ export function useSaveGeneratedNotes() {
   })
 }
 
+/** 語意搜尋可用性——Ollama 連得上、embedding 模型下載了嗎。輪詢頻率低；
+ *  只在「語意」開關打開時才查（enabled）。 */
+export function useSemanticStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: ['ai', 'semantic-status'],
+    queryFn: aiApi.semanticStatus,
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
+/** 語意搜尋結果——查詢句非空且「語意」開關開著時自動跑（隨 query 去抖動後
+ *  重查）。第一次會把所有便利貼 embed（可能幾秒），之後只 embed 查詢句。 */
+export function useSemanticSearch(query: string, tag: string | null, enabled: boolean) {
+  const q = query.trim()
+  return useQuery({
+    queryKey: ['ai', 'semantic-search', q, tag ?? ''],
+    queryFn: () => aiApi.semanticSearch(q, tag),
+    enabled: enabled && q.length > 0,
+    staleTime: 60_000,
+    // 向量算過就有快取，重試沒意義，失敗直接讓前端退回關鍵字搜尋
+    retry: false,
+  })
+}
+
 export function useAiSearch() {
   const qc = useQueryClient()
   return useMutation({

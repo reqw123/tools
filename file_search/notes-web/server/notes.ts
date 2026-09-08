@@ -86,6 +86,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       tagSort?: { mode?: 'count' | 'manual' | 'recent'; order?: string[] }
       defaultNoteColor?: string
       wall?: { minColWidth?: number; masonry?: boolean }
+      embedModel?: string
     }
   }>(
     '/settings',
@@ -104,6 +105,8 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
               },
             },
             defaultNoteColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
+            // 空字串是合法的「恢復預設」意圖；上限給寬一點，coerce 會再夾成 120
+            embedModel: { type: 'string', maxLength: 200 },
             wall: {
               type: 'object',
               additionalProperties: false,

@@ -171,6 +171,9 @@ export interface AppSettings {
     /** false＝關掉 JS 動態排版，用單純等寬格線。 */
     masonry: boolean
   }
+  /** 「語意搜尋」用的本機 Ollama embedding 模型名稱（位址沿用 AI 設定的
+   *  ollama.base_url）。空字串＝用預設 nomic-embed-text。 */
+  embedModel: string
 }
 
 /** PATCH /api/settings 的部分更新（dueSoonHours 走 /reminder-settings 舊路由）。 */
@@ -178,6 +181,7 @@ export type AppSettingsPatch = {
   tagSort?: Partial<AppSettings['tagSort']>
   defaultNoteColor?: string
   wall?: Partial<AppSettings['wall']>
+  embedModel?: string
 }
 
 /** 標籤→自訂顏色（hex）。沒自訂過的標籤不會出現在這裡，colorForTag() 拿不

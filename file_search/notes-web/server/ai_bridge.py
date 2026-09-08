@@ -34,8 +34,10 @@ from file_search_app.ai.base import AIProviderError  # noqa: E402
 from file_search_app.models import IndexEntry  # noqa: E402
 from file_search_app.repositories.ai_settings_repository import AISettingsRepository  # noqa: E402
 from file_search_app.repositories.ai_usage_repository import AIUsageRepository  # noqa: E402
+from file_search_app.repositories.notes_settings_repository import NotesSettingsRepository  # noqa: E402
 from file_search_app.repositories.sticky_note_repository import StickyNoteRepository  # noqa: E402
 from file_search_app.services.ai_description_service import AIDescriptionService  # noqa: E402
+from file_search_app.services.note_semantic_service import NoteSemanticService  # noqa: E402
 from file_search_app.services.preview_service import PreviewService  # noqa: E402
 from file_search_app.services.sticky_note_service import StickyNoteService  # noqa: E402
 
@@ -248,6 +250,38 @@ def cmd_generate_note(payload, notes_file):
     return {"draft": draft, "error": None, "skipped": False}
 
 
+def _embed_model(payload) -> str:
+    """語意搜尋的 embedding 模型：優先用前端傳來的（notes-web 存在
+    `.notes_settings.json` 的 `embedModel`，會一起帶進 payload），沒帶就自己
+    從同一份設定檔讀，再沒有就用預設。"""
+    model = ((payload or {}).get("model") or "").strip()
+    return model or NotesSettingsRepository().load_embed_model()
+
+
+def cmd_semantic_search(payload, notes_file):
+    """stdin: {query, tag?, model?, topK?, minScore?} → 依語意相似度排序的
+    便利貼 id 清單。用本機 Ollama 的 embedding 模型算，向量有快取
+    （indexes/.sticky_notes_embeddings.json）。Ollama 連不上／模型沒下載
+    一律回 {ok:false, error}，不拋——前端據此退回關鍵字搜尋。"""
+    payload = payload or {}
+    svc = NoteSemanticService(_sticky(notes_file))
+    return svc.search(
+        query=payload.get("query", ""),
+        tag=payload.get("tag") or "",
+        model=_embed_model(payload),
+        top_k=payload.get("topK") or None,
+        min_score=payload.get("minScore"),
+    )
+
+
+def cmd_semantic_status(payload, notes_file):
+    """stdin: {model?} → {ok, model, installed, error}；語意搜尋能不能用
+    （Ollama 連得上、embedding 模型下載了嗎）。給前端決定要不要 disable
+    「語意」開關、提示 `ollama pull`。"""
+    svc = NoteSemanticService(_sticky(notes_file))
+    return svc.status(_embed_model(payload))
+
+
 COMMANDS = {
     "target": cmd_target,
     "settings-get": cmd_settings_get,
@@ -256,6 +290,8 @@ COMMANDS = {
     "models": cmd_models,
     "search": cmd_search,
     "generate-note": cmd_generate_note,
+    "semantic-search": cmd_semantic_search,
+    "semantic-status": cmd_semantic_status,
 }
 
 

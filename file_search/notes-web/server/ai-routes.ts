@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { BridgeError, runBridge } from './ai'
-import { createNotes, notesFilePath } from './store'
+import { createNotes, getAppSettings, notesFilePath } from './store'
 
 const settingsBody = {
   type: 'object',
@@ -63,6 +63,52 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
       )
       return { answer: r.answer, matchedIds: r.ids, callCount: r.call_count }
     },
+  )
+
+  /**
+   * 語意搜尋——用本機 Ollama 的 embedding 模型算查詢句與每則便利貼的
+   * cosine 相似度，回傳依相似度排序的 id 清單（+ 分數）。跟 `/ai/search`
+   * 不同：那個要跳確認視窗、會計費/耗 token、回自然語言答案；這個是純
+   * 本機向量比對，向量有快取，不經過 record_call。Ollama 連不上／模型
+   * 沒下載時回 `{ok:false, error}`（HTTP 200），前端據此退回關鍵字搜尋。
+   */
+  app.post<{ Body: { query?: string; tag?: string } }>(
+    '/ai/semantic-search',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['query'],
+          properties: {
+            query: { type: 'string', minLength: 1, maxLength: 2000 },
+            tag: { type: 'string', maxLength: 60 },
+          },
+        },
+      },
+    },
+    async (req) =>
+      runBridge<{
+        ok: boolean
+        results: { id: string; score: number }[]
+        model: string
+        error: string | null
+        embedded: number
+        total: number
+      }>(
+        'semantic-search',
+        { query: req.body.query, tag: req.body.tag ?? '', model: getAppSettings().embedModel },
+        ['--notes-file', notesFilePath],
+      ),
+  )
+
+  /** 語意搜尋可用性：Ollama 連得上嗎、embedding 模型下載了嗎。給前端決定
+   *  要不要 disable「語意」開關、或提示 `ollama pull`。 */
+  app.get('/ai/semantic-status', async () =>
+    runBridge<{ ok: boolean; model: string; installed: boolean | null; error: string | null }>(
+      'semantic-status',
+      { model: getAppSettings().embedModel },
+      ['--notes-file', notesFilePath],
+    ),
   )
 
   /**

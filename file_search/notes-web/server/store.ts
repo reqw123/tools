@@ -837,10 +837,17 @@ export interface AppSettings {
   /** 無分類 / 分類沒有自訂顏色時的便利貼紙色（#rrggbb）。 */
   defaultNoteColor: string
   wall: WallPref
+  /** 「語意搜尋」用的本機 Ollama embedding 模型名稱。位址沿用 .ai_settings.json
+   *  的 ollama.base_url；這裡只存模型名（跟聊天模型不同，要純 embedding 模型）。
+   *  空字串＝用預設（DEFAULT_EMBED_MODEL）。ai_bridge.py 的 semantic-* 指令會
+   *  一起收到這個值。 */
+  embedModel: string
 }
 
 const DEFAULT_NOTE_COLOR = '#e5e7eb' // = notes-web lib/color.ts NEUTRAL / 桌面版 STICKY_NEUTRAL_COLOR
 const DEFAULT_MIN_COL_WIDTH = 240
+// = 桌面版 config.py STICKY_EMBED_MODEL_DEFAULT
+const DEFAULT_EMBED_MODEL = 'nomic-embed-text'
 
 function coerceAppSettings(data: unknown): AppSettings {
   const o = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
@@ -874,6 +881,10 @@ function coerceAppSettings(data: unknown): AppSettings {
         ? o.defaultNoteColor.toLowerCase()
         : DEFAULT_NOTE_COLOR,
     wall: { minColWidth, masonry: typeof w.masonry === 'boolean' ? w.masonry : true },
+    embedModel:
+      typeof o.embedModel === 'string' && o.embedModel.trim()
+        ? o.embedModel.trim().slice(0, 120)
+        : DEFAULT_EMBED_MODEL,
   }
 }
 
@@ -890,6 +901,7 @@ export interface AppSettingsPatch {
   tagSort?: Partial<TagSortPref>
   defaultNoteColor?: string
   wall?: Partial<WallPref>
+  embedModel?: string
 }
 
 /** 只覆寫 patch 帶到的欄位，其餘沿用目前值；驗證/夾範圍後原子寫回，
@@ -917,6 +929,8 @@ export function patchAppSettings(patch: AppSettingsPatch | null | undefined): Ap
     tagSort: { ...cur.tagSort, ...p.tagSort },
     defaultNoteColor: nextColor,
     wall: { ...cur.wall, ...p.wall },
+    // 空字串是「恢復預設」的合法意圖 → 傳到 coerceAppSettings 會落回 DEFAULT_EMBED_MODEL
+    embedModel: p.embedModel !== undefined ? p.embedModel : cur.embedModel,
   })
   atomicWriteFile(SETTINGS_FILE, JSON.stringify({ ...rawObj, ...clean }, null, 1))
   return clean

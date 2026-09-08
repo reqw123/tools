@@ -6,9 +6,11 @@ import {
   useAppSettings,
   usePatchAppSettings,
 } from '../hooks/useNotes'
+import { useOllamaModels } from '../hooks/useAi'
 import type { AppSettings } from '../lib/api'
 
 const DEFAULT_NOTE_COLOR = '#e5e7eb'
+const DEFAULT_EMBED_MODEL = 'nomic-embed-text'
 const MIN = 160
 const MAX = 520
 
@@ -42,10 +44,23 @@ export function AppearanceSettings() {
 
   const [widthDraft, setWidthDraft] = useState<string | null>(null)
 
+  // 語意搜尋的 embedding 模型——文字輸入 + datalist（讀那台 Ollama 已安裝的
+  // 清單），失焦才送出。位址沿用「AI 請求」分頁設定的 ollama.base_url。
+  const [modelDraft, setModelDraft] = useState<string | null>(null)
+  const ollamaModels = useOllamaModels()
+  const modelOptions = ollamaModels.data?.models ?? []
+
   if (!settings) return <p className="dim mono">載入中…</p>
 
   const color = settings.defaultNoteColor
   const width = settings.wall.minColWidth
+  const embedModel = settings.embedModel
+
+  const commitEmbedModel = () => {
+    const next = (modelDraft ?? '').trim()
+    setModelDraft(null)
+    if (modelDraft !== null && next !== embedModel) patch.mutate({ embedModel: next })
+  }
 
   return (
     <div className="form appearance">
@@ -101,6 +116,54 @@ export function AppearanceSettings() {
         />
         牆面動態排版（大致等高、上下緊貼）
         <span className="hint">關掉就用單純的等寬格線，不做緊貼排版。</span>
+      </label>
+
+      <label>
+        語意搜尋的嵌入模型
+        <span className="hint">
+          搜尋列的「🌱 語意」開關用這個本機 Ollama 模型算相似度（要純 embedding
+          模型，不是聊天模型）。位址沿用「AI 請求」分頁的 Ollama 設定。留空＝
+          預設 <code>{DEFAULT_EMBED_MODEL}</code>；那台電腦要先
+          <code>ollama pull {modelDraft?.trim() || embedModel || DEFAULT_EMBED_MODEL}</code>。
+        </span>
+        <span className="swatch-controls">
+          <input
+            type="text"
+            list="embed-model-options"
+            placeholder={DEFAULT_EMBED_MODEL}
+            value={modelDraft ?? embedModel}
+            onChange={(e) => setModelDraft(e.target.value)}
+            onBlur={commitEmbedModel}
+          />
+          <datalist id="embed-model-options">
+            {modelOptions.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+          <button
+            type="button"
+            className="btn sm ghost"
+            disabled={ollamaModels.isPending}
+            onClick={() => ollamaModels.mutate(undefined)}
+          >
+            {ollamaModels.isPending ? '讀取中…' : '讀取清單'}
+          </button>
+          {embedModel && embedModel !== DEFAULT_EMBED_MODEL && (
+            <button
+              type="button"
+              className="btn sm ghost"
+              onClick={() => {
+                setModelDraft(null)
+                patch.mutate({ embedModel: '' })
+              }}
+            >
+              重設
+            </button>
+          )}
+        </span>
+        {ollamaModels.data?.models === null && (
+          <span className="hint">讀不到清單（那台 Ollama 沒在跑？）——仍可直接輸入模型名稱。</span>
+        )}
       </label>
 
       {patch.error && <span className="err">{patch.error.message}</span>}

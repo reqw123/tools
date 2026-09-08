@@ -235,6 +235,7 @@ export function mergeAppSettings(old: AppSettings | undefined, patch: AppSetting
     ...(patch.defaultNoteColor ? { defaultNoteColor: patch.defaultNoteColor } : {}),
     ...(patch.tagSort ? { tagSort: { ...old.tagSort, ...patch.tagSort } } : {}),
     ...(patch.wall ? { wall: { ...old.wall, ...patch.wall } } : {}),
+    ...(patch.embedModel !== undefined ? { embedModel: patch.embedModel } : {}),
   }
 }
 

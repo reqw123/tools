@@ -40,6 +40,25 @@ export interface AiSearchResult {
   callCount: number
 }
 
+/** 語意搜尋——本機 Ollama embedding 算相似度，向量有快取，不計費/不耗 token。
+ *  `ok:false` = Ollama 連不上或模型沒下載（前端據此退回關鍵字搜尋）。 */
+export interface SemanticSearchResult {
+  ok: boolean
+  results: { id: string; score: number }[]
+  model: string
+  error: string | null
+  embedded: number
+  total: number
+}
+
+export interface SemanticStatus {
+  ok: boolean
+  model: string
+  /** true/false = 那台 Ollama 有沒有這個模型；null = 連不上，問不到。 */
+  installed: boolean | null
+  error: string | null
+}
+
 /** 單一檔案的「AI 生成便利貼」草稿——還沒寫入，先讓使用者審核／編輯。 */
 export interface NoteDraft {
   title: string
@@ -91,6 +110,12 @@ export const aiApi = {
       method: 'POST',
       body: JSON.stringify({ query, tag: tag ?? '' }),
     }),
+  semanticSearch: (query: string, tag: string | null) =>
+    req<SemanticSearchResult>('/ai/semantic-search', {
+      method: 'POST',
+      body: JSON.stringify({ query, tag: tag ?? '' }),
+    }),
+  semanticStatus: () => req<SemanticStatus>('/ai/semantic-status'),
   generateNote: (path: string, category: string) =>
     req<AiGenerateNoteResult>('/ai/generate-note', {
       method: 'POST',

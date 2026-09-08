@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import type { Note } from './lib/api'
 import { useAppSettings, useNotes, useReminderSettings, useTagColors } from './hooks/useNotes'
 import { useMinuteTick } from './hooks/useMinuteTick'
-import { useAiSearch, useAiTarget } from './hooks/useAi'
+import { useAiSearch, useAiTarget, useSemanticSearch, useSemanticStatus } from './hooks/useAi'
 import { hasDesktopWall } from './lib/desktopWall'
 import { dueStatus } from './lib/format'
 import { Toolbar } from './components/Toolbar'
@@ -66,6 +66,10 @@ export function App() {
     () => appSettings?.tagSort ?? { mode: 'count' as const, order: [] },
     [appSettings],
   )
+
+  // 「語意搜尋」——用本機 Ollama embedding 依相似度排序，跟 aiMode 互斥
+  // （兩種都是「換一種搜尋方式」，同時開沒有意義）。
+  const [semanticOn, setSemanticOn] = useState(false)
 
   const [aiMode, setAiMode] = useState(false)
   const [rawAiResult, setAiResult] = useState<AiResult | null>(null)
@@ -198,6 +202,18 @@ export function App() {
   const deferredQuery = useDeferredValue(query)
   const list = useMemo(() => notes ?? [], [notes])
 
+  // 語意搜尋：開關開著且查詢句非空時自動跑（隨 deferredQuery 去抖動後重查）。
+  const semanticStatus = useSemanticStatus(semanticOn)
+  const semantic = useSemanticSearch(deferredQuery, tag, semanticOn)
+  const semanticData = semantic.data
+  // 只有 Ollama 真的回了結果才拿來排序；連不上（ok:false）就當它不存在，
+  // 下面的 shown 會自動退回關鍵字比對。
+  const semanticRank = useMemo(() => {
+    if (!semanticOn || !semanticData?.ok) return null
+    return new Map(semanticData.results.map((r) => [r.id, r.score]))
+  }, [semanticOn, semanticData])
+  const semanticActive = semanticRank !== null && !!deferredQuery.trim()
+
   // 橫向分類列的順序＝「全域設定」的 tagSort（手動釘的排最前，其餘依 mode
   // 自動排）。knownTags 由此衍生，牆面「看全部」時的同色系分欄也吃這個順序，
   // 兩邊一致。
@@ -222,7 +238,7 @@ export function App() {
   // 的排版（見 Wall 的 columnPerTag），置頂的幾個分類因此並排、都看得到。
   // 一旦有搜尋／選了分類／AI／只看快到期就沒這個意義，維持原順序＋大致等高排版。
   const groupByTag =
-    !croppedIds && !aiResult && !aiMode && !deferredQuery.trim() && !tag && !dueOnly
+    !croppedIds && !aiResult && !aiMode && !semanticOn && !deferredQuery.trim() && !tag && !dueOnly
 
   const shown = useMemo(() => {
     // 裁切中——只看框選到的那幾則，蓋過搜尋/分類/AI 篩選（使用者已經明確
@@ -241,6 +257,11 @@ export function App() {
       base = list.filter((n) => ids.has(n.id))
     } else if (aiMode) {
       base = list // AI 模式還沒送出 → 先顯示範圍內全部
+    } else if (semanticActive && semanticRank) {
+      // 語意命中：只留跨過相似度門檻的，依分數高到低排（分數同再依原順序）
+      base = list
+        .filter((n) => semanticRank.has(n.id))
+        .sort((a, b) => (semanticRank.get(b.id) ?? 0) - (semanticRank.get(a.id) ?? 0))
     } else {
       const q = deferredQuery.trim().toLowerCase()
       base = q
@@ -277,7 +298,7 @@ export function App() {
     return floatedIds.size ? base.filter((n) => !floatedIds.has(n.id)) : base
     // minuteTick：每分鐘重算，讓「只看快到期」的篩選/排序隨時間翻新。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list, tag, deferredQuery, aiMode, aiResult, croppedIds, floatedIds, dueOnly, reminderSettings, minuteTick, groupByTag, knownTags])
+  }, [list, tag, deferredQuery, aiMode, aiResult, semanticActive, semanticRank, croppedIds, floatedIds, dueOnly, reminderSettings, minuteTick, groupByTag, knownTags])
 
   // 詳細視窗的「上一則／下一則」——在目前這份篩選/排序出的清單（shown）裡移
   // 動，不是整份未篩選清單，這樣使用者在「只看快到期」之類的篩選底下瀏覽
@@ -325,6 +346,14 @@ export function App() {
       if (m) clearAi()
       return !m
     })
+    setSemanticOn(false)
+    setQuery('')
+  }, [clearAi])
+
+  const toggleSemantic = useCallback(() => {
+    setSemanticOn((s) => !s)
+    setAiMode(false)
+    clearAi()
     setQuery('')
   }, [clearAi])
 
@@ -384,6 +413,26 @@ export function App() {
         aiMode={aiMode}
         onToggleAiMode={toggleAiMode}
         onAiSearch={runAiSearch}
+        semanticOn={semanticOn}
+        onToggleSemantic={toggleSemantic}
+        semanticState={
+          !semanticOn
+            ? null
+            : semantic.isFetching
+              ? { kind: 'loading' }
+              : semanticData && !semanticData.ok
+                ? { kind: 'error', message: semanticData.error ?? 'Ollama 無法使用' }
+                : semanticStatus.data && !semanticStatus.data.ok
+                  ? {
+                      kind: 'error',
+                      message:
+                        semanticStatus.data.error ??
+                        `Ollama 沒有 embedding 模型「${semanticStatus.data.model}」`,
+                    }
+                  : semanticActive && semanticData
+                    ? { kind: 'ok', count: semanticData.results.length, model: semanticData.model }
+                    : { kind: 'idle', model: semanticStatus.data?.model ?? '' }
+        }
         aiTarget={aiTarget}
         aiSearching={aiSearch.isPending}
         aiError={aiSearch.error?.message ?? null}

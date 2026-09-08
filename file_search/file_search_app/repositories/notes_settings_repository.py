@@ -14,7 +14,9 @@
 import math
 from pathlib import Path
 
-from file_search_app.config import INDEXES_DIR, STICKY_DUE_SOON_HOURS_DEFAULT
+from file_search_app.config import (
+    INDEXES_DIR, STICKY_DUE_SOON_HOURS_DEFAULT, STICKY_EMBED_MODEL_DEFAULT,
+)
 from file_search_app.repositories.json_store import read_json
 
 _SETTINGS_FILENAME = ".notes_settings.json"
@@ -39,3 +41,14 @@ class NotesSettingsRepository:
             ):
                 return value
         return STICKY_DUE_SOON_HOURS_DEFAULT
+
+    def load_embed_model(self) -> str:
+        """便利貼語意搜尋用的 Ollama embedding 模型名稱。使用者在 notes-web
+        「全域設定」調整，寫進同一份 `.notes_settings.json` 的 `embedModel`。
+        沒設定／不是非空字串就回預設（`STICKY_EMBED_MODEL_DEFAULT`）。"""
+        data = read_json(self.path, None)
+        if isinstance(data, dict):
+            value = data.get("embedModel")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return STICKY_EMBED_MODEL_DEFAULT

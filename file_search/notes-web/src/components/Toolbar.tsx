@@ -1,10 +1,18 @@
 import {
-  AlarmClock, Bot, CopyPlus, Download, HardDriveDownload, History, Plus, Recycle, Search, Settings2, Sparkles, Tags,
-  Timer, Trash2, Upload,
+  AlarmClock, Bot, CopyPlus, Download, HardDriveDownload, History, Plus, Recycle, Search, Settings2, Sparkles, Sprout,
+  Tags, Timer, Trash2, Upload,
 } from 'lucide-react'
 import type { AiTarget } from '../lib/ai'
 import type { TagCount } from './TagBar'
 import { TagBar } from './TagBar'
+
+/** 「語意」開關的即時狀態，給搜尋列底下那行揭露文字用。 */
+export type SemanticState =
+  | null
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'idle'; model: string }
+  | { kind: 'ok'; count: number; model: string }
 
 export function Toolbar({
   query,
@@ -17,6 +25,9 @@ export function Toolbar({
   aiMode,
   onToggleAiMode,
   onAiSearch,
+  semanticOn,
+  onToggleSemantic,
+  semanticState,
   aiTarget,
   aiSearching,
   aiError,
@@ -46,6 +57,9 @@ export function Toolbar({
   aiMode: boolean
   onToggleAiMode: () => void
   onAiSearch: (q: string) => void
+  semanticOn: boolean
+  onToggleSemantic: () => void
+  semanticState: SemanticState
   aiTarget: AiTarget | undefined
   aiSearching: boolean
   aiError: string | null
@@ -69,9 +83,11 @@ export function Toolbar({
     <div className="bar">
       <div className="bar-inner">
         <div className="bar-row">
-          <label className={`field${aiMode ? ' ai' : ''}`}>
+          <label className={`field${aiMode ? ' ai' : ''}${semanticOn ? ' semantic' : ''}`}>
             {aiMode ? (
               <Bot size={16} strokeWidth={2.2} aria-hidden />
+            ) : semanticOn ? (
+              <Sprout size={15} strokeWidth={2.4} aria-hidden />
             ) : (
               <Search size={15} strokeWidth={2.4} aria-hidden />
             )}
@@ -81,7 +97,9 @@ export function Toolbar({
               placeholder={
                 aiMode
                   ? '問問題：有哪些跟○○有關、○○有幾個、目前有哪些分類…'
-                  : '搜尋標題、內容、分類…'
+                  : semanticOn
+                    ? '用意思找：出國要帶的東西、想放鬆的活動…（自動依相似度排序）'
+                    : '搜尋標題、內容、分類…'
               }
               onChange={(e) => onQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -99,6 +117,14 @@ export function Toolbar({
             title={aiMode ? '切回一般搜尋' : 'AI 搜尋（用一般語句問問題）'}
           >
             <Bot size={16} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button
+            className={`btn ghost icon${semanticOn ? ' on' : ''}`}
+            onClick={onToggleSemantic}
+            aria-pressed={semanticOn}
+            title={semanticOn ? '切回一般搜尋' : '語意搜尋（本機 Ollama，依意思相近排序）'}
+          >
+            <Sprout size={16} strokeWidth={2.2} aria-hidden />
           </button>
           <button className="btn ghost icon" onClick={() => onOpenSettings()} title="全域設定">
             <Settings2 size={15} strokeWidth={2.2} aria-hidden />
@@ -186,6 +212,23 @@ export function Toolbar({
                       aiTarget.leaves_machine ? '內容會離開這台電腦' : '內容不離開這台電腦'
                     } · 累計第 ${aiTarget.call_count + 1} 次 · Enter 送出`}
             {!aiSearching && (
+              <button className="link" onClick={() => onOpenSettings('ai')}>
+                設定
+              </button>
+            )}
+          </p>
+        )}
+
+        {semanticState && (
+          <p className="ai-disclose mono">
+            {semanticState.kind === 'loading'
+              ? '🌱 正在計算語意相似度…（第一次會把所有便利貼轉成向量，可能要幾秒）'
+              : semanticState.kind === 'error'
+                ? `❌ ${semanticState.message}——已暫時退回一般關鍵字搜尋`
+                : semanticState.kind === 'ok'
+                  ? `🌱 依語意相似度排序 · 命中 ${semanticState.count} 則 · 本機 ${semanticState.model}，內容不離開這台電腦`
+                  : `🌱 語意搜尋已開啟（本機 ${semanticState.model || 'Ollama'}）· 在上面輸入想找的意思`}
+            {semanticState.kind === 'error' && (
               <button className="link" onClick={() => onOpenSettings('ai')}>
                 設定
               </button>

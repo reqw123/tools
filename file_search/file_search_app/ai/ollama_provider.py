@@ -107,6 +107,52 @@ def list_models(base_url: str, timeout: float = 8.0) -> list:
     return sorted(set(parse_model_names(data)), key=str.lower)
 
 
+def embed_texts(base_url: str, model: str, texts, timeout: float = 60.0) -> list:
+    """把一批文字丟給 Ollama 的 `/api/embed`，回傳等長的向量清單（每個是
+    list[float]）。給「便利貼語意搜尋」算相似度用——不經過 AIProvider 介面
+    （那是給生成式回應用的），embedding 是獨立的一支端點。
+
+    - `texts` 空清單直接回 `[]`，不打 API。
+    - 連不上／回應格式不對／向量數量對不上，一律拋 `AIProviderError`
+      （沿用 `post_json` 的錯誤包裝），呼叫端只要接這一種。
+    - 用新版的 `/api/embed`（吃 `input` 陣列、一次一批）；舊版 Ollama
+      （2024 年中以前）沒有這支，會回 404 → `AIProviderError`，呼叫端把
+      它當成「這台 Ollama 太舊、語意搜尋不可用」提示使用者升級。
+    """
+    items = [str(t or "") for t in texts]
+    if not items:
+        return []
+    model = (model or "").strip()
+    if not model:
+        raise AIProviderError("沒有指定嵌入模型（embedding model），無法做語意搜尋。")
+    try:
+        data = post_json(
+            f"{normalize_base_url(base_url)}/api/embed",
+            {"model": model, "input": items},
+            timeout=timeout,
+        )
+    except AIProviderError as exc:
+        msg = str(exc)
+        if "does not support embeddings" in msg or "HTTP 501" in msg or "HTTP 404" in msg:
+            raise AIProviderError(
+                f"這台 Ollama 沒辦法用「{model}」做文字向量（embedding）——"
+                "請改用純 embedding 模型（例如 nomic-embed-text：先在該電腦 "
+                f"`ollama pull nomic-embed-text`），或確認 Ollama 版本夠新。原始錯誤：{msg}"
+            ) from exc
+        raise
+    if isinstance(data, dict) and data.get("error"):
+        raise AIProviderError(str(data["error"]))
+    vectors = data.get("embeddings") if isinstance(data, dict) else None
+    if not isinstance(vectors, list) or len(vectors) != len(items):
+        raise unexpected_response_error(data)
+    out = []
+    for vec in vectors:
+        if not isinstance(vec, list) or not vec:
+            raise unexpected_response_error(data)
+        out.append([float(x) for x in vec])
+    return out
+
+
 def is_local_endpoint(base_url: str) -> bool:
     """服務位址是不是指向這台電腦本身（loopback）。用來讓送出前的確認視窗
     講清楚「內容不會離開這台電腦」還是「內容會透過區網傳到另一台電腦」。"""
