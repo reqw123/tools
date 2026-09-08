@@ -490,7 +490,10 @@ class StickyNotePanel:
         ai_mode = False
         semantic_mode = False
         if self._ai_result_ids is not None and query_text == self._ai_query_snapshot:
-            shown = [n for n in notes if n.id in self._ai_result_ids]
+            # _ai_result_ids 依 AI 回的相關程度排序（見 _on_ai_search）——照那個
+            # 順序取，最相關的排在最前面，不退回 list_notes() 的建立時間序。
+            by_id = {n.id: n for n in notes}
+            shown = [by_id[i] for i in self._ai_result_ids if i in by_id]
             if tag_filter:
                 shown = [n for n in shown if n.tag == tag_filter]
             ai_mode = True
@@ -995,7 +998,8 @@ class StickyNotePanel:
                 messagebox.showerror("AI 搜尋", f"呼叫 AI 失敗：\n{payload}")
                 return True
             answer, matched = self._service.parse_ai_search_response(payload, notes)
-            self._ai_result_ids = {note.id for note in matched}
+            # 保留相關程度排序（matched 已是 AI 回的順序），_refresh 照這個順序取
+            self._ai_result_ids = [note.id for note in matched]
             self._ai_query_snapshot = query
             self._refresh()  # 先把卡片清單篩選好，再跳答案視窗，關掉視窗後畫面已經是篩選好的樣子
             # 用可捲動／可複製的視窗，不是 messagebox.showinfo()——answer 可能是

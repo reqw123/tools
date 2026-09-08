@@ -302,6 +302,30 @@ def test_parse_ai_search_response_bad_ids_type(data_dir):
     assert ans == "hi" and matched == []
 
 
+def test_parse_ai_search_response_preserves_relevance_order(data_dir):
+    s = svc(data_dir)
+    s.add_note("a", "", "")
+    s.add_note("b", "", "")
+    s.add_note("c", "", "")
+    notes = sorted(s.list_notes(), key=lambda n: n.title)  # a, b, c
+    # AI 回的 ids 依相關程度排序：c 最相關、然後 a——要照這個順序回，不是 1,2,3
+    _, matched = s.parse_ai_search_response('{"answer": "x", "ids": [3, 1], "list_tags": false}', notes)
+    assert [m.title for m in matched] == ["c", "a"]
+    # 重複的編號去掉、超出範圍的忽略
+    _, matched = s.parse_ai_search_response('{"answer": "x", "ids": [2, 2, 9, 1], "list_tags": false}', notes)
+    assert [m.title for m in matched] == ["b", "a"]
+
+
+def test_build_ai_search_prompt_asks_for_intent_and_ranking(data_dir):
+    s = svc(data_dir)
+    s.add_note("珍珠奶茶", "", "飲料")
+    prompt = s.build_ai_search_prompt(s.list_notes(), "我口渴了")
+    # prompt 要明講「理解意圖、語意相關、依相關程度排序」這幾件事
+    assert "意圖" in prompt
+    assert "口渴" in prompt  # 舉的例子
+    assert "相關程度由高到低" in prompt
+
+
 # ── export ─────────────────────────────────────────────────────────
 
 def test_export_markdown_code_fence_survives_backticks(data_dir):

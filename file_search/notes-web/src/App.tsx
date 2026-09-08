@@ -253,8 +253,9 @@ export function App() {
 
     let base: Note[]
     if (aiResult) {
-      const ids = new Set(aiResult.matchedIds)
-      base = list.filter((n) => ids.has(n.id))
+      // matchedIds 依 AI 回的相關程度排序——照那個順序取，最相關的排最前面
+      const byId = new Map(list.map((n) => [n.id, n]))
+      base = aiResult.matchedIds.map((id) => byId.get(id)).filter((n): n is Note => !!n)
     } else if (aiMode) {
       base = list // AI 模式還沒送出 → 先顯示範圍內全部
     } else if (semanticActive && semanticRank) {
