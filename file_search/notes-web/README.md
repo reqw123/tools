@@ -74,6 +74,7 @@ npm run lint    # oxlint
 | DELETE | `/api/notes/:id` | 刪除 |
 | POST | `/api/notes/bulk-delete` | `{ ids: string[] }` → 一次刪除，回 `{ deleted: 數量 }` |
 | GET | `/api/tags` | `[{ tag, count }]` |
+| GET | `/api/notes/due-soon` | 到期提醒摘要（給 Node-RED 等排程輪詢）→ `{ generated_at, overdue: DueNote[], soon: DueNote[] }`，`DueNote = { id, title, tag, due_at, collection }`。預設只看 `x-note-collection` 指到的那份（沒帶＝生活）；`?scope=all` 把生活＋研究生兩份合起來（桌面牆到期角標／鬧鐘用這個） |
 | GET | `/api/ai/target` | 目前 AI 去向摘要（provider／model／endpoint／是否離開本機）+ 累計呼叫次數 |
 | GET | `/api/ai/settings` | 讀 AI 設定（API Key 只回 `has_key`，不回值） |
 | PUT | `/api/ai/settings` | 存 AI 設定；沒帶新 `api_key` 就沿用舊的 |

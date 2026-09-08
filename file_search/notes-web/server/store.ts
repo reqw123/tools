@@ -842,6 +842,9 @@ export interface DueNote {
   title: string
   tag: string
   due_at: string
+  /** 這則屬於哪一份便利貼——'life'（生活）或 'thesis'（研究生模式）。舊呼叫端
+   *  （Node-RED 的格式化函式只讀 title/tag/due_at）忽略這個多出來的欄位不受影響。 */
+  collection: NoteCollection
 }
 
 export interface DueSummary {
@@ -851,7 +854,7 @@ export interface DueSummary {
 }
 
 function toDueNote(n: Note): DueNote {
-  return { id: n.id, title: n.title, tag: n.tag, due_at: n.due_at }
+  return { id: n.id, title: n.title, tag: n.tag, due_at: n.due_at, collection: activeCollection }
 }
 
 export function dueSummary(): DueSummary {
@@ -871,6 +874,45 @@ export function dueSummary(): DueSummary {
   overdue.sort(byDueAtAsc)
   soon.sort(byDueAtAsc)
   return { generated_at: now.toISOString(), overdue, soon }
+}
+
+/**
+ * 生活 ＋ 研究生兩份便利貼的到期彙整合在一起——桌面牆的「到期角標」跟「到期
+ * 鬧鐘」用這個（GET /notes/due-soon?scope=all），這樣研究生模式的便利貼設了
+ * 到期日一樣會跳系統通知、算進角標數字。各自照自己那份資料算完再合併重排。
+ *
+ * dueSummary() 讀的是 module 變數 activeCollection，這裡暫時切過去、算完用
+ * finally 還原成這個 request 進來時的值（onRequest hook 設的）——順序無關緊要，
+ * store 全是同步 IO，中途不會被別的 request 插隊。研究生那份檔案不存在時
+ * readRaw() 回空陣列，不會拋錯。
+ */
+export function dueSummaryAll(): DueSummary {
+  const prev = activeCollection
+  const overdue: DueNote[] = []
+  const soon: DueNote[] = []
+  const seen = new Set<string>()
+  try {
+    for (const c of ['life', 'thesis'] as NoteCollection[]) {
+      setActiveCollection(c)
+      const part = dueSummary()
+      for (const n of part.overdue) {
+        if (seen.has(`o:${c}:${n.id}`)) continue
+        seen.add(`o:${c}:${n.id}`)
+        overdue.push(n)
+      }
+      for (const n of part.soon) {
+        if (seen.has(`s:${c}:${n.id}`)) continue
+        seen.add(`s:${c}:${n.id}`)
+        soon.push(n)
+      }
+    }
+  } finally {
+    setActiveCollection(prev)
+  }
+  const byDueAtAsc = (a: DueNote, b: DueNote) => (a.due_at < b.due_at ? -1 : 1)
+  overdue.sort(byDueAtAsc)
+  soon.sort(byDueAtAsc)
+  return { generated_at: new Date().toISOString(), overdue, soon }
 }
 
 // ── 標籤自訂顏色 ─────────────────────────────────────────────────────

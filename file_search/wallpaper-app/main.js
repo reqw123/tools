@@ -215,6 +215,10 @@ function refreshTray() {
 // 網路不通、繪圖失敗，都只是這一輪角標沒更新，絕不會讓桌面牆本身的任何
 // 功能連帶壞掉。
 //
+// 帶 `?scope=all`：生活 ＋ 研究生模式兩份便利貼的到期便利貼合在一起算——
+// 研究生模式的便利貼（C:\ai_project\.thesis_notes.json）設了到期日一樣要進
+// 角標、一樣要跳鬧鐘。每則回傳帶 collection 欄位（'life' / 'thesis'）。
+//
 // 60 秒一次——到期提醒精確到分（notes-web 可填 HH:MM），輪詢也要跟上，不然
 // 「09:00 的鬧鐘」最晚可能拖到 09:05 才響。角標本身有 lastDueBadgeKey 擋著，
 // 數字沒變就不重畫，一分鐘一次不會有額外開銷。
@@ -255,7 +259,7 @@ function fireAlarmToasts(notes) {
   if (notes.length <= ALARM_MAX_TOAST) {
     for (const n of notes) {
       const toast = new Notification({
-        title: '⏰ 便利貼到期',
+        title: n.collection === 'thesis' ? '⏰ 研究生便利貼到期' : '⏰ 便利貼到期',
         body: n.title + (n.tag ? `　#${n.tag}` : ''),
       });
       toast.on('click', openNote);
@@ -280,7 +284,9 @@ function detectFreshlyDue(overdue, now) {
   for (const n of overdue || []) {
     const t = new Date(n.due_at).getTime();
     if (Number.isNaN(t) || t < since || t > now) continue;
-    const key = `${n.id}:${n.due_at}`;
+    // key 帶 collection——生活／研究生兩份的 id 理論上不會撞（各自隨機產生），
+    // 還是防一手，不然萬一撞到會有一則鬧鐘被誤判成「已發過」而吞掉。
+    const key = `${n.collection || 'life'}:${n.id}:${n.due_at}`;
     if (notifiedAlarms.has(key)) continue;
     notifiedAlarms.set(key, now);
     fresh.push(n);
@@ -338,7 +344,9 @@ async function updateDueBadge(overdueCount, soonCount) {
 
 async function pollDueSoon() {
   try {
-    const res = await net.fetch(`http://127.0.0.1:${servers.WEBS.sticky.port}/api/notes/due-soon`);
+    const res = await net.fetch(
+      `http://127.0.0.1:${servers.WEBS.sticky.port}/api/notes/due-soon?scope=all`,
+    );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     await updateDueBadge(data.overdue?.length ?? 0, data.soon?.length ?? 0);

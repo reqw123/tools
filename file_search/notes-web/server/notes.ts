@@ -7,6 +7,7 @@ import {
   deleteNote,
   deleteNotes,
   dueSummary,
+  dueSummaryAll,
   emptyTrash,
   exportNotesJson,
   getAppSettings,
@@ -59,7 +60,14 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
   // 後面要發 Discord/LINE 或其他通知）——純讀取，這支 app 不主動推播任何
   // 東西。回應格式見 store.ts 的 DueSummary。「快到期」的門檻讀自
   // reminder-settings，Node-RED 不需要另外知道這個設定存在。
-  app.get('/notes/due-soon', async () => dueSummary())
+  //
+  // 預設只看「這個 request 的 x-note-collection」指到的那份（沒帶標頭＝生活），
+  // 跟改動前一模一樣——Node-RED 現有 flow 不用動。`?scope=all` 則把生活＋研究生
+  // 兩份的到期便利貼合在一起回傳（桌面牆的到期角標／鬧鐘用這個，見 wallpaper-app
+  // 的 pollDueSoon），每則多一個 collection 欄位標明來源。
+  app.get<{ Querystring: { scope?: string } }>('/notes/due-soon', async (req) =>
+    req.query.scope === 'all' ? dueSummaryAll() : dueSummary(),
+  )
 
   // 「快到期」門檻——使用者在設定視窗調整，卡片標色跟 due-soon 都用同一份。
   app.get('/reminder-settings', async () => getReminderSettings())
