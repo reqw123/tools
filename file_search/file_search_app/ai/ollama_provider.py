@@ -136,8 +136,9 @@ def embed_texts(base_url: str, model: str, texts, timeout: float = 60.0) -> list
         if "does not support embeddings" in msg or "HTTP 501" in msg or "HTTP 404" in msg:
             raise AIProviderError(
                 f"這台 Ollama 沒辦法用「{model}」做文字向量（embedding）——"
-                "請改用純 embedding 模型（例如 nomic-embed-text：先在該電腦 "
-                f"`ollama pull nomic-embed-text`），或確認 Ollama 版本夠新。原始錯誤：{msg}"
+                "請改用純 embedding 模型（中文建議 bge-m3：先在該電腦 "
+                "`ollama pull bge-m3`；純英文可用較小的 nomic-embed-text），"
+                f"或確認 Ollama 版本夠新。原始錯誤：{msg}"
             ) from exc
         raise
     if isinstance(data, dict) and data.get("error"):

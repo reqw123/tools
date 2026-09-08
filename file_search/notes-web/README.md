@@ -79,7 +79,14 @@ npm run lint    # oxlint
 | PUT | `/api/ai/settings` | 存 AI 設定；沒帶新 `api_key` 就沿用舊的 |
 | POST | `/api/ai/test` | 測連線（可帶未存檔的設定）→ `{ ok, warning, error }`。`warning` 是「連得上但模型有問題」（沒 pull、純文字模型不支援看圖）的提示字串 |
 | POST | `/api/ai/models` | 那台 Ollama `/api/tags` 的已安裝模型清單（可帶未存檔的設定）→ `{ models: string[] \| null, error }`，給設定視窗的模型下拉用 |
-| POST | `/api/ai/search` | `{ query, tag? }` → AI 搜尋 → `{ answer, matchedIds, callCount }` |
+| POST | `/api/ai/search` | `{ query, tag? }` → AI 搜尋（理解意圖、`matchedIds` 依相關程度排序）→ `{ answer, matchedIds, callCount }` |
+| POST | `/api/ai/semantic-search` | `{ query, tag? }` → 本機 embedding 語意搜尋 → `{ ok, results: [{id, score}], model, error, embedded, total, top_score }`。`ok:false` = Ollama 連不上／模型沒下載，前端退回關鍵字搜尋 |
+| GET | `/api/ai/semantic-status` | `{ ok, model, installed, error }` — 語意搜尋可用性（給「🌱 語意」開關判斷要不要提示 `ollama pull`） |
+
+語意搜尋要先在那台 Ollama `ollama pull bge-m3`（預設，多語言／中文好，約 1.2GB；
+純英文可用 `nomic-embed-text`）。模型名稱存在「全域設定」的 `.notes_settings.json`
+（`embedModel`），位址沿用 `.ai_settings.json` 的 `ollama.base_url`。向量算好會
+快取在 `indexes/.sticky_notes_embeddings.json`。
 
 AI 設定檔（`indexes/.ai_settings.json`）、用量計數（`indexes/.ai_usage.json`）、
 API Key（`%LOCALAPPDATA%\file_search\ai_secrets.json`）都跟桌面版是同一份。

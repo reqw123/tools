@@ -5,8 +5,8 @@
 設計取捨：
 - **只靠 Ollama 的 `/api/embed`**，不經過 `AIProvider` 介面（那是生成式回應
   用的）。位址沿用 `.ai_settings.json` 的 `ollama.base_url`，跟一般 AI 搜尋
-  同一台；模型另外指定（`nomic-embed-text` 之類的純 embedding 模型，跟聊天
-  模型不同），由呼叫端傳入（notes-web 存在 `.notes_settings.json`）。
+  同一台；模型另外指定（純 embedding 模型，跟聊天模型不同；預設 bge-m3，
+  中文效果好），由呼叫端傳入（notes-web 存在 `.notes_settings.json`）。
 - **向量快取**：`indexes/.sticky_notes_embeddings.json`，每則便利貼記
   `{hash, vec}`——`hash` 是「標題＋標籤＋內文」的 md5，內容沒變就不重算。
   換模型或換位址（維度／語意空間都不同）會整份作廢重算。

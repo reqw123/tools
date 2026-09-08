@@ -172,7 +172,7 @@ export interface AppSettings {
     masonry: boolean
   }
   /** 「語意搜尋」用的本機 Ollama embedding 模型名稱（位址沿用 AI 設定的
-   *  ollama.base_url）。空字串＝用預設 nomic-embed-text。 */
+   *  ollama.base_url）。空字串＝用預設 bge-m3。 */
   embedModel: string
 }
 
