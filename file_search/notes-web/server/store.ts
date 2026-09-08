@@ -969,12 +969,15 @@ export interface AppSettings {
   thesisSeedPerFileChars: number
   /** 「從專案生成」全部檔案合起來最多讀多少字。 */
   thesisSeedTotalChars: number
+  /** 「從專案生成」最多挑幾個檔案（依評分排序取前 N）。 */
+  thesisSeedMaxFiles: number
 }
 
 const DEFAULT_THESIS_PROJECT_DIR = 'C:\\ai_project'
-// = ai_bridge.py 的 _THESIS_SEED_PER_FILE / _THESIS_SEED_TOTAL
+// = ai_bridge.py 的 _THESIS_SEED_PER_FILE / _THESIS_SEED_TOTAL / _THESIS_SEED_MAX_FILES
 const DEFAULT_THESIS_SEED_PER_FILE = 9000
 const DEFAULT_THESIS_SEED_TOTAL = 30000
+const DEFAULT_THESIS_SEED_MAX_FILES = 8
 const DEFAULT_NOTE_COLOR = '#e5e7eb' // = notes-web lib/color.ts NEUTRAL / 桌面版 STICKY_NEUTRAL_COLOR
 const DEFAULT_MIN_COL_WIDTH = 240
 // = 桌面版 config.py STICKY_EMBED_MODEL_DEFAULT（多語言、中文效果好）
@@ -1042,6 +1045,11 @@ function coerceAppSettings(data: unknown): AppSettings {
       coerceNonNegInt(o.thesisSeedTotalChars, DEFAULT_THESIS_SEED_TOTAL, 300000)
         || DEFAULT_THESIS_SEED_TOTAL,
     ),
+    thesisSeedMaxFiles: Math.max(
+      1,
+      coerceNonNegInt(o.thesisSeedMaxFiles, DEFAULT_THESIS_SEED_MAX_FILES, 40)
+        || DEFAULT_THESIS_SEED_MAX_FILES,
+    ),
   }
 }
 
@@ -1064,6 +1072,7 @@ export interface AppSettingsPatch {
   thesisProjectDir?: string
   thesisSeedPerFileChars?: number
   thesisSeedTotalChars?: number
+  thesisSeedMaxFiles?: number
 }
 
 /** 只覆寫 patch 帶到的欄位，其餘沿用目前值；驗證/夾範圍後原子寫回，
@@ -1102,6 +1111,8 @@ export function patchAppSettings(patch: AppSettingsPatch | null | undefined): Ap
       p.thesisSeedPerFileChars !== undefined ? p.thesisSeedPerFileChars : cur.thesisSeedPerFileChars,
     thesisSeedTotalChars:
       p.thesisSeedTotalChars !== undefined ? p.thesisSeedTotalChars : cur.thesisSeedTotalChars,
+    thesisSeedMaxFiles:
+      p.thesisSeedMaxFiles !== undefined ? p.thesisSeedMaxFiles : cur.thesisSeedMaxFiles,
   })
   atomicWriteFile(SETTINGS_FILE, JSON.stringify({ ...rawObj, ...clean }, null, 1))
   return clean

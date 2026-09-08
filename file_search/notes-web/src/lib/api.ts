@@ -211,9 +211,10 @@ export interface AppSettings {
   trashMaxCount: number
   /** 「研究生模式」的論文專案資料夾。 */
   thesisProjectDir: string
-  /** 「從專案生成」每個檔案／全部檔案最多讀多少字餵給 AI。 */
+  /** 「從專案生成」每個檔案／全部檔案最多讀多少字餵給 AI，以及最多挑幾個檔案。 */
   thesisSeedPerFileChars: number
   thesisSeedTotalChars: number
+  thesisSeedMaxFiles: number
 }
 
 /** PATCH /api/settings 的部分更新（dueSoonHours 走 /reminder-settings 舊路由）。 */
@@ -227,6 +228,7 @@ export type AppSettingsPatch = {
   thesisProjectDir?: string
   thesisSeedPerFileChars?: number
   thesisSeedTotalChars?: number
+  thesisSeedMaxFiles?: number
 }
 
 /** 標籤→自訂顏色（hex）。沒自訂過的標籤不會出現在這裡，colorForTag() 拿不

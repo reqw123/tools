@@ -286,7 +286,7 @@ def cmd_semantic_status(payload, notes_file):
 # ── 研究生模式：從專案文件生成一批任務便利貼 ──────────────────────────
 _THESIS_SEED_PER_FILE = 9000       # 每個檔案最多餵這麼多字
 _THESIS_SEED_TOTAL = 30000         # 全部合起來的上限
-_THESIS_SEED_MAX_FILES = 8         # 最多挑幾個檔案
+_THESIS_SEED_MAX_FILES = 8         # 最多挑幾個檔案（預設；使用者可在全域設定調 1–40）
 _THESIS_SEED_SCAN_CAP = 400        # 掃描時最多看幾個候選檔（避免超大專案卡住）
 _SEED_EXTS = (".md", ".txt", ".docx", ".rst")
 # 檔名／路徑帶這些字的優先（進度、大綱、架構、說明類文件對「產任務」最有料）
@@ -351,15 +351,21 @@ def _extract_text(name: str, data: bytes) -> str:
     return data.decode("utf-8", errors="ignore")
 
 
-def _collect_seed_docs(source: str, per_file: int = _THESIS_SEED_PER_FILE, total: int = _THESIS_SEED_TOTAL):
-    """source 是一個資料夾或一個 .zip。挑出最多 _THESIS_SEED_MAX_FILES 個
-    文件類檔案（依 _seed_score 排序），組成餵給 AI 的文字。`per_file`／`total`
-    是每檔／全部的字數上限（使用者可在 notes-web「全域設定 → 研究生」調）。
-    回傳 `(text, used_files)`；找不到任何可讀文件回 ("", [])。"""
+def _collect_seed_docs(
+    source: str,
+    per_file: int = _THESIS_SEED_PER_FILE,
+    total: int = _THESIS_SEED_TOTAL,
+    max_files: int = _THESIS_SEED_MAX_FILES,
+):
+    """source 是一個資料夾或一個 .zip。挑出最多 `max_files` 個文件類檔案
+    （依 _seed_score 排序），組成餵給 AI 的文字。`per_file`／`total`／`max_files`
+    是每檔／全部的字數上限與檔案數上限（使用者可在 notes-web「全域設定 →
+    研究生」調）。回傳 `(text, used_files)`；找不到任何可讀文件回 ("", [])。"""
     import zipfile
 
     per_file = max(1000, int(per_file or _THESIS_SEED_PER_FILE))
     total = max(2000, int(total or _THESIS_SEED_TOTAL))
+    max_files = max(1, min(40, int(max_files or _THESIS_SEED_MAX_FILES)))
 
     src = Path(source)
     candidates = []  # (score, size, label, getter)
@@ -405,11 +411,11 @@ def _collect_seed_docs(source: str, per_file: int = _THESIS_SEED_PER_FILE, total
 
     # 分數高→低，同分小檔優先；docx 至少留一個（論文草稿）
     candidates.sort(key=lambda c: (-c[0], c[1]))
-    picked = candidates[:_THESIS_SEED_MAX_FILES]
+    picked = candidates[:max_files]
     if not any(lbl.lower().endswith(".docx") for _s, _z, lbl, _g in picked):
         docx = next((c for c in candidates if c[2].lower().endswith(".docx")), None)
         if docx:
-            picked = picked[:_THESIS_SEED_MAX_FILES - 1] + [docx]
+            picked = picked[: max(0, max_files - 1)] + [docx]
 
     parts, used = [], []
     for _score, _size, label, getter in picked:
@@ -560,6 +566,7 @@ def cmd_thesis_seed(payload, _notes_file):
         source,
         per_file=(payload or {}).get("perFileChars") or _THESIS_SEED_PER_FILE,
         total=(payload or {}).get("totalChars") or _THESIS_SEED_TOTAL,
+        max_files=(payload or {}).get("maxFiles") or _THESIS_SEED_MAX_FILES,
     )
     if len(docs) < 200:
         return {"drafts": [], "used_files": used_files,

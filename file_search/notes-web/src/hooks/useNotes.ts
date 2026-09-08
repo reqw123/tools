@@ -249,6 +249,9 @@ export function mergeAppSettings(old: AppSettings | undefined, patch: AppSetting
     ...(patch.thesisSeedTotalChars !== undefined
       ? { thesisSeedTotalChars: patch.thesisSeedTotalChars }
       : {}),
+    ...(patch.thesisSeedMaxFiles !== undefined
+      ? { thesisSeedMaxFiles: patch.thesisSeedMaxFiles }
+      : {}),
   }
 }
 

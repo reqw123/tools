@@ -93,6 +93,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       thesisProjectDir?: string
       thesisSeedPerFileChars?: number
       thesisSeedTotalChars?: number
+      thesisSeedMaxFiles?: number
     }
   }>(
     '/settings',
@@ -119,6 +120,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
             thesisProjectDir: { type: 'string', maxLength: 500 },
             thesisSeedPerFileChars: { type: 'number', minimum: 1000, maximum: 60000 },
             thesisSeedTotalChars: { type: 'number', minimum: 2000, maximum: 300000 },
+            thesisSeedMaxFiles: { type: 'number', minimum: 1, maximum: 40 },
             wall: {
               type: 'object',
               additionalProperties: false,

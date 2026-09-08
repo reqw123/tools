@@ -136,7 +136,12 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
         call_count: number
       }>(
         'thesis-seed',
-        { source, perFileChars: s.thesisSeedPerFileChars, totalChars: s.thesisSeedTotalChars },
+        {
+          source,
+          perFileChars: s.thesisSeedPerFileChars,
+          totalChars: s.thesisSeedTotalChars,
+          maxFiles: s.thesisSeedMaxFiles,
+        },
         ['--notes-file', activeNotesFile()],
         { signal: ctrl.signal },
       )

@@ -4,6 +4,7 @@ import { useAppSettings, usePatchAppSettings } from '../hooks/useNotes'
 const DEFAULT_DIR = 'C:\\ai_project'
 const DEFAULT_PER_FILE = 9000
 const DEFAULT_TOTAL = 30000
+const DEFAULT_MAX_FILES = 8
 
 /**
  * 「全域設定 → 研究生」——研究生模式（切到論文專案專用便利貼）的設定：
@@ -15,19 +16,21 @@ export function ThesisSettings() {
   const [dirDraft, setDirDraft] = useState<string | null>(null)
   const [perDraft, setPerDraft] = useState<string | null>(null)
   const [totDraft, setTotDraft] = useState<string | null>(null)
+  const [filesDraft, setFilesDraft] = useState<string | null>(null)
 
   if (!settings) return <p className="dim mono">載入中…</p>
 
   const dir = settings.thesisProjectDir
   const per = settings.thesisSeedPerFileChars
   const tot = settings.thesisSeedTotalChars
+  const maxFiles = settings.thesisSeedMaxFiles
 
   const commitNum = (
     draft: string | null,
     cur: number,
     lo: number,
     hi: number,
-    key: 'thesisSeedPerFileChars' | 'thesisSeedTotalChars',
+    key: 'thesisSeedPerFileChars' | 'thesisSeedTotalChars' | 'thesisSeedMaxFiles',
     reset: () => void,
   ) => {
     reset()
@@ -87,7 +90,7 @@ export function ThesisSettings() {
       <label>
         「從專案生成」全部檔案合計最多讀
         <span className="hint">
-          所有挑到的檔案（最多 8 個）內容加起來的上限。預設 {DEFAULT_TOTAL.toLocaleString()}。
+          所有挑到的檔案內容加起來的上限。預設 {DEFAULT_TOTAL.toLocaleString()}。
         </span>
         <input
           type="number"
@@ -102,20 +105,41 @@ export function ThesisSettings() {
         />
       </label>
 
-      {(per !== DEFAULT_PER_FILE || tot !== DEFAULT_TOTAL) && (
+      <label>
+        「從專案生成」最多挑幾個檔案
+        <span className="hint">
+          依「像不像文件」的評分排序取前 N 個（1–40）。專案文件多、又用大模型
+          （GPT-4o、qwen2.5 128k）時可以調高。預設 {DEFAULT_MAX_FILES}。
+        </span>
+        <input
+          type="number"
+          min={1}
+          max={40}
+          step={1}
+          value={filesDraft ?? String(maxFiles)}
+          onChange={(e) => setFilesDraft(e.target.value)}
+          onBlur={() =>
+            commitNum(filesDraft, maxFiles, 1, 40, 'thesisSeedMaxFiles', () => setFilesDraft(null))
+          }
+        />
+      </label>
+
+      {(per !== DEFAULT_PER_FILE || tot !== DEFAULT_TOTAL || maxFiles !== DEFAULT_MAX_FILES) && (
         <button
           type="button"
           className="btn sm ghost"
           onClick={() => {
             setPerDraft(null)
             setTotDraft(null)
+            setFilesDraft(null)
             patch.mutate({
               thesisSeedPerFileChars: DEFAULT_PER_FILE,
               thesisSeedTotalChars: DEFAULT_TOTAL,
+              thesisSeedMaxFiles: DEFAULT_MAX_FILES,
             })
           }}
         >
-          字數上限恢復預設
+          從專案生成的上限恢復預設
         </button>
       )}
 

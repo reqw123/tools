@@ -114,3 +114,19 @@ def test_collect_seed_docs_honours_char_limits(tmp_path):
     # 下限保護：塞太小的值不會爆
     tiny, _ = ai_bridge._collect_seed_docs(str(tmp_path), per_file=1, total=1)
     assert len(tiny) <= 2000
+
+
+def test_collect_seed_docs_max_files(tmp_path):
+    (tmp_path / "docs").mkdir()
+    for i in range(12):
+        (tmp_path / "docs" / f"0_doc{i:02d}.md").write_text("研究內容說明。" * 100, encoding="utf-8")
+
+    _, used3 = ai_bridge._collect_seed_docs(str(tmp_path), per_file=9000, total=300000, max_files=3)
+    _, used10 = ai_bridge._collect_seed_docs(str(tmp_path), per_file=9000, total=300000, max_files=10)
+    assert len(used3) == 3
+    assert len(used10) == 10
+    # 夾範圍：塞 0 或超大都不會爆
+    _, used0 = ai_bridge._collect_seed_docs(str(tmp_path), max_files=0)
+    _, usedbig = ai_bridge._collect_seed_docs(str(tmp_path), max_files=999)
+    assert 1 <= len(used0) <= 8
+    assert len(usedbig) <= 12
