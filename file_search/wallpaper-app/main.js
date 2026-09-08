@@ -257,24 +257,58 @@ function revealWallForAlarm() {
   refreshTray();
 }
 
+// toastXml 裡的文字要跳脫——標題/內容含 < & " 之類會讓整段 XML 壞掉、通知
+// 直接不出現。
+function xmlEsc(s) {
+  return String(s).replace(/[<>&"']/g, (c) =>
+    ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
+}
+
+// 「循環鬧鈴」用完整的 toast XML——Windows 內建的 Notification.Looping.Alarm，
+// loop="true" 一定要配 duration="long" 才會循環；scenario="alarm" 讓通知卡在
+// 畫面上、聲音一直響到使用者按掉（免安裝／dev 版沒有開始功能表捷徑，會降級
+// 成 duration="long" 的行為——約 25 秒）。<action activationType="system"> 讓
+// Windows 自己補一顆「關閉」鈕（content="" = 用系統語言字串）。
+function alarmToastXml(title, body) {
+  return (
+    '<toast duration="long" scenario="alarm">' +
+    '<visual><binding template="ToastGeneric">' +
+    `<text>${xmlEsc(title)}</text><text>${xmlEsc(body)}</text>` +
+    '</binding></visual>' +
+    '<audio src="ms-winsoundevent:Notification.Looping.Alarm" loop="true"/>' +
+    '<actions><action activationType="system" arguments="dismiss" content=""/></actions>' +
+    '</toast>'
+  );
+}
+
+// 依 settings.alarmSound（'chime' 短提示音 / 'loop' 循環鬧鈴 / 'silent' 靜音）
+// 建一則到期通知。toastXml 一給，title/body/silent 就全部由 XML 接管。
+function makeAlarmToast(title, body) {
+  const soundMode = store.read().alarmSound;
+  if (soundMode === 'loop') {
+    return new Notification({ toastXml: alarmToastXml(title, body) });
+  }
+  return new Notification({ title, body, silent: soundMode === 'silent' });
+}
+
 function fireAlarmToasts(notes) {
   if (!notes.length || !Notification.isSupported()) return;
   const openNote = () => revealWallForAlarm();
   if (notes.length <= ALARM_MAX_TOAST) {
     for (const n of notes) {
-      const toast = new Notification({
-        title: n.collection === 'thesis' ? '⏰ 研究生便利貼到期' : '⏰ 便利貼到期',
-        body: n.title + (n.tag ? `　#${n.tag}` : ''),
-      });
+      const toast = makeAlarmToast(
+        n.collection === 'thesis' ? '⏰ 研究生便利貼到期' : '⏰ 便利貼到期',
+        n.title + (n.tag ? `　#${n.tag}` : ''),
+      );
       toast.on('click', openNote);
       toast.show();
     }
   } else {
     const names = notes.slice(0, 5).map((n) => n.title).join('、');
-    const toast = new Notification({
-      title: `⏰ ${notes.length} 則便利貼到期`,
-      body: names + (notes.length > 5 ? ' …' : ''),
-    });
+    const toast = makeAlarmToast(
+      `⏰ ${notes.length} 則便利貼到期`,
+      names + (notes.length > 5 ? ' …' : ''),
+    );
     toast.on('click', openNote);
     toast.show();
   }
@@ -520,6 +554,15 @@ ipcMain.handle('dw-set-display', (_e, id) => {
   positionQuitButton(); // 換螢幕之後兩個都要重新搶回最上層，不然要等下次按
   raiseSettings(); // 快捷鍵才會補救回來。
   raiseQuitButton();
+  return settingsState();
+});
+ipcMain.handle('dw-set-alarm-sound', (_e, v) => {
+  store.write({ alarmSound: v }); // store.sanitize 只認 chime/loop/silent，其餘忽略
+  return settingsState();
+});
+// 「試聽」——用目前選的音效模式跳一則假的到期通知。
+ipcMain.handle('dw-test-alarm', () => {
+  fireAlarmToasts([{ id: '__test__', title: '測試鬧鈴', tag: '', collection: 'life', due_at: '' }]);
   return settingsState();
 });
 ipcMain.on('dw-open-userdata', () => shell.openPath(path.dirname(store.settingsPath())));

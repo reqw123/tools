@@ -179,6 +179,22 @@
   </div>
 
   <div class="card">
+    <h2>到期鬧鐘音效</h2>
+    <div class="row">
+      <label class="seg" id="alarmSound">
+        <button data-v="chime">短提示音</button>
+        <button data-v="loop">循環鬧鈴</button>
+        <button data-v="silent">靜音</button>
+      </label>
+      <button class="btn" id="testAlarm">🔔 試聽</button>
+    </div>
+    <div class="muted">
+      「循環鬧鈴」用 Windows 內建鬧鐘音，會響到你按掉為止（免安裝版約 25 秒）。
+      到期通知本身要不要跳，在 notes-web 的「⏰ 提醒設定 → 桌面牆 → 系統通知」。
+    </div>
+  </div>
+
+  <div class="card">
     <h2>快捷鍵</h2>
     <div id="shortcuts"></div>
     <div class="row" style="margin-top:10px">
@@ -345,6 +361,7 @@
     paintSeg('wall', settings.wall);
     paintSeg('mode', mode);
     paintSeg('startMode', settings.startMode);
+    paintSeg('alarmSound', settings.alarmSound);
     $('#opacity').value = settings.wallOpacity;
     paintOpacity(settings.wallOpacity);
     $('#autostart').checked = settings.autostart;
@@ -363,6 +380,9 @@
     b.addEventListener('click', () => window.dw.setMode(b.dataset.v).then(render)));
   document.querySelectorAll('#startMode button').forEach((b) =>
     b.addEventListener('click', () => window.dw.setStartMode(b.dataset.v).then(render)));
+  document.querySelectorAll('#alarmSound button').forEach((b) =>
+    b.addEventListener('click', () => window.dw.setAlarmSound(b.dataset.v).then(render)));
+  $('#testAlarm').addEventListener('click', () => window.dw.testAlarm());
 
   // 拉桿：更新數值文字 + 讓軌道左側「已填」顏色跟著把手走（--fill）。
   function paintOpacity(v) {

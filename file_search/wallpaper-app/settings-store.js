@@ -22,6 +22,10 @@ const DEFAULTS = Object.freeze({
   wall: 'sticky', // 'sticky' | 'index'——目前貼哪一面牆
   startMode: 'background', // 'background'（穿透）| 'interactive'——每次啟動的初始模式
   wallOpacity: 0.00, // 0~1，牆面/底色的不透明度，0 = 只剩卡片
+  // 到期鬧鐘的通知音效——'chime' 短提示音（Windows 預設）｜'loop' 循環鬧鈴
+  // （Notification.Looping.Alarm，響到按掉為止）｜'silent' 只跳卡片不出聲。
+  // 到期通知本身要不要發，是 notes-web「⏰ 提醒設定」的 wallpaperToast 開關管的。
+  alarmSound: 'chime',
   autostart: false, // 開機自動啟動
   displayId: null, // 指定顯示在哪個螢幕（Electron display.id）；null = 主螢幕
   shortcuts: { ...DEFAULT_SHORTCUTS },
@@ -78,6 +82,9 @@ function sanitize(o) {
   if (o.startMode === 'background' || o.startMode === 'interactive') out.startMode = o.startMode;
   if (typeof o.wallOpacity === 'number' && o.wallOpacity >= 0 && o.wallOpacity <= 1) {
     out.wallOpacity = Math.round(o.wallOpacity * 100) / 100;
+  }
+  if (o.alarmSound === 'chime' || o.alarmSound === 'loop' || o.alarmSound === 'silent') {
+    out.alarmSound = o.alarmSound;
   }
   if (typeof o.autostart === 'boolean') out.autostart = o.autostart;
   if (o.displayId === null || Number.isInteger(o.displayId)) out.displayId = o.displayId;

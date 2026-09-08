@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('dw', {
   setWall: (w) => ipcRenderer.invoke('dw-set-wall', w),
   setMode: (m) => ipcRenderer.invoke('dw-set-mode', m),
   setOpacity: (v) => ipcRenderer.invoke('dw-set-opacity', v),
+  setAlarmSound: (v) => ipcRenderer.invoke('dw-set-alarm-sound', v),
+  testAlarm: () => ipcRenderer.invoke('dw-test-alarm'),
   setStartMode: (m) => ipcRenderer.invoke('dw-set-start-mode', m),
   setAutostart: (on) => ipcRenderer.invoke('dw-set-autostart', on),
   setDisplay: (id) => ipcRenderer.invoke('dw-set-display', id),
