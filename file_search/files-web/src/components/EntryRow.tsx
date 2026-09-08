@@ -105,8 +105,14 @@ export function EntryRow({
           {entry.name}
         </span>
         {entry.parent && <span className="parent mono">{entry.parent}</span>}
-        {entry.description && <span className="desc">{entry.description}</span>}
-        <span className="grow" />
+        {/* 有說明時就靠 .desc 自己撐開（它會吃掉檔名到晶片之間的所有空間，
+            容器夠寬就少截幾個字）；沒說明才用一個空的 .grow 把右邊那組
+            （晶片／容量）推到最右。 */}
+        {entry.description ? (
+          <span className="desc">{entry.description}</span>
+        ) : (
+          <span className="grow" />
+        )}
         {missing && <span className="badge miss">檔案已不存在</span>}
         {/* 分類晶片放整列右邊固定一欄——不夾在檔名後面，檔名長短不一就不會
             讓每列的晶片參差不齊。容量固定寬度、永遠在最右（就算沒分類、
