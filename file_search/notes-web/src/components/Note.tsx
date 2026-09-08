@@ -79,16 +79,18 @@ export function Note({
         const r = el.getBoundingClientRect()
         onDragOut(note, r)
       }
-      // 還原成正常排版位置——不管有沒有彈出去都清掉暫時的內聯樣式；真的
-      // 彈出去的那則之後會被父層從清單濾掉，這裡的還原只是保險。
+      // 收回牆上：先清掉拖曳時的 inline 樣式 → 立刻（同步）叫牆重排把位置補
+      // 回去 → 最後才移除 .dragging-out（它壓著 transition:none）。這三步之間
+      // 不讓瀏覽器 paint，卡片就不會先閃到 .wall 左上角、也不會開著 0.3s 過場
+      // 從那邊滑回來（＝之前回報的「拖一下閃到邊界再回來」）。真的彈出去的那
+      // 則之後會被父層從清單濾掉，這裡的還原只是保險。
       el.style.position = ''
       el.style.zIndex = ''
       el.style.left = ''
       el.style.top = ''
       el.style.width = ''
-      el.classList.remove('dragging-out', 'will-pop')
-      // 留在牆上的那則剛被清掉 left/top/width，通知牆用列 masonry 重新定位它。
       onGeometryChange?.()
+      el.classList.remove('dragging-out', 'will-pop')
     }
 
     const onMove = (e: MouseEvent) => {

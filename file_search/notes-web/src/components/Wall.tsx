@@ -145,6 +145,14 @@ export function Wall({
     rafRef.current = requestAnimationFrame(layout)
   }, [layout])
 
+  // 拖曳結束把卡片收回牆上時要「同步」重排——不能等 rAF，不然清掉 inline
+  // 定位到重新定位之間會空一幀，卡片閃到 .wall 左上角再滑回來（見 Note.tsx
+  // finish() 的註解）。
+  const relayoutNow = useCallback(() => {
+    cancelAnimationFrame(rafRef.current)
+    layout()
+  }, [layout])
+
   // 資料變動（新增／刪除／釘選重排／勾選改高度…）→ 立刻重排。useLayoutEffect
   // 讓定位在瀏覽器 paint 前完成，不閃。
   useLayoutEffect(() => {
@@ -190,7 +198,7 @@ export function Wall({
               onOpen={onOpen}
               floatable={floatable}
               onDragOut={onDragOut}
-              onGeometryChange={schedule}
+              onGeometryChange={relayoutNow}
             />
           ))}
         </div>
@@ -203,7 +211,7 @@ export function Wall({
           onOpen={onOpen}
           floatable={floatable}
           onDragOut={onDragOut}
-          onGeometryChange={schedule}
+          onGeometryChange={relayoutNow}
         />
       ))}
     </main>
