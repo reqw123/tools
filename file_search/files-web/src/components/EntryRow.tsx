@@ -108,16 +108,17 @@ export function EntryRow({
         {entry.description && <span className="desc">{entry.description}</span>}
         <span className="grow" />
         {missing && <span className="badge miss">檔案已不存在</span>}
-        {stat?.exists && stat.size !== undefined && (
-          <span className="size mono">{humanSize(stat.size)}</span>
-        )}
-        {/* 分類晶片放最右邊（size/badge 左邊、釘選鈕右邊）——不夾在檔名後面，
-            檔名長短不一就不會讓每列的晶片參差不齊，右緣對齊好掃視。 */}
+        {/* 分類晶片放整列右邊固定一欄——不夾在檔名後面，檔名長短不一就不會
+            讓每列的晶片參差不齊。容量固定寬度、永遠在最右（就算沒分類、
+            沒容量也佔位），這樣「容量」跟「分類」各自成一欄、右緣都對齊。 */}
         {entry.category && (
           <span className="chip" style={chipStyle}>
             {entry.category}
           </span>
         )}
+        <span className="size mono" aria-hidden={!(stat?.exists && stat.size !== undefined)}>
+          {stat?.exists && stat.size !== undefined ? humanSize(stat.size) : ''}
+        </span>
       </button>
 
       {/* 不能塞進上面的 <button className="row-head">——巢狀 <button> 是無效

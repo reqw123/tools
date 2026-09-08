@@ -634,7 +634,14 @@ code {
   color: var(--alert);
   white-space: nowrap;
 }
-.size { flex: none; font-size: 0.74rem; font-weight: 500; color: var(--ink-soft); }
+.size {
+  flex: none;
+  width: 4rem;            /* 固定寬 + 靠右：容量成一欄、右緣對齊，空的也佔位 */
+  text-align: right;
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
 
 /* 「拖出去變懸浮視窗」——wallpaper-app 專屬，網頁版沒有 window.desktopWall
    時 App.tsx 根本不會傳 onPin，這顆按鈕就不會出現。 */
