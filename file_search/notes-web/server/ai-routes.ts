@@ -94,6 +94,7 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
         error: string | null
         embedded: number
         total: number
+        top_score: number
       }>(
         'semantic-search',
         { query: req.body.query, tag: req.body.tag ?? '', model: getAppSettings().embedModel },

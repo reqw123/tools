@@ -10,7 +10,7 @@ import { useOllamaModels } from '../hooks/useAi'
 import type { AppSettings } from '../lib/api'
 
 const DEFAULT_NOTE_COLOR = '#e5e7eb'
-const DEFAULT_EMBED_MODEL = 'nomic-embed-text'
+const DEFAULT_EMBED_MODEL = 'bge-m3'
 const MIN = 160
 const MAX = 520
 
@@ -123,8 +123,9 @@ export function AppearanceSettings() {
         <span className="hint">
           搜尋列的「🌱 語意」開關用這個本機 Ollama 模型算相似度（要純 embedding
           模型，不是聊天模型）。位址沿用「AI 請求」分頁的 Ollama 設定。留空＝
-          預設 <code>{DEFAULT_EMBED_MODEL}</code>；那台電腦要先
-          <code>ollama pull {modelDraft?.trim() || embedModel || DEFAULT_EMBED_MODEL}</code>。
+          預設 <code>{DEFAULT_EMBED_MODEL}</code>（多語言、中文效果好，約 1.2GB）；
+          純英文環境想省空間可換 <code>nomic-embed-text</code>（約 274MB，中文較弱）。
+          那台電腦要先 <code>ollama pull {modelDraft?.trim() || embedModel || DEFAULT_EMBED_MODEL}</code>。
         </span>
         <span className="swatch-controls">
           <input

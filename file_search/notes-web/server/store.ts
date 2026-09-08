@@ -846,8 +846,8 @@ export interface AppSettings {
 
 const DEFAULT_NOTE_COLOR = '#e5e7eb' // = notes-web lib/color.ts NEUTRAL / 桌面版 STICKY_NEUTRAL_COLOR
 const DEFAULT_MIN_COL_WIDTH = 240
-// = 桌面版 config.py STICKY_EMBED_MODEL_DEFAULT
-const DEFAULT_EMBED_MODEL = 'nomic-embed-text'
+// = 桌面版 config.py STICKY_EMBED_MODEL_DEFAULT（多語言、中文效果好）
+const DEFAULT_EMBED_MODEL = 'bge-m3'
 
 function coerceAppSettings(data: unknown): AppSettings {
   const o = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>

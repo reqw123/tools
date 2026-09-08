@@ -28,19 +28,46 @@ from file_search_app.ai.ollama_provider import (
     DEFAULT_BASE_URL, embed_texts, list_models, model_in_list,
 )
 from file_search_app.config import (
-    STICKY_EMBED_MODEL_DEFAULT, STICKY_SEMANTIC_MIN_SCORE,
+    STICKY_EMBED_MODEL_DEFAULT, STICKY_SEMANTIC_MAX_RESULTS, STICKY_SEMANTIC_MIN_SCORE,
+    STICKY_SEMANTIC_RELATIVE_BAND, STICKY_SEMANTIC_RELATIVE_RATIO,
 )
 from file_search_app.repositories.ai_settings_repository import AISettingsRepository
 from file_search_app.repositories.json_store import read_json, write_json
 
 _EMBED_BATCH = 64  # 一次送多少則便利貼給 /api/embed；太多會讓單一請求逾時
 _MAX_TEXT_CHARS = 2000  # 每則便利貼餵給 embedding 的字數上限（便利貼本來就短）
+# 快取版本——餵給 embedding 的文字格式／前綴邏輯一改，舊向量就不能再用，
+# 靠這個數字強制整份重算（換模型／位址本來就會重算，這個管的是「同一個
+# 模型但程式改過」的情形）。
+_EMBED_CACHE_SCHEME = 2
+
+
+def _task_prefixes(model: str):
+    """(查詢前綴, 文件前綴)——有些非對稱檢索模型要求查詢句和被檢索文件各自
+    加不同前綴才準（E5 系列、mxbai）。認不出來的模型一律不加，直接餵原文
+    （bge-m3、多數模型都吃原文；nomic 雖然官方建議加 search_query/
+    search_document，但實測對中文反而更差，所以這裡不加）。"""
+    m = (model or "").lower()
+    if "e5" in m:  # multilingual-e5, e5-large, e5-base…
+        return "query: ", "passage: "
+    if "mxbai-embed" in m:
+        return "Represent this sentence for searching relevant passages: ", ""
+    return "", ""
 
 
 def _note_text(note) -> str:
-    """一則便利貼轉成給 embedding 的純文字：標題、標籤、內文串起來。"""
-    parts = [note.title or "", note.tag or "", note.body or ""]
-    return "\n".join(p for p in parts if p).strip()[:_MAX_TEXT_CHARS]
+    """一則便利貼轉成給 embedding 的純文字。
+
+    刻意把『分類』寫成一句自然語言放最前面（「這則便利貼的分類是「飲料」。」）
+    ——實測差很多：便利貼內文通常很短又是專有名詞（「珍珠奶茶」），單靠內文
+    embedding 跟「我口渴了」這種情境式查詢對不太起來；但把分類講白之後，
+    同分類的便利貼就會一起浮上來（查「我口渴了」→ 飲料類的三則都進前三）。
+    分類本來就是使用者自己下的最強語意標籤，讓它在向量裡份量重一點是對的。
+    """
+    body = (note.body or "").strip()
+    lead = f"這則便利貼的分類是「{note.tag}」。" if note.tag else ""
+    title = f"標題：{note.title}。" if note.title else ""
+    return f"{lead}{title}內容：{body}"[:_MAX_TEXT_CHARS]
 
 
 def _hash(text: str) -> str:
@@ -85,9 +112,9 @@ class NoteSemanticService:
     def _resolve_model(self, model: str) -> str:
         return (model or "").strip() or STICKY_EMBED_MODEL_DEFAULT
 
-    def _embed(self, base_url: str, model: str, texts):
+    def _embed(self, base_url: str, model: str, texts, prefix: str = ""):
         fn = self._embed_fn or embed_texts
-        return fn(base_url, model, texts)
+        return fn(base_url, model, [f"{prefix}{t}" for t in texts] if prefix else list(texts))
 
     # ── 快取 ─────────────────────────────────────────────────────────
     def _load_cache(self, base_url: str, model: str) -> dict:
@@ -96,14 +123,18 @@ class NoteSemanticService:
             isinstance(data, dict)
             and data.get("model") == model
             and data.get("base_url") == base_url
+            and data.get("scheme") == _EMBED_CACHE_SCHEME
             and isinstance(data.get("vectors"), dict)
         ):
             return data["vectors"]
-        return {}  # 沒有、格式不對、或換了模型／位址 → 整份重算
+        return {}  # 沒有、格式不對、或換了模型／位址／程式版本 → 整份重算
 
     def _save_cache(self, base_url: str, model: str, vectors: dict) -> None:
         try:
-            write_json(self._cache_path, {"model": model, "base_url": base_url, "vectors": vectors})
+            write_json(self._cache_path, {
+                "model": model, "base_url": base_url,
+                "scheme": _EMBED_CACHE_SCHEME, "vectors": vectors,
+            })
         except OSError:
             pass  # 快取寫不進去不影響這次搜尋結果，下次再算一遍就是
 
@@ -136,22 +167,34 @@ class NoteSemanticService:
         min_score: float | None = None,
     ) -> dict:
         """回傳 `{"ok", "results": [{"id", "score"}], "model", "error",
-        "embedded", "total"}`——`results` 已依相似度高到低排序、濾掉低於門檻的。
+        "embedded", "total", "top_score"}`——`results` 依相似度高到低排序。
+
+        篩選不是用固定的絕對門檻（不同模型的分數分布差很多，nomic 之類的
+        「什麼都 0.4 起跳」，固定門檻等於整面牆都回來）。改成：
+        - 絕對地板 `min_score`（預設 STICKY_SEMANTIC_MIN_SCORE）——最高分都
+          沒過就當「沒有真的相關的」，回空清單。
+        - 相對區間：只留跟『最高分』差距在 STICKY_SEMANTIC_RELATIVE_BAND
+          以內的，把長尾的「沾一點邊」切掉。
+        - 上限 `top_k`（預設 STICKY_SEMANTIC_MAX_RESULTS）。
         `embedded` 是這次實際重算了幾則的向量（除錯用）。"""
         query = (query or "").strip()
         model = self._resolve_model(model)
-        threshold = STICKY_SEMANTIC_MIN_SCORE if min_score is None else float(min_score)
+        floor = STICKY_SEMANTIC_MIN_SCORE if min_score is None else float(min_score)
+        limit = int(top_k) if top_k else STICKY_SEMANTIC_MAX_RESULTS
         base_url = self._base_url()
+        empty = {"ok": True, "results": [], "model": model, "error": None,
+                 "embedded": 0, "total": 0, "top_score": 0.0}
 
         if not query:
-            return {"ok": True, "results": [], "model": model, "error": None, "embedded": 0, "total": 0}
+            return empty
 
         notes = self._sticky.list_notes()
         if tag:
             notes = [n for n in notes if n.tag == tag]
         if not notes:
-            return {"ok": True, "results": [], "model": model, "error": None, "embedded": 0, "total": 0}
+            return empty
 
+        q_prefix, d_prefix = _task_prefixes(model)
         cache = self._load_cache(base_url, model)
         texts = {n.id: _note_text(n) for n in notes}
         hashes = {nid: _hash(t) for nid, t in texts.items()}
@@ -161,17 +204,17 @@ class NoteSemanticService:
         try:
             for i in range(0, len(stale), _EMBED_BATCH):
                 chunk = stale[i:i + _EMBED_BATCH]
-                vecs = self._embed(base_url, model, [texts[nid] for nid in chunk])
+                vecs = self._embed(base_url, model, [texts[nid] for nid in chunk], d_prefix)
                 for nid, vec in zip(chunk, vecs):
                     cache[nid] = {"hash": hashes[nid], "vec": vec}
                     embedded += 1
-            (query_vec,) = self._embed(base_url, model, [query])
+            (query_vec,) = self._embed(base_url, model, [query], q_prefix)
         except AIProviderError as exc:
             # 有算到一些就先存起來，下次不用整份重來
             if embedded:
                 self._save_cache(base_url, model, cache)
             return {"ok": False, "results": [], "model": model, "error": str(exc),
-                    "embedded": embedded, "total": len(notes)}
+                    "embedded": embedded, "total": len(notes), "top_score": 0.0}
 
         # 清掉已刪除便利貼留下的向量，快取不會無限長大
         live_ids = set(texts)
@@ -181,14 +224,22 @@ class NoteSemanticService:
         if embedded or dead:
             self._save_cache(base_url, model, cache)
 
-        scored = []
-        for n in notes:
-            vec = cache.get(n.id, {}).get("vec")
-            score = cosine(query_vec, vec) if vec else 0.0
-            if score >= threshold:
-                scored.append({"id": n.id, "score": round(score, 4)})
-        scored.sort(key=lambda r: r["score"], reverse=True)
-        if top_k:
-            scored = scored[:top_k]
-        return {"ok": True, "results": scored, "model": model, "error": None,
-                "embedded": embedded, "total": len(notes)}
+        ranked = sorted(
+            (
+                {"id": n.id, "score": round(cosine(query_vec, cache.get(n.id, {}).get("vec") or []), 4)}
+                for n in notes
+            ),
+            key=lambda r: r["score"], reverse=True,
+        )
+        top = ranked[0]["score"] if ranked else 0.0
+        if top < floor:
+            return {"ok": True, "results": [], "model": model, "error": None,
+                    "embedded": embedded, "total": len(notes), "top_score": top}
+        cutoff = max(
+            floor,
+            top * STICKY_SEMANTIC_RELATIVE_RATIO,
+            top - STICKY_SEMANTIC_RELATIVE_BAND,
+        )
+        results = [r for r in ranked if r["score"] >= cutoff][:limit]
+        return {"ok": True, "results": results, "model": model, "error": None,
+                "embedded": embedded, "total": len(notes), "top_score": top}

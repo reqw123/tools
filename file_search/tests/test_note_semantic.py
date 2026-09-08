@@ -71,7 +71,7 @@ def test_search_empty_query_returns_empty(sticky):
     calls = []
     res = _svc(sticky, calls).search("   ")
     assert res == {"ok": True, "results": [], "model": mod.STICKY_EMBED_MODEL_DEFAULT,
-                   "error": None, "embedded": 0, "total": 0}
+                   "error": None, "embedded": 0, "total": 0, "top_score": 0.0}
     assert calls == []  # 沒送任何東西給 Ollama
 
 
@@ -88,6 +88,36 @@ def test_search_below_threshold_excluded(sticky):
     calls = []
     res = _svc(sticky, calls).search("完全無關的量子力學")
     assert res["results"] == []
+    assert res["top_score"] == 0.0
+
+
+def test_search_relative_cutoff_trims_long_tail(sticky, data_dir):
+    """相對門檻：只留跟『最高分』夠接近的，分數掉太多的長尾切掉——不是固定
+    絕對值（否則 bge-m3 那種「什麼都 0.4 起跳」的模型會整面牆都回來）。"""
+    import math
+
+    # 每則便利貼標題放一個 0–99 的數字；fake embed 讓 cosine 剛好等於 數字/100。
+    wanted = [95, 90, 55, 50, 35, 20]
+    for w in wanted:
+        sticky.add_note(str(w), "", "")
+
+    def graded_embed(_b, _m, texts):
+        out = []
+        for t in texts:
+            if t == "__QUERY__":
+                out.append([1.0, 0.0])
+                continue
+            d = next((n / 100 for n in wanted if f"標題：{n}。" in t), 0.0)
+            out.append([d, math.sqrt(max(0.0, 1 - d * d))])  # 單位向量 → cosine == d
+        return out
+
+    svc = NoteSemanticService(sticky, embed_fn=graded_embed, cache_path=data_dir / ".e.json")
+    res = svc.search("__QUERY__")
+    scores = [r["score"] for r in res["results"]]
+    assert scores == sorted(scores, reverse=True)
+    # top=0.95；ratio 0.90 → 0.855、band 0.10 → 0.85 → cutoff 0.855 → 只留 0.95、0.90
+    assert scores == [0.95, 0.9]
+    assert res["top_score"] == 0.95
 
 
 # ── 快取 ─────────────────────────────────────────────────────────

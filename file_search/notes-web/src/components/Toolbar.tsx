@@ -12,7 +12,7 @@ export type SemanticState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
   | { kind: 'idle'; model: string }
-  | { kind: 'ok'; count: number; model: string }
+  | { kind: 'ok'; count: number; model: string; topScore: number }
 
 export function Toolbar({
   query,
@@ -240,8 +240,12 @@ export function Toolbar({
               : semanticState.kind === 'error'
                 ? `❌ ${semanticState.message}——已暫時退回一般關鍵字搜尋`
                 : semanticState.kind === 'ok'
-                  ? `🌱 依語意相似度排序 · 命中 ${semanticState.count} 則 · 本機 ${semanticState.model}，內容不離開這台電腦`
-                  : `🌱 語意搜尋已開啟（本機 ${semanticState.model || 'Ollama'}）· 在上面輸入想找的意思`}
+                  ? semanticState.count === 0
+                    ? `🌱 沒有語意夠接近的便利貼（最高相似 ${Math.round(semanticState.topScore * 100)}%）· 換個說法或關掉「語意」用關鍵字找`
+                    : `🌱 依語意相似度排序 · 命中 ${semanticState.count} 則 · 最相關 ${Math.round(
+                        semanticState.topScore * 100,
+                      )}% · 本機 ${semanticState.model}，內容不離開這台電腦`
+                  : `🌱 語意搜尋已開啟（本機 ${semanticState.model || 'Ollama'}）· 在上面輸入想找的意思，例如「出國要帶的東西」`}
             {semanticState.kind === 'error' && (
               <button className="link" onClick={() => onOpenSettings('ai')}>
                 設定

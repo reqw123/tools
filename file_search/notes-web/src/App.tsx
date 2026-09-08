@@ -431,7 +431,12 @@ export function App() {
                         `Ollama 沒有 embedding 模型「${semanticStatus.data.model}」`,
                     }
                   : semanticActive && semanticData
-                    ? { kind: 'ok', count: semanticData.results.length, model: semanticData.model }
+                    ? {
+                        kind: 'ok',
+                        count: semanticData.results.length,
+                        model: semanticData.model,
+                        topScore: semanticData.top_score,
+                      }
                     : { kind: 'idle', model: semanticStatus.data?.model ?? '' }
         }
         aiTarget={aiTarget}

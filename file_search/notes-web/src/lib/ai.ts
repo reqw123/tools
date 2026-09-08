@@ -49,6 +49,8 @@ export interface SemanticSearchResult {
   error: string | null
   embedded: number
   total: number
+  /** 最高一筆的 cosine 相似度（0–1）——UI 拿來顯示「命中程度」。 */
+  top_score: number
 }
 
 export interface SemanticStatus {

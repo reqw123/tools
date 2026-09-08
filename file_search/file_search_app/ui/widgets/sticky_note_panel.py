@@ -160,6 +160,7 @@ class StickyNotePanel:
         self._semantic = NoteSemanticService(service)
         self._semantic_var = tk.BooleanVar(value=False)
         self._semantic_scores = None  # {note_id: score}；None＝還沒算/已失效
+        self._semantic_top = 0.0  # 這批最高的相似度（顯示在計數列）
         self._semantic_snapshot = None  # 算這批分數時搜尋框的內容
         self._semantic_error = None  # Ollama 連不上/模型沒下載時的訊息（顯示在計數列）
         self._semantic_seq = 0  # 丟掉比目前新一輪還舊的背景結果
@@ -451,6 +452,7 @@ class StickyNotePanel:
             else:
                 self._semantic_error = None
                 self._semantic_scores = {r["id"]: r["score"] for r in payload["results"]}
+                self._semantic_top = payload.get("top_score", 0.0)
                 self._semantic_snapshot = query
             self._refresh()
             return True
@@ -521,7 +523,11 @@ class StickyNotePanel:
         if ai_mode:
             self._count_var.set(f"🤖 AI 搜尋結果：{len(shown)} 則")
         elif semantic_mode:
-            self._count_var.set(f"🧠 語意相似：{len(shown)} 則（依相近程度排序）")
+            pct = round(self._semantic_top * 100)
+            if shown:
+                self._count_var.set(f"🧠 語意相似：{len(shown)} 則（依相近程度排序，最相關 {pct}%）")
+            else:
+                self._count_var.set(f"🧠 沒有語意夠接近的便利貼（最高相似 {pct}%）——換個說法或關掉「語意」")
         elif semantic_on and self._semantic_error and query_text.strip():
             self._count_var.set(f"🧠 語意搜尋無法使用：{self._semantic_error}　·　已改用關鍵字比對")
         elif query_text.strip() or tag_filter:

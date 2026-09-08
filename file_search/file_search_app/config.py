@@ -86,13 +86,21 @@ STICKY_ICON_BUTTON_SIZE = 34
 STICKY_AI_SEARCH_LARGE_NOTE_COUNT = 30
 
 # 便利貼「語意搜尋」——用本機 Ollama 的 embedding 模型算相似度，讓意思相近
-# 但字面不同的便利貼也搜得到。跟聊天模型是兩回事，要的是純 embedding 模型；
-# nomic-embed-text 是最常見、體積小（約 274MB）的本機選擇。使用者可在
-# notes-web 的「全域設定」改成別的（存進 .notes_settings.json 的 embedModel）。
-STICKY_EMBED_MODEL_DEFAULT = "nomic-embed-text"
-# cosine 相似度低於這個值的便利貼不當成「語意命中」——經驗值，太低會讓每則
-# 都沾一點邊、失去篩選意義。
-STICKY_SEMANTIC_MIN_SCORE = 0.35
+# 但字面不同的便利貼也搜得到。跟聊天模型是兩回事，要的是純 embedding 模型。
+# 預設用 bge-m3（BAAI，約 1.2GB）——多語言、中文效果好；便利貼內容多半是
+# 中文，這比偏英文的 nomic-embed-text 準很多。使用者可在 notes-web 的
+# 「全域設定 → 外觀」改成別的（存進 .notes_settings.json 的 embedModel），
+# 例如純英文環境想省空間就換 nomic-embed-text（約 274MB）。
+STICKY_EMBED_MODEL_DEFAULT = "bge-m3"
+# 篩選門檻——不是固定絕對值（不同模型分數分布差很多，bge-m3／nomic 這類
+# 「什麼都 0.4 起跳」的固定門檻等於整面牆都回來），是三條取最嚴的那條：
+#  · 絕對地板 MIN_SCORE：最高分都沒過就當「沒有真的相關的」，回空清單。
+#  · 相對比例 RELATIVE_RATIO：低於「最高分 × 比例」的切掉（主力，隨分數縮放）。
+#  · 相對區間 RELATIVE_BAND：低於「最高分 − 區間」的切掉（分數全都很高時的保險）。
+STICKY_SEMANTIC_MIN_SCORE = 0.30
+STICKY_SEMANTIC_RELATIVE_RATIO = 0.90
+STICKY_SEMANTIC_RELATIVE_BAND = 0.10
+STICKY_SEMANTIC_MAX_RESULTS = 25
 
 # 便利貼卡片配色：色相（hue）直接連續取自標籤字串的雜湊值，落在 0~359 度的
 # 色環上（不是從一組固定幾種顏色的色盤裡挑），同一個標籤永遠同一個顏色、
