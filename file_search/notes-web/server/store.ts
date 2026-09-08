@@ -823,18 +823,27 @@ const DEFAULT_DUE_SOON_HOURS = 48 // 跟改動前硬寫的「2 天」門檻一�
 export interface ReminderSettings {
   /** 到期前幾小時內算「快到期」。 */
   dueSoonHours: number
+  /** true＝靜音所有到期通知（見 AppSettings.dueAlarmsMuted）。 */
+  dueAlarmsMuted: boolean
 }
 
-// dueSoonHours 現在只是「全域設定」（見 getAppSettings 那一節）裡的一個欄位；
-// 這兩支保留舊介面 / 舊路由 /reminder-settings 不變，內部轉呼叫共用的讀寫。
+// dueSoonHours / dueAlarmsMuted 都只是「全域設定」（見 getAppSettings 那一節）
+// 裡的欄位；這兩支保留舊介面 / 舊路由 /reminder-settings 不變，內部轉呼叫共用的讀寫。
 export function getReminderSettings(): ReminderSettings {
-  return { dueSoonHours: getAppSettings().dueSoonHours }
+  const s = getAppSettings()
+  return { dueSoonHours: s.dueSoonHours, dueAlarmsMuted: s.dueAlarmsMuted }
 }
 
-/** 1 小時 ~ 30 天（720 小時），純粹避免打錯數字（例如多打一個 0）產生離譜
- *  的門檻；不是什麼精確的業務邏輯上限。 */
-export function setReminderSettings(dueSoonHours: number): ReminderSettings {
-  return { dueSoonHours: patchAppSettings({ dueSoonHours }).dueSoonHours }
+/** dueSoonHours：1 小時 ~ 30 天（720 小時），純粹避免打錯數字（例如多打一個
+ *  0）產生離譜的門檻；不是什麼精確的業務邏輯上限。dueAlarmsMuted 見上。 */
+export function setReminderSettings(
+  patch: { dueSoonHours?: number; dueAlarmsMuted?: boolean },
+): ReminderSettings {
+  const s = patchAppSettings({
+    ...(patch.dueSoonHours !== undefined ? { dueSoonHours: patch.dueSoonHours } : {}),
+    ...(patch.dueAlarmsMuted !== undefined ? { dueAlarmsMuted: patch.dueAlarmsMuted } : {}),
+  })
+  return { dueSoonHours: s.dueSoonHours, dueAlarmsMuted: s.dueAlarmsMuted }
 }
 
 export interface DueNote {
@@ -858,7 +867,13 @@ function toDueNote(n: Note): DueNote {
 }
 
 export function dueSummary(): DueSummary {
-  const { dueSoonHours } = getReminderSettings()
+  const { dueSoonHours, dueAlarmsMuted } = getReminderSettings()
+  // 靜音時直接回空清單——每個到期通知的來源（桌面牆通知＋角標、Node-RED 的
+  // LINE/Discord 鬧鐘與彙整）都只讀這支，回空的就等於全部安靜。卡片標色不走
+  // 這裡（前端自己看 due_at + dueSoonHours），所以紅／黃字照舊。
+  if (dueAlarmsMuted) {
+    return { generated_at: new Date().toISOString(), overdue: [], soon: [] }
+  }
   const soonMs = dueSoonHours * 3_600_000
   const now = new Date()
   const overdue: DueNote[] = []
@@ -887,6 +902,9 @@ export function dueSummary(): DueSummary {
  * readRaw() 回空陣列，不會拋錯。
  */
 export function dueSummaryAll(): DueSummary {
+  if (getAppSettings().dueAlarmsMuted) {
+    return { generated_at: new Date().toISOString(), overdue: [], soon: [] }
+  }
   const prev = activeCollection
   const overdue: DueNote[] = []
   const soon: DueNote[] = []
@@ -990,6 +1008,11 @@ export interface WallPref {
 
 export interface AppSettings {
   dueSoonHours: number
+  /** true＝完全靜音所有到期通知：桌面牆的系統通知＋系統匣角標、Node-RED 的
+   *  LINE/Discord 鬧鐘與 6 小時彙整全部不發（GET /notes/due-soon 回空清單）。
+   *  便利貼卡片本身的紅／黃標色不受影響——那是前端直接看 due_at + dueSoonHours
+   *  算的，跟這個開關無關。 */
+  dueAlarmsMuted: boolean
   tagSort: TagSortPref
   /** 無分類 / 分類沒有自訂顏色時的便利貼紙色（#rrggbb）。 */
   defaultNoteColor: string
@@ -1061,6 +1084,7 @@ function coerceAppSettings(data: unknown): AppSettings {
       typeof hours === 'number' && Number.isFinite(hours) && hours > 0
         ? Math.min(720, Math.max(1, Math.round(hours)))
         : DEFAULT_DUE_SOON_HOURS,
+    dueAlarmsMuted: o.dueAlarmsMuted === true,
     tagSort: { mode: mode === 'manual' || mode === 'recent' ? mode : 'count', order },
     defaultNoteColor:
       typeof o.defaultNoteColor === 'string' && HEX_COLOR_RE.test(o.defaultNoteColor)
@@ -1105,6 +1129,7 @@ export function getAppSettings(): AppSettings {
 
 export interface AppSettingsPatch {
   dueSoonHours?: number
+  dueAlarmsMuted?: boolean
   tagSort?: Partial<TagSortPref>
   defaultNoteColor?: string
   wall?: Partial<WallPref>
@@ -1139,6 +1164,7 @@ export function patchAppSettings(patch: AppSettingsPatch | null | undefined): Ap
       : cur.defaultNoteColor
   const clean = coerceAppSettings({
     dueSoonHours: p.dueSoonHours ?? cur.dueSoonHours,
+    dueAlarmsMuted: p.dueAlarmsMuted !== undefined ? p.dueAlarmsMuted : cur.dueAlarmsMuted,
     tagSort: { ...cur.tagSort, ...p.tagSort },
     defaultNoteColor: nextColor,
     wall: { ...cur.wall, ...p.wall },

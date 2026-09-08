@@ -211,8 +211,16 @@ export function useReminderSettings() {
 export function useSetReminderSettings() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dueSoonHours: number) => api.setReminderSettings(dueSoonHours),
-    onSuccess: (settings) => qc.setQueryData(REMINDER_SETTINGS_KEY, settings),
+    mutationFn: (patch: { dueSoonHours?: number; dueAlarmsMuted?: boolean }) =>
+      api.setReminderSettings(patch),
+    onSuccess: (settings) => {
+      qc.setQueryData(REMINDER_SETTINGS_KEY, settings)
+      // dueSoonHours / dueAlarmsMuted 同一份 .notes_settings.json——「全域設定」
+      // 那份快取也一起更新，不然兩個對話框顯示的值會不同步。
+      qc.setQueryData<AppSettings>(APP_SETTINGS_KEY, (old) =>
+        old ? { ...old, ...settings } : old,
+      )
+    },
   })
 }
 
@@ -232,6 +240,7 @@ export function mergeAppSettings(old: AppSettings | undefined, patch: AppSetting
   if (!old) return old
   return {
     ...old,
+    ...(patch.dueAlarmsMuted !== undefined ? { dueAlarmsMuted: patch.dueAlarmsMuted } : {}),
     ...(patch.defaultNoteColor ? { defaultNoteColor: patch.defaultNoteColor } : {}),
     ...(patch.tagSort ? { tagSort: { ...old.tagSort, ...patch.tagSort } } : {}),
     ...(patch.wall ? { wall: { ...old.wall, ...patch.wall } } : {}),

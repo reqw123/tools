@@ -72,18 +72,22 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
   // 「快到期」門檻——使用者在設定視窗調整，卡片標色跟 due-soon 都用同一份。
   app.get('/reminder-settings', async () => getReminderSettings())
 
-  app.patch<{ Body: { dueSoonHours?: number } }>(
+  app.patch<{ Body: { dueSoonHours?: number; dueAlarmsMuted?: boolean } }>(
     '/reminder-settings',
     {
       schema: {
         body: {
           type: 'object',
-          required: ['dueSoonHours'],
-          properties: { dueSoonHours: { type: 'number', minimum: 1, maximum: 720 } },
+          additionalProperties: false,
+          properties: {
+            dueSoonHours: { type: 'number', minimum: 1, maximum: 720 },
+            // true＝靜音所有到期通知（系統通知＋角標＋Node-RED），卡片標色不受影響
+            dueAlarmsMuted: { type: 'boolean' },
+          },
         },
       },
     },
-    async (req) => setReminderSettings(req.body.dueSoonHours ?? 48),
+    async (req) => setReminderSettings(req.body),
   )
 
   // 全域設定（標籤排序、預設便利貼顏色、牆面版面）——dueSoonHours 也在裡面，
@@ -92,6 +96,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
 
   app.patch<{
     Body: {
+      dueAlarmsMuted?: boolean
       tagSort?: { mode?: 'count' | 'manual' | 'recent'; order?: string[] }
       defaultNoteColor?: string
       wall?: { minColWidth?: number; masonry?: boolean }
@@ -111,6 +116,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
           type: 'object',
           additionalProperties: false,
           properties: {
+            dueAlarmsMuted: { type: 'boolean' },
             tagSort: {
               type: 'object',
               additionalProperties: false,

@@ -58,6 +58,7 @@ function SettingsForm({ initial, onClose }: { initial: ReminderSettings; onClose
   // 直接拿 initial 當初始值就好，不需要另外用 effect 去同步——避免「setState
   // 寫在 effect 裡」這個常見的多餘重渲染陷阱（跟 AiSettingsDialog 同一招）。
   const [hours, setHours] = useState(initial.dueSoonHours)
+  const [muted, setMuted] = useState(initial.dueAlarmsMuted)
 
   const invalid = !Number.isFinite(hours) || hours < 1 || hours > 720
 
@@ -67,7 +68,7 @@ function SettingsForm({ initial, onClose }: { initial: ReminderSettings; onClose
       onSubmit={(e) => {
         e.preventDefault()
         if (invalid) return
-        save.mutate(hours, { onSuccess: onClose })
+        save.mutate({ dueSoonHours: hours, dueAlarmsMuted: muted }, { onSuccess: onClose })
       }}
     >
       <label>
@@ -81,6 +82,17 @@ function SettingsForm({ initial, onClose }: { initial: ReminderSettings; onClose
           onChange={(e) => setHours(Number(e.target.value))}
         />
         {invalid && <span className="err">請輸入 1～720 之間的數字</span>}
+      </label>
+
+      <label className="check-row">
+        <input type="checkbox" checked={muted} onChange={(e) => setMuted(e.target.checked)} />
+        <span>
+          靜音所有到期通知
+          <span className="dim">
+            關掉後：桌面牆的系統通知＋系統匣角標、Node-RED 的 LINE／Discord 鬧鐘與
+            6 小時彙整全部不發。便利貼卡片本身的紅／黃到期標色<b>仍然有效</b>。
+          </span>
+        </span>
       </label>
 
       {save.error && <span className="err">{save.error.message}</span>}

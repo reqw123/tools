@@ -163,10 +163,10 @@ export const api = {
   purge: (id: string) => req<void>(`/notes/trash/${id}`, { method: 'DELETE' }),
   emptyTrash: () => req<{ removed: number }>('/notes/trash', { method: 'DELETE' }).then((r) => r.removed),
   getReminderSettings: () => req<ReminderSettings>('/reminder-settings'),
-  setReminderSettings: (dueSoonHours: number) =>
+  setReminderSettings: (patch: { dueSoonHours?: number; dueAlarmsMuted?: boolean }) =>
     req<ReminderSettings>('/reminder-settings', {
       method: 'PATCH',
-      body: JSON.stringify({ dueSoonHours }),
+      body: JSON.stringify(patch),
     }),
   getTagColors: () => req<TagColors>('/tag-colors'),
   setTagColor: (tag: string, color: string) =>
@@ -182,6 +182,9 @@ export const api = {
  *  在「⏰ 提醒設定」對話框調整。 */
 export interface ReminderSettings {
   dueSoonHours: number
+  /** true＝靜音所有到期通知（桌面牆系統通知＋角標、Node-RED 的 LINE/Discord
+   *  鬧鐘與彙整）。便利貼卡片的紅／黃標色不受影響。 */
+  dueAlarmsMuted: boolean
 }
 
 export type TagSortMode = 'count' | 'manual' | 'recent'
@@ -189,6 +192,8 @@ export type TagSortMode = 'count' | 'manual' | 'recent'
 /** 「全域設定」——存在跟 dueSoonHours 同一份 .notes_settings.json。 */
 export interface AppSettings {
   dueSoonHours: number
+  /** true＝靜音所有到期通知；卡片標色不受影響。在「⏰ 提醒設定」對話框切換。 */
+  dueAlarmsMuted: boolean
   tagSort: {
     mode: TagSortMode
     /** 手動排定的標籤順序；還存在且列到的排最前，其餘依 mode 遞補在後。 */
@@ -219,6 +224,7 @@ export interface AppSettings {
 
 /** PATCH /api/settings 的部分更新（dueSoonHours 走 /reminder-settings 舊路由）。 */
 export type AppSettingsPatch = {
+  dueAlarmsMuted?: boolean
   tagSort?: Partial<AppSettings['tagSort']>
   defaultNoteColor?: string
   wall?: Partial<AppSettings['wall']>

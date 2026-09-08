@@ -1428,6 +1428,18 @@ body {
 }
 .form .check-inline input { width: auto; accent-color: var(--brass); }
 
+/* 「提醒設定」的靜音開關：checkbox 左、標題＋灰色說明堆疊在右 */
+.form .check-row {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-weight: 400;
+  cursor: pointer;
+}
+.form .check-row input { width: auto; margin-top: 0.2rem; accent-color: var(--brass); }
+.form .check-row > span { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.86rem; }
+.form .check-row .dim { margin: 0; font-weight: 400; }
+
 /* 分段輸入：http:// 與 :11434 唯讀（灰底），中間 host 欄是唯一要動的，加藍框提示 */
 .seg-url {
   display: flex;
