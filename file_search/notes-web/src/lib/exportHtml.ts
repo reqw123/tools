@@ -139,6 +139,7 @@ main.is-masonry > .note { position: absolute; }
   position: relative; margin: auto; z-index: 1;
   width: min(34rem, 100%);
 }
+.lb-content .note .note-img { cursor: zoom-in; }
 .lb-content .note {
   margin: 0; cursor: default; transform: none;
   padding: 2rem 1.9rem 2rem;
@@ -151,14 +152,28 @@ main.is-masonry > .note { position: absolute; }
 .lb-content .note .lines { font-size: 1.02rem; gap: .5rem; }
 .lb-content .note .lines .task b { width: 13px; height: 13px; }
 .lb-content .note .foot { margin-top: 1.5rem; }
-.lb-close {
-  position: absolute; top: -.6rem; right: -.6rem; z-index: 2;
-  width: 34px; height: 34px; display: grid; place-items: center;
+/* 固定在視窗右上角（不是黏在 .lb-box 上）——長便利貼往下捲時 × 不會跟著捲走。 */
+.lb-close, .iz-close {
+  position: fixed; top: clamp(.6rem, 3vw, 1.4rem); right: clamp(.6rem, 3vw, 1.4rem);
+  width: 40px; height: 40px; display: grid; place-items: center;
   border: 0; border-radius: 50%; background: #2a241c; color: #fff;
-  font-size: 1.2rem; line-height: 1; cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  font-size: 1.45rem; line-height: 1; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,.45);
 }
-.lb-close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.lb-close { z-index: 3; }
+.iz-close { z-index: 61; }
+.lb:not(.open) .lb-close, .iz:not(.open) .iz-close { display: none; }
+.lb-close:hover, .iz-close:hover { background: #000; }
+.lb-close:focus-visible, .iz-close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* 燈箱裡的插圖再點一下 → 全螢幕看大圖（zoom-out：點任意處或 Esc 收回） */
+.iz { display: none; }
+.iz.open {
+  display: flex; align-items: center; justify-content: center;
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(8,6,3,.92); padding: clamp(1rem, 4vw, 3rem); cursor: zoom-out;
+}
+.iz img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 3px; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
 
 @media (prefers-color-scheme: dark) {
   body { background: #201b14; color: #f0e7d5; }
@@ -176,7 +191,7 @@ main.is-masonry > .note { position: absolute; }
   main { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
   .note { box-shadow: none; border: 1px solid rgba(0,0,0,.18); }
   .note .curl { display: none; }
-  .lb { display: none !important; }
+  .lb, .iz { display: none !important; }
 }
 @media (prefers-reduced-motion: reduce) {
   .note { transition: none; }
@@ -188,6 +203,8 @@ const SCRIPT = `
   var lb = document.querySelector('.lb');
   var box = lb.querySelector('.lb-box');
   var content = lb.querySelector('.lb-content');
+  var iz = document.querySelector('.iz');
+  var izImg = iz.querySelector('img');
   var last = null;
   function open(note) {
     last = document.activeElement;
@@ -200,15 +217,38 @@ const SCRIPT = `
     box.setAttribute('aria-label', note.getAttribute('aria-label') || '便利貼');
     content.innerHTML = '';
     content.appendChild(clone);
+    var cimg = clone.querySelector('img.note-img');
+    if (cimg) cimg.addEventListener('click', function (e) {
+      e.stopPropagation(); // 不要冒泡去觸發「點卡片外關燈箱」
+      openImg(cimg.currentSrc || cimg.src);
+    });
     lb.classList.add('open');
+    lb.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
+    lb.scrollTop = 0;
     box.focus();
   }
   function close() {
+    closeImg();
     lb.classList.remove('open');
+    lb.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
     content.innerHTML = '';
     if (last && last.focus) last.focus();
+  }
+  function openImg(src) {
+    if (!src) return;
+    izImg.src = src;
+    iz.classList.add('open');
+    iz.setAttribute('aria-hidden', 'false');
+    iz.querySelector('.iz-close').focus();
+  }
+  function closeImg() {
+    if (!iz.classList.contains('open')) return;
+    iz.classList.remove('open');
+    iz.setAttribute('aria-hidden', 'true');
+    izImg.removeAttribute('src');
+    if (lb.classList.contains('open')) box.focus();
   }
   var wall = document.querySelector('main');
   wall.addEventListener('click', function (e) {
@@ -221,10 +261,16 @@ const SCRIPT = `
       open(e.target);
     }
   });
-  lb.querySelector('.lb-scrim').addEventListener('click', close);
-  lb.querySelector('.lb-close').addEventListener('click', close);
+  // 點大卡片「以外」的任何地方都關燈箱——scrim、四周暗area、右上角 × 都算。
+  // × 是 .lb 的直接子（不在 .lb-box 裡），所以這一條也涵蓋它。
+  lb.addEventListener('click', function (e) {
+    if (!e.target.closest('.lb-box')) close();
+  });
+  iz.addEventListener('click', closeImg); // zoom-out：點任意處（含大圖、×）收回
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && lb.classList.contains('open')) close();
+    if (e.key !== 'Escape') return;
+    if (iz.classList.contains('open')) { closeImg(); return; } // 先收大圖，燈箱還開著
+    if (lb.classList.contains('open')) close();
   });
 
   // 版面跟牆上（Wall.tsx）同一套：釘選的排成頂端一列（.pinned-row），其餘
@@ -348,17 +394,21 @@ export async function buildStickyNotesHtml(
 <body>
 <header>
   <h1>📌 便利貼匯出</h1>
-  <p class="meta">共 ${notes.length} 則　·　匯出時間 ${when}　·　來自 file_search_app 便利貼　·　點卡片看大張</p>
+  <p class="meta">共 ${notes.length} 則　·　匯出時間 ${when}　·　來自 file_search_app 便利貼　·　點卡片看大張、再點插圖放大</p>
 </header>
 <main class="wall" style="--wall-min-col:${minCol}px">
 ${cards}
 </main>
 <div class="lb" aria-hidden="true">
   <div class="lb-scrim"></div>
+  <button type="button" class="lb-close" aria-label="關閉">×</button>
   <div class="lb-box" role="dialog" aria-modal="true" tabindex="-1">
-    <button type="button" class="lb-close" aria-label="關閉">×</button>
     <div class="lb-content"></div>
   </div>
+</div>
+<div class="iz" aria-hidden="true">
+  <button type="button" class="iz-close" aria-label="關閉大圖">×</button>
+  <img alt="便利貼插圖">
 </div>
 <script>window.__WALL_MIN_COL__=${minCol};window.__COLUMN_PER_TAG__=${columnPerTag ? 'true' : 'false'}</script>
 <script>${SCRIPT}</script>
