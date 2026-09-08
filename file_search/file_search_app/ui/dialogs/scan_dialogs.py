@@ -18,7 +18,9 @@ from file_search_app.config import (
 )
 from file_search_app.services.scan_service import ScanService
 from file_search_app.ui.styles import bind_wheel_recursive, icon_for, styled_button
-from file_search_app.ui.widgets.scan_widgets import render_category_counts, run_scan_with_progress
+from file_search_app.ui.widgets.scan_widgets import (
+    render_category_counts, render_ext_breakdown, run_scan_with_progress,
+)
 
 # 掃描結果最多實際畫出這麼多列（勾選用的 BooleanVar 仍是全部建好，「全部
 # 勾選」「收錄」都涵蓋沒畫出來的）。掃描結果本來就被軟上限 1000 擋住，這裡
@@ -309,6 +311,7 @@ class UnindexedScanDialog(tk.Toplevel):
             w.destroy()
         if files:
             render_category_counts(self._category_counts_frame, files, self._font_hint, self._scan_service)
+            render_ext_breakdown(self._category_counts_frame, files, self._font_hint)
 
     def _do_scan(self):
         folders = [Path(f) for f, v in self._folder_vars.items() if v.get() and Path(f).is_dir()]

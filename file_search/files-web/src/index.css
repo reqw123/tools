@@ -1165,6 +1165,13 @@ code {
 }
 
 /* 掃描結果的類別統計——同一套色，做成小藥丸；數量 0 的淡化 */
+.ext-breakdown {
+  margin: 0.15rem 0 0.4rem;
+  font-size: 0.72rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  word-break: break-all;
+}
 .cat-pills {
   display: flex;
   flex-wrap: wrap;

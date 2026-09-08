@@ -208,19 +208,27 @@ export function BatchImportDialog({
               </div>
 
               {result && (
-                <div className="cat-pills">
-                  {result.categoryCounts.map((c) => (
-                    <span
-                      key={c.label}
-                      className={`cat-pill${c.count === 0 ? ' zero' : ''}`}
-                      style={{ '--tc': colorFor(c.label) } as CSSProperties}
-                    >
-                      <span aria-hidden>{iconFor(c.label)}</span>
-                      {c.label}
-                      <b>{c.count}</b>
-                    </span>
-                  ))}
-                </div>
+                <>
+                  <div className="cat-pills">
+                    {result.categoryCounts.map((c) => (
+                      <span
+                        key={c.label}
+                        className={`cat-pill${c.count === 0 ? ' zero' : ''}`}
+                        style={{ '--tc': colorFor(c.label) } as CSSProperties}
+                      >
+                        <span aria-hidden>{iconFor(c.label)}</span>
+                        {c.label}
+                        <b>{c.count}</b>
+                      </span>
+                    ))}
+                  </div>
+                  {result.extCounts && result.extCounts.length > 0 && (
+                    <p className="ext-breakdown">
+                      副檔名：
+                      {result.extCounts.map((e) => `${e.ext || '(無)'} ${e.count}`).join('　·　')}
+                    </p>
+                  )}
+                </>
               )}
 
               <div className="field-block">

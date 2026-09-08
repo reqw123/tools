@@ -455,6 +455,8 @@ export interface ScanResult {
    *  （對應桌面版 ScanService 的硬上限）。 */
   hitWalkLimit: boolean
   categoryCounts: { label: string; count: number }[]
+  /** 每個副檔名各幾個（多到少）——看含多種副檔名的類別實際是哪些檔案類型。 */
+  extCounts: { ext: string; count: number }[]
 }
 
 export function scanFolder(
@@ -474,6 +476,7 @@ export function scanFolder(
 
   const files: ScanResult['files'] = []
   const counts = EXT_CATEGORIES.map((c) => ({ label: c.label, count: 0 }))
+  const extMap = new Map<string, number>()
   let other = 0
   let walked = 0
   let matchedCount = 0
@@ -522,15 +525,26 @@ export function scanFolder(
       const i = EXT_CATEGORIES.findIndex((c) => c.exts.has(ext))
       if (i >= 0) counts[i].count += 1
       else other += 1
+      extMap.set(ext, (extMap.get(ext) ?? 0) + 1)
       if (files.length < SCAN_SOFT_LIMIT) {
         files.push({ path: full, name: de.name, size: st.size, ext })
       }
     }
   }
   counts.push({ label: '其他', count: other })
+  const extCounts = [...extMap.entries()]
+    .map(([ext, count]) => ({ ext, count }))
+    .sort((a, b) => b.count - a.count || a.ext.localeCompare(b.ext))
 
   files.sort((a, b) => a.path.localeCompare(b.path, 'zh-Hant', { numeric: true }))
-  return { files, truncated: matchedCount > SCAN_SOFT_LIMIT || hitWalkLimit, matchedCount, hitWalkLimit, categoryCounts: counts }
+  return {
+    files,
+    truncated: matchedCount > SCAN_SOFT_LIMIT || hitWalkLimit,
+    matchedCount,
+    hitWalkLimit,
+    categoryCounts: counts,
+    extCounts,
+  }
 }
 
 // ── 批次補說明：對「說明是空的」項目擷取內容當建議（對應 description_service.py）──

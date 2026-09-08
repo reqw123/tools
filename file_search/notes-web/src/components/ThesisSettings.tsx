@@ -1,10 +1,40 @@
 import { useState } from 'react'
 import { useAppSettings, usePatchAppSettings } from '../hooks/useNotes'
+import { useAiTarget } from '../hooks/useAi'
 
 const DEFAULT_DIR = 'C:\\ai_project'
 const DEFAULT_PER_FILE = 9000
 const DEFAULT_TOTAL = 30000
 const DEFAULT_MAX_FILES = 8
+
+// 「從專案生成」的建議組合。字數單位是字元，中文約 1 字元 ≈ 1 token（保守）。
+// 上下文窗要留給 prompt（約 500 token）＋輸出（12–18 則草稿，約 3k token）。
+const PRESETS = [
+  {
+    id: 'small',
+    label: '本機小模型 / 保守',
+    hint: '8B 以下、或上下文窗只有 8k 的本機模型（塞太多會截斷或很慢）',
+    perFile: 6000,
+    total: 18000,
+    maxFiles: 5,
+  },
+  {
+    id: 'local-big',
+    label: '本機大上下文（32k–128k 窗）',
+    hint: 'qwen2.5:7b / llama3.1 這種 128k 窗的本機模型',
+    perFile: 20000,
+    total: 60000,
+    maxFiles: 10,
+  },
+  {
+    id: 'cloud',
+    label: 'OpenAI GPT-4o / 4o-mini（128k 窗）',
+    hint: '雲端大模型；4o-mini 便宜很多、這種讀文件產清單的工作也夠',
+    perFile: 40000,
+    total: 100000,
+    maxFiles: 15,
+  },
+] as const
 
 /**
  * 「全域設定 → 研究生」——研究生模式（切到論文專案專用便利貼）的設定：
@@ -12,6 +42,7 @@ const DEFAULT_MAX_FILES = 8
  */
 export function ThesisSettings() {
   const { data: settings } = useAppSettings()
+  const { data: aiTarget } = useAiTarget()
   const patch = usePatchAppSettings()
   const [dirDraft, setDirDraft] = useState<string | null>(null)
   const [perDraft, setPerDraft] = useState<string | null>(null)
@@ -24,6 +55,18 @@ export function ThesisSettings() {
   const per = settings.thesisSeedPerFileChars
   const tot = settings.thesisSeedTotalChars
   const maxFiles = settings.thesisSeedMaxFiles
+  const suggested = aiTarget?.provider === 'openai' ? 'cloud' : 'local-big'
+
+  const applyPreset = (p: (typeof PRESETS)[number]) => {
+    setPerDraft(null)
+    setTotDraft(null)
+    setFilesDraft(null)
+    patch.mutate({
+      thesisSeedPerFileChars: p.perFile,
+      thesisSeedTotalChars: p.total,
+      thesisSeedMaxFiles: p.maxFiles,
+    })
+  }
 
   const commitNum = (
     draft: string | null,
@@ -67,6 +110,37 @@ export function ThesisSettings() {
           }}
         />
       </label>
+
+      <div className="seed-presets">
+        <span className="hint">
+          「從專案生成」讀多少檔案內容 —— 依你用的模型上下文窗選一組（字數單位是
+          字元，中文約 1 字元 ≈ 1 token）。
+          {aiTarget?.configured && (
+            <>
+              　目前 AI：<b>{aiTarget.label}</b>
+              （{aiTarget.model}）→ 建議「
+              {suggested === 'cloud' ? 'OpenAI GPT-4o' : '本機大上下文'}」那組。
+            </>
+          )}
+        </span>
+        <div className="seed-preset-btns">
+          {PRESETS.map((p) => {
+            const active = per === p.perFile && tot === p.total && maxFiles === p.maxFiles
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className={`btn sm${active ? ' primary' : ' ghost'}${p.id === suggested ? ' suggested' : ''}`}
+                title={`${p.hint}｜每檔 ${p.perFile.toLocaleString()}、合計 ${p.total.toLocaleString()}、最多 ${p.maxFiles} 檔`}
+                onClick={() => applyPreset(p)}
+              >
+                {p.label}
+                {p.id === suggested && ' ⭐'}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       <label>
         「從專案生成」每個檔案最多讀

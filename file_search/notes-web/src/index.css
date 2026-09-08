@@ -1393,6 +1393,22 @@ body {
   padding: 0.05em 0.3em;
   border-radius: 2px;
 }
+
+.seed-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.2rem 0 0.3rem;
+}
+.seed-preset-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.seed-preset-btns .btn.suggested {
+  outline: 1px dashed color-mix(in srgb, var(--brass) 60%, transparent);
+  outline-offset: 1px;
+}
 .btn.sm { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
 
 /* ─── AI 設定：Ollama 本機/區網 + 分段位址 ───────────────────────── */
@@ -2022,9 +2038,27 @@ body {
   cursor: pointer;
 }
 .gn-file-row:hover { background: color-mix(in srgb, var(--brass) 8%, transparent); }
+.gn-file-row.unreadable { opacity: 0.55; }
+.gn-file-row.unreadable .gn-file-name { text-decoration: line-through; text-decoration-thickness: 1px; }
+.gn-file-tag {
+  flex: none;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.05rem 0.35rem;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  color: var(--ink-soft);
+}
 .gn-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.86rem; }
 .gn-file-path { flex-basis: 100%; font-size: 0.7rem; color: var(--ink-soft); overflow-wrap: anywhere; }
 .gn-file-size { flex: none; font-size: 0.72rem; color: var(--ink-soft); }
+.scan-warn {
+  margin: 0.1rem 0 0.6rem;
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: #b45309;
+}
+.scan-warn b { color: inherit; }
 
 .ae-file {
   display: flex;

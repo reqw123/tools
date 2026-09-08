@@ -67,6 +67,8 @@ export interface ScanResult {
   /** 撞到走檔絕對上限才停下來——matchedCount 這時只是下限，不是精確值。 */
   hitWalkLimit: boolean
   categoryCounts: { label: string; count: number }[]
+  /** 每個副檔名各幾個（多到少）——看含多種副檔名的類別實際是哪些檔案類型。 */
+  extCounts: { ext: string; count: number }[]
 }
 
 export interface BlankItem {

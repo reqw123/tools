@@ -10,6 +10,22 @@ import { TagInput } from './TagInput'
 type ScannedFile = { path: string; name: string; size: number; ext: string }
 type DraftRow = { key: string; source: ScannedFile; save: boolean; title: string; tag: string; body: string }
 
+// AI 生成便利貼是「讀檔案內容 → 產草稿」，這些副檔名沒有可讀的文字內容
+// （模型權重、二進位、壓縮檔、資料庫、影音——網頁版不轉錄），勾了送出去
+// 也只會被後端當「沒有可分析的內容」略過。掃描時先標出來、不自動勾。
+const AI_UNREADABLE_EXTS = new Set([
+  '.pt', '.pth', '.pkl', '.pickle', '.npy', '.npz', '.h5', '.hdf5', '.onnx', '.pb',
+  '.ckpt', '.safetensors', '.bin', '.dat', '.model', '.weights',
+  '.db', '.sqlite', '.sqlite3', '.mdb', '.parquet', '.feather',
+  '.exe', '.dll', '.so', '.dylib', '.o', '.a', '.lib', '.class', '.jar',
+  '.pyc', '.pyo', '.pyd', '.pack', '.idx',
+  '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz',
+  '.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg',
+  '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm',
+  '.ttf', '.otf', '.woff', '.woff2', '.ico',
+])
+const isAiUnreadable = (ext: string) => AI_UNREADABLE_EXTS.has(ext.toLowerCase())
+
 /**
  * 「AI 生成便利貼」——便利貼牆自己掌控這個功能，不用再切去檔案索引網頁：
  * ①選資料夾＋類型篩選＋掃描（跟桌面版「匯入資料夾」同一套挑檔模式，只是
@@ -102,6 +118,11 @@ export function GenerateNotesDialog({
     return result.files.filter((f) => `${f.name}\n${f.path}`.toLowerCase().includes(q))
   }, [result, query])
 
+  const unreadableCount = useMemo(
+    () => (result?.files ?? []).filter((f) => isAiUnreadable(f.ext)).length,
+    [result],
+  )
+
   const toggleFile = (path: string) =>
     setChecked((s) => {
       const n = new Set(s)
@@ -109,7 +130,8 @@ export function GenerateNotesDialog({
       else n.add(path)
       return n
     })
-  const checkMatched = () => setChecked((s) => new Set([...s, ...matched.map((f) => f.path)]))
+  const checkMatched = () =>
+    setChecked((s) => new Set([...s, ...matched.filter((f) => !isAiUnreadable(f.ext)).map((f) => f.path)]))
   const clearAll = () => setChecked(new Set())
 
   const n = checked.size
@@ -316,6 +338,13 @@ export function GenerateNotesDialog({
                       .join('　·　')}
                   </p>
                 )}
+                {unreadableCount > 0 && (
+                  <p className="scan-warn">
+                    ⚠️ 其中 <b>{unreadableCount}</b> 個是 AI 讀不了的類型（模型權重、壓縮檔、
+                    影音、二進位、資料庫…）——清單裡會標灰、「勾選目前顯示」不會勾到，
+                    手動勾了送出也會被略過。
+                  </p>
+                )}
               </>
             )}
 
@@ -372,19 +401,23 @@ export function GenerateNotesDialog({
                 )}
 
                 <div className="gn-file-list">
-                  {matched.map((f) => (
-                    <label key={f.path} className="gn-file-row">
-                      <input
-                        type="checkbox"
-                        checked={checked.has(f.path)}
-                        disabled={aiRunning}
-                        onChange={() => toggleFile(f.path)}
-                      />
-                      <span className="gn-file-name">{f.name}</span>
-                      <span className="gn-file-size mono">{humanSize(f.size)}</span>
-                      <span className="gn-file-path mono">{f.path}</span>
-                    </label>
-                  ))}
+                  {matched.map((f) => {
+                    const dead = isAiUnreadable(f.ext)
+                    return (
+                      <label key={f.path} className={`gn-file-row${dead ? ' unreadable' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked.has(f.path)}
+                          disabled={aiRunning}
+                          onChange={() => toggleFile(f.path)}
+                        />
+                        <span className="gn-file-name">{f.name}</span>
+                        {dead && <span className="gn-file-tag">AI 讀不了</span>}
+                        <span className="gn-file-size mono">{humanSize(f.size)}</span>
+                        <span className="gn-file-path mono">{f.path}</span>
+                      </label>
+                    )
+                  })}
                 </div>
               </>
             )}

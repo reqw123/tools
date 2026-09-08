@@ -15,7 +15,9 @@ from file_search_app.config import (
 from file_search_app.services.import_service import path_key
 from file_search_app.services.scan_service import ScanService
 from file_search_app.ui.styles import lighten, styled_button
-from file_search_app.ui.widgets.scan_widgets import render_category_counts, run_scan_with_progress
+from file_search_app.ui.widgets.scan_widgets import (
+    render_category_counts, render_ext_breakdown, run_scan_with_progress,
+)
 
 
 class ImportFolderDialog(tk.Toplevel):
@@ -156,6 +158,7 @@ class ImportFolderDialog(tk.Toplevel):
             w.destroy()
         if files:
             render_category_counts(self._category_counts_frame, files, self._font_hint, self._scan_service)
+            render_ext_breakdown(self._category_counts_frame, files, self._font_hint)
 
     def _do_scan(self):
         self._scanned_new = []

@@ -31,6 +31,28 @@ def render_category_counts(parent, files, font, scan_service: ScanService = None
         ).grid(row=row, column=col, padx=(0, 18), pady=2, sticky="w")
 
 
+def render_ext_breakdown(parent, files, font):
+    """在類別數量格線底下多列一行「副檔名：.py 194　·　.json 38　…」——「文字」
+    「其他」這種含多種副檔名的類別，光看類別數量不知道實際是哪些檔案類型。
+    呼叫端負責清空 parent。沒有檔案就不畫（parent 保持 0 高度）。"""
+    if not files:
+        return
+    from pathlib import Path
+
+    counts = {}
+    for path in files:
+        ext = Path(path).suffix.lower()
+        counts[ext] = counts.get(ext, 0) + 1
+    parts = [
+        f"{ext or '(無)'} {n}"
+        for ext, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+    tk.Label(
+        parent, text="副檔名：" + "　·　".join(parts), bg=COLOR_BG, fg=COLOR_STATUS_FG,
+        font=font, anchor="w", justify="left", wraplength=460,
+    ).grid(row=99, column=0, columnspan=3, padx=(0, 18), pady=(4, 0), sticky="w")
+
+
 def run_scan_with_progress(parent, scan_service: ScanService, jobs, on_done):
     """依序掃描 jobs（每項是 (folder, recursive, extensions) 一組條件），跳出一個
     小進度視窗即時顯示已找到的筆數／進度百分比（相對硬上限），「取消」鈕可隨時
