@@ -24,6 +24,7 @@ export function Toolbar({
   total,
   collection,
   onSwitchCollection,
+  onThesisSeed,
   onAdd,
   aiMode,
   onToggleAiMode,
@@ -59,6 +60,8 @@ export function Toolbar({
   /** 便利貼集合切換——null＝不顯示（一般瀏覽器）；有值＝桌面牆，顯示「生活／研究生」。 */
   collection: NoteCollection | null
   onSwitchCollection: (c: NoteCollection) => void
+  /** 研究生模式限定——「從專案生成」按鈕。 */
+  onThesisSeed: () => void
   onAdd: () => void
   aiMode: boolean
   onToggleAiMode: () => void
@@ -221,6 +224,15 @@ export function Toolbar({
           >
             <Sparkles size={15} strokeWidth={2.2} aria-hidden />
           </button>
+          {collection === 'thesis' && (
+            <button
+              className="btn ghost"
+              onClick={onThesisSeed}
+              title="AI 讀 C:\ai_project 的文件，產出一批論文任務便利貼草稿"
+            >
+              <GraduationCap size={15} strokeWidth={2.2} aria-hidden /> 從專案生成
+            </button>
+          )}
           <button className="btn ghost icon" onClick={onBatchRecategorize} title="批次改標籤">
             <Tags size={15} strokeWidth={2.2} aria-hidden />
           </button>

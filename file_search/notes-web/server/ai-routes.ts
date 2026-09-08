@@ -112,6 +112,17 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
     ),
   )
 
+  /** 研究生模式「從專案生成」——AI 讀論文專案的幾份關鍵文件 + 論文草稿，
+   *  一次呼叫產出一批任務便利貼草稿（不寫入，前端審核過再走 /ai/save-notes，
+   *  會存進目前作用中的便利貼集合＝研究生那份）。 */
+  app.post('/ai/thesis-seed', async () =>
+    runBridge<{
+      drafts: { title: string; tag: string; body: string }[]
+      error: string | null
+      call_count: number
+    }>('thesis-seed', { projectDir: getAppSettings().thesisProjectDir }, ['--notes-file', activeNotesFile()]),
+  )
+
   /**
    * 「AI 生成便利貼」：單一檔案 → AI 生成一則便利貼草稿（標題／標籤／內容），
    * 不寫入任何東西。前端對每個勾選的項目各呼叫一次、顯示進度，草稿逐則

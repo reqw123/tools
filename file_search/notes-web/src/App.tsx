@@ -18,6 +18,7 @@ import { BatchCreateDialog } from './components/BatchCreateDialog'
 import { BatchDeleteDialog } from './components/BatchDeleteDialog'
 import { BatchRecategorizeDialog } from './components/BatchRecategorizeDialog'
 import { GenerateNotesDialog } from './components/GenerateNotesDialog'
+import { ThesisSeedDialog } from './components/ThesisSeedDialog'
 import { ImportNotesDialog } from './components/ImportNotesDialog'
 import { ReminderSettingsDialog } from './components/ReminderSettingsDialog'
 import { TrashDialog } from './components/TrashDialog'
@@ -104,6 +105,7 @@ export function App() {
   const [batchRecategorize, setBatchRecategorize] = useState(false)
   const [batchDelete, setBatchDelete] = useState(false)
   const [generateNotes, setGenerateNotes] = useState(false)
+  const [thesisSeed, setThesisSeed] = useState(false)
   const [importNotes, setImportNotes] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -378,7 +380,7 @@ export function App() {
   }, [clearAi])
 
   const anyDialogOpen =
-    !!dialog || batchCreate || batchRecategorize || batchDelete || generateNotes || importNotes ||
+    !!dialog || batchCreate || batchRecategorize || batchDelete || generateNotes || thesisSeed || importNotes ||
     trashOpen || historyOpen || settingsOpen !== null || reminderSettingsOpen
   // 已經在裁切中就不能再拉一次框——先恢復完整畫面才能重新選——不然兩個裁切
   // 範圍疊在一起的語意會很奇怪。
@@ -497,6 +499,7 @@ export function App() {
         onToggleDueOnly={() => setDueOnly((v) => !v)}
         onOpenReminderSettings={() => setReminderSettingsOpen(true)}
         onGenerateNotes={() => setGenerateNotes(true)}
+        onThesisSeed={() => setThesisSeed(true)}
         onTrash={() => setTrashOpen(true)}
         onHistory={() => setHistoryOpen(true)}
       />
@@ -590,6 +593,16 @@ export function App() {
           // 便利貼增刪改後，AI 搜尋命中清單就不保證對得上了（同 closeDialog）；
           // 新便利貼是否存成功、存了幾則都已經在牆上看得到，不用另外顯示 toast。
           onDone={() => setAiResult(null)}
+        />
+      )}
+      {thesisSeed && (
+        <ThesisSeedDialog
+          onClose={() => setThesisSeed(false)}
+          onDone={() => {
+            setThesisSeed(false)
+            setAiResult(null)
+            qc.invalidateQueries({ queryKey: ['notes'] })
+          }}
         />
       )}
       {importNotes && (

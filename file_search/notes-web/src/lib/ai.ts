@@ -125,6 +125,10 @@ export const aiApi = {
       body: JSON.stringify({ query, tag: tag ?? '' }),
     }),
   semanticStatus: () => req<SemanticStatus>('/ai/semantic-status'),
+  thesisSeed: () =>
+    req<{ drafts: NoteDraft[]; error: string | null; call_count: number }>('/ai/thesis-seed', {
+      method: 'POST',
+    }),
   generateNote: (path: string, category: string) =>
     req<AiGenerateNoteResult>('/ai/generate-note', {
       method: 'POST',

@@ -24,6 +24,7 @@ command：
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -282,6 +283,216 @@ def cmd_semantic_status(payload, notes_file):
     return svc.status(_embed_model(payload))
 
 
+# ── 研究生模式：從論文專案文件生成一批任務便利貼 ──────────────────────
+_THESIS_SEED_FILES = [
+    "paper/CONTEXT.md",
+    "paper/docs/0_進度彙整.md",
+    "paper/docs/0_AI_專案導覽地圖.md",
+    "paper/docs/adr/0001-統一健康風險評分引擎.md",
+    "CLAUDE.md",
+]
+_THESIS_SEED_PER_FILE = 9000
+_THESIS_SEED_TOTAL = 30000
+_THESIS_TAGS = [
+    "緒論", "文獻探討", "研究方法", "研究結果", "討論",
+    "實驗", "資料", "寫作", "未來工作", "其他",
+]
+
+
+def _docx_text(path: Path) -> str:
+    """從 .docx 抽段落純文字（不裝 python-docx，直接讀 zip 裡的 document.xml）。"""
+    import re
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(path) as z:
+            xml = z.read("word/document.xml").decode("utf-8", "ignore")
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return ""
+    out = []
+    for para in re.findall(r"<w:p[ >].*?</w:p>", xml, re.S):
+        runs = re.findall(r"<w:t[^>]*>([^<]*)</w:t>", para)
+        text = "".join(runs).strip()
+        if text:
+            out.append(text)
+    return "\n".join(out)
+
+
+def _read_thesis_docs(project_dir: str) -> str:
+    root = Path(project_dir)
+    parts = []
+    for rel in _THESIS_SEED_FILES:
+        p = root / rel
+        if p.is_file():
+            try:
+                parts.append(f"===== {rel} =====\n{p.read_text('utf-8', errors='ignore')[:_THESIS_SEED_PER_FILE]}")
+            except OSError:
+                pass
+    for docx in root.glob("*.docx"):
+        body = _docx_text(docx)
+        if body:
+            parts.append(f"===== 論文草稿 {docx.name}（節錄）=====\n{body[:_THESIS_SEED_PER_FILE]}")
+            break
+    return "\n\n".join(parts)[:_THESIS_SEED_TOTAL]
+
+
+def _build_thesis_seed_prompt(docs: str) -> str:
+    tag_list = "、".join(_THESIS_TAGS)
+    return (
+        "你是碩士研究生的論文助理。下面是一份論文專案的內部文件（含進度彙整、"
+        "架構、ADR、論文草稿節錄）。請據此產出一批『任務便利貼』，把這位研究生"
+        "接下來要做的事拆解、分配到便利貼牆上。每則便利貼是一個具體、可執行的"
+        "任務或要點——例如某一章某一節要補寫什麼、某個已知技術缺口要怎麼處理、"
+        "某個實驗／驗證要跑、某項未來工作。\n\n"
+        "【輸出格式，務必嚴格遵守】你的整個回覆必須是、而且只能是一個 JSON 陣列，"
+        "從 `[` 開始、以 `]` 結束，中間不要有任何說明文字、不要用 ``` 圍欄、"
+        "不要用 Markdown。陣列每個元素是一個物件：\n"
+        '  {"title": "一句話任務標題（繁中，20 字內）", '
+        f'"tag": "{tag_list} 之中最貼切的一個", '
+        '"body": "2~5 行說明，分項時每行用 - 開頭，純文字"}\n\n'
+        "範例（格式示意，實際內容要根據文件）：\n"
+        '[{"title":"補寫 3.4 SQA 幾何判定門檻","tag":"研究方法",'
+        '"body":"- 說明骨長穩定性檢查的門檻怎麼定\\n- 引用 test_bone_length_stability 模式1/3 的 flag rate 追蹤"},'
+        '{"title":"Class B shake_count 權重限制誠實揭露","tag":"討論",'
+        '"body":"- 0.40 權重無文獻支持\\n- 在討論章寫成研究限制，附獸醫共識來源"}]\n\n'
+        "產出 12～18 則，涵蓋各章節與文件裡點出的已知缺口／未來工作，內容要具體"
+        "（引用文件裡的實際名詞，例如 Class A/B/C、SQA、個體化基線、消融實驗、"
+        "個體行為基線、JointAttention），不要泛泛而談、不要重複。\n\n"
+        "===== 專案文件 =====\n" + docs
+    )
+
+
+_THESIS_TAG_HINTS = [
+    ("緒論", "緒論"), ("問題定義", "緒論"), ("研究目的", "緒論"), ("研究背景", "緒論"),
+    ("文獻", "文獻探討"),
+    ("研究方法", "研究方法"), ("方法", "研究方法"), ("前處理", "研究方法"),
+    ("架構", "研究方法"), ("模型", "研究方法"), ("SQA", "研究方法"),
+    ("結果", "研究結果"), ("實驗結果", "研究結果"),
+    ("消融", "實驗"), ("驗證", "實驗"), ("校準", "實驗"), ("實驗", "實驗"),
+    ("資料", "資料"), ("dataset", "資料"), ("標註", "資料"), ("ground truth", "資料"),
+    ("未來", "未來工作"), ("後續", "未來工作"),
+    ("討論", "討論"), ("限制", "討論"), ("結論", "討論"),
+    ("撰寫", "寫作"), ("寫", "寫作"), ("排版", "寫作"), ("章", "寫作"),
+]
+
+
+def _tag_from_context(text: str) -> str:
+    low = (text or "").lower()
+    for needle, tag in _THESIS_TAG_HINTS:
+        if needle.lower() in low:
+            return tag
+    return "其他"
+
+
+def _parse_thesis_seed_markdown(raw: str):
+    """AI 不聽 JSON 指示、回了 Markdown 大綱時的退路——把「標題行 + 底下的
+    子項目」抓成便利貼：`### 某章某節` / `1. xxx` / `- xxx` / `**xxx**` 當
+    一則的標題，緊接的縮排 `-`／`*` 子項目併成 body，tag 從最近的章節標題推。"""
+    lines = [ln.rstrip() for ln in (raw or "").splitlines()]
+    section = ""
+    drafts = []
+    i = 0
+    head_re = re.compile(r"^\s*(?:#{2,4}\s+|[0-9]+[.)、]\s+|[-*]\s+|\*\*)(.+?)\*{0,2}\s*$")
+    sub_re = re.compile(r"^\s{1,}(?:[-*]|[0-9]+[.)、])\s+(.+?)\s*$")
+    while i < len(lines):
+        ln = lines[i]
+        i += 1
+        if not ln.strip():
+            continue
+        if ln.lstrip().startswith("#"):
+            section = re.sub(r"^#+\s*", "", ln).strip()
+        m = head_re.match(ln)
+        if not m:
+            continue
+        title = m.group(1).strip(" *#-").strip()
+        if len(title) < 2 or len(title) > 60:
+            continue
+        subs = []
+        while i < len(lines) and sub_re.match(lines[i]):
+            subs.append("- " + sub_re.match(lines[i]).group(1).strip())
+            i += 1
+        # 純章節標題（「第三章 方法」「4.2 …」）沒 body 的一律丟掉——那是大綱不是任務
+        if re.match(r"^第[一二三四五六七八九十]+[章節]|^[0-9]+(\.[0-9]+)*[\s、]", title) and not subs:
+            continue
+        drafts.append({
+            "title": title[:200],
+            "tag": _tag_from_context(f"{section} {title}"),
+            "body": "\n".join(subs)[:4000],
+        })
+    return [d for d in drafts if d["body"] or len(d["title"]) >= 8][:24]
+
+
+def _parse_thesis_seed(raw: str):
+    """先當 JSON 陣列解析（整段 → 抓第一個 [...] 片段）；小模型不聽指示回
+    Markdown 大綱時，退回 _parse_thesis_seed_markdown。"""
+    text = (raw or "").strip()
+    candidates = [text]
+    match = re.search(r"\[.*\]", text, re.S)
+    if match:
+        candidates.append(match.group(0))
+
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(data, list):
+            continue
+        out = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title", "")).strip()
+            if not title:
+                continue
+            tag = str(item.get("tag", "")).strip()
+            out.append({
+                "title": title[:200],
+                "tag": tag if tag in _THESIS_TAGS else "其他",
+                "body": str(item.get("body", "")).strip()[:4000],
+            })
+        if out:
+            return out
+
+    return _parse_thesis_seed_markdown(text)
+
+
+def cmd_thesis_seed(payload, _notes_file):
+    """stdin: {projectDir} → {drafts: [{title,tag,body}], error, call_count}。
+    讀論文專案的幾份關鍵文件 + 論文草稿，一次 AI 呼叫產出一批任務便利貼草稿。
+    不寫入——前端審核過再走既有的 /api/ai/save-notes（會存進目前作用中的
+    便利貼集合，也就是研究生那份）。"""
+    project_dir = ((payload or {}).get("projectDir") or "").strip()
+    if not project_dir or not Path(project_dir).is_dir():
+        return {"drafts": [], "error": f"找不到論文專案資料夾：{project_dir or '(未設定)'}", "call_count": 0}
+
+    docs = _read_thesis_docs(project_dir)
+    if len(docs) < 200:
+        return {"drafts": [], "error": "在專案資料夾裡找不到可讀的文件（paper/docs/、CONTEXT.md、*.docx）", "call_count": 0}
+
+    ai = _ai()
+    ok, reason = ai.is_configured()
+    if not ok:
+        return {"drafts": [], "error": f"{reason}，請先設定好 AI", "call_count": ai.get_call_count()}
+    try:
+        provider = ai.build_provider()
+    except AIProviderError as exc:
+        return {"drafts": [], "error": str(exc), "call_count": ai.get_call_count()}
+
+    ai.record_call()
+    try:
+        response = provider.generate_description(_build_thesis_seed_prompt(docs))
+    except AIProviderError as exc:
+        return {"drafts": [], "error": str(exc), "call_count": ai.get_call_count()}
+    except Exception as exc:  # noqa: BLE001
+        return {"drafts": [], "error": f"{type(exc).__name__}: {exc}", "call_count": ai.get_call_count()}
+
+    drafts = _parse_thesis_seed(response)
+    if not drafts:
+        return {"drafts": [], "error": "AI 回應無法解析成便利貼清單", "call_count": ai.get_call_count()}
+    return {"drafts": drafts, "error": None, "call_count": ai.get_call_count()}
+
+
 COMMANDS = {
     "target": cmd_target,
     "settings-get": cmd_settings_get,
@@ -292,6 +503,7 @@ COMMANDS = {
     "generate-note": cmd_generate_note,
     "semantic-search": cmd_semantic_search,
     "semantic-status": cmd_semantic_status,
+    "thesis-seed": cmd_thesis_seed,
 }
 
 
