@@ -558,14 +558,16 @@ code {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  /* 右邊多留一截給 .row-pin（絕對定位疊在這塊空間裡，不會壓到 size/badge）。 */
-  padding: 0.35rem 2.1rem 0.35rem 0;
+  /* 一般情況只留一點右邊距；有釘選鈕（wallpaper-app）時 .row.has-pin 才把
+     右邊撐開一截讓絕對定位的 .row-pin 有位置、也跟最右邊的分類晶片留出間距。 */
+  padding: 0.35rem 0.7rem 0.35rem 0;
   background: transparent;
   border: none;
   color: var(--ink);
   cursor: pointer;
   text-align: left;
 }
+.row.has-pin .row-head { padding-right: 2.6rem; }
 .row-head:hover { background: color-mix(in srgb, var(--marker) 12%, transparent); }
 .row.open .row-head:hover { background: transparent; }
 .tick {

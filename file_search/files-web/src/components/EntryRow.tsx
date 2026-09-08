@@ -94,7 +94,9 @@ export function EntryRow({
   return (
     <div
       ref={ref}
-      className={`row k-${kind}${expanded ? ' open' : ''}${missing ? ' missing' : ''}`}
+      className={`row k-${kind}${expanded ? ' open' : ''}${missing ? ' missing' : ''}${
+        onPin ? ' has-pin' : ''
+      }`}
     >
       <button className="row-head" onClick={onToggle} aria-expanded={expanded}>
         <span className="tick" aria-hidden />
@@ -103,16 +105,18 @@ export function EntryRow({
           {entry.name}
         </span>
         {entry.parent && <span className="parent mono">{entry.parent}</span>}
-        {entry.category && (
-          <span className="chip" style={chipStyle}>
-            {entry.category}
-          </span>
-        )}
         {entry.description && <span className="desc">{entry.description}</span>}
         <span className="grow" />
         {missing && <span className="badge miss">檔案已不存在</span>}
         {stat?.exists && stat.size !== undefined && (
           <span className="size mono">{humanSize(stat.size)}</span>
+        )}
+        {/* 分類晶片放最右邊（size/badge 左邊、釘選鈕右邊）——不夾在檔名後面，
+            檔名長短不一就不會讓每列的晶片參差不齊，右緣對齊好掃視。 */}
+        {entry.category && (
+          <span className="chip" style={chipStyle}>
+            {entry.category}
+          </span>
         )}
       </button>
 
