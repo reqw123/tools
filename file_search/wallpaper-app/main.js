@@ -1,6 +1,7 @@
 'use strict';
 const {
   app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, screen, ipcMain, shell, net,
+  Notification,
 } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -12,6 +13,10 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
   return;
 }
+
+// Windows 上系統通知要有這個才會用「我們的」身分顯示、點了才回到這個 app
+// （否則是 electron 預設 AppUserModelID，通知可能不顯示或掛在別的圖示下）。
+app.setAppUserModelId('com.file_search.wallpaper');
 
 let win = null; // 桌面牆視窗
 let settingsWin = null;
@@ -209,10 +214,79 @@ function refreshTray() {
 // 調整，這裡不用另外設定），整段包在 try/catch 裡——本機 server 還沒就緒、
 // 網路不通、繪圖失敗，都只是這一輪角標沒更新，絕不會讓桌面牆本身的任何
 // 功能連帶壞掉。
-const DUE_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 分鐘一次，夠即時又不會一直打本機 API
+//
+// 60 秒一次——到期提醒精確到分（notes-web 可填 HH:MM），輪詢也要跟上，不然
+// 「09:00 的鬧鐘」最晚可能拖到 09:05 才響。角標本身有 lastDueBadgeKey 擋著，
+// 數字沒變就不重畫，一分鐘一次不會有額外開銷。
+const DUE_POLL_INTERVAL_MS = 60 * 1000;
 let dueBadgeWin = null; // 專門拿來畫角標的隱藏視窗，重複使用不每次重建
 let lastDueBadgeKey = ''; // 空字串保證程式剛啟動一定會畫一次（就算真的是 0/0）
 let duePollTimer = null;
+
+// ── 到期鬧鐘（系統通知）─────────────────────────────────────────────
+// 便利貼的到期時間一「跨過現在」就跳一則 Windows 通知。點通知＝把牆叫出來、
+// 切互動模式、搶到最上層，讓使用者馬上能處理那則。
+const ALARM_GRACE_MS = 10 * 60 * 1000; // 剛開機/剛從睡眠醒來：補發最近 10 分鐘內到期的
+const ALARM_MAX_TOAST = 3; // 一次最多跳幾則個別通知，超過就併成一句
+const notifiedAlarms = new Map(); // `${id}:${due_at}` -> 觸發時的 ms（拿來清舊 key）
+let lastAlarmCheck = Date.now();
+
+function pruneNotifiedAlarms(now) {
+  const cutoff = now - ALARM_GRACE_MS * 3;
+  for (const [key, when] of notifiedAlarms) {
+    if (when < cutoff) notifiedAlarms.delete(key);
+  }
+}
+
+// 點了通知——把牆帶回眼前並切成可操作。刻意不做「捲到那一則」（要動 preload
+// ＋notes-web 兩邊），v1 先讓使用者看到整面牆、到期的那則本來就會標紅／黃。
+function revealWallForAlarm() {
+  if (!win || win.isDestroyed()) return;
+  if (!win.isVisible()) win.show();
+  if (quitWin && !quitWin.isDestroyed()) quitWin.show();
+  if (mode !== 'interactive') setMode('interactive');
+  raiseQuitButton();
+  refreshTray();
+}
+
+function fireAlarmToasts(notes) {
+  if (!notes.length || !Notification.isSupported()) return;
+  const openNote = () => revealWallForAlarm();
+  if (notes.length <= ALARM_MAX_TOAST) {
+    for (const n of notes) {
+      const toast = new Notification({
+        title: '⏰ 便利貼到期',
+        body: n.title + (n.tag ? `　#${n.tag}` : ''),
+      });
+      toast.on('click', openNote);
+      toast.show();
+    }
+  } else {
+    const names = notes.slice(0, 5).map((n) => n.title).join('、');
+    const toast = new Notification({
+      title: `⏰ ${notes.length} 則便利貼到期`,
+      body: names + (notes.length > 5 ? ' …' : ''),
+    });
+    toast.on('click', openNote);
+    toast.show();
+  }
+}
+
+// 從 due-soon 的 overdue 清單裡挑出「這一輪才剛到期」的：到期時間落在
+// (上次檢查 或 現在往回推 grace) ~ 現在 之間，且還沒發過通知。
+function detectFreshlyDue(overdue, now) {
+  const since = Math.min(lastAlarmCheck, now - ALARM_GRACE_MS);
+  const fresh = [];
+  for (const n of overdue || []) {
+    const t = new Date(n.due_at).getTime();
+    if (Number.isNaN(t) || t < since || t > now) continue;
+    const key = `${n.id}:${n.due_at}`;
+    if (notifiedAlarms.has(key)) continue;
+    notifiedAlarms.set(key, now);
+    fresh.push(n);
+  }
+  return fresh;
+}
 
 function ensureDueBadgeWin() {
   if (dueBadgeWin && !dueBadgeWin.isDestroyed()) return dueBadgeWin;
@@ -268,13 +342,25 @@ async function pollDueSoon() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     await updateDueBadge(data.overdue?.length ?? 0, data.soon?.length ?? 0);
+
+    // 角標更新完，再看看有沒有「剛跨過到期時間」的要跳系統通知。整段各自
+    // try/catch——通知平台掛了也不該影響角標，反之亦然。
+    try {
+      const now = Date.now();
+      const fresh = detectFreshlyDue(data.overdue, now);
+      fireAlarmToasts(fresh);
+      lastAlarmCheck = now;
+      pruneNotifiedAlarms(now);
+    } catch (alarmErr) {
+      console.error('[wallpaper-app] 到期鬧鐘失敗（不影響其他功能）：', alarmErr.message);
+    }
   } catch (err) {
     console.error('[wallpaper-app] 檢查便利貼到期狀態失敗（不影響其他功能）：', err.message);
   }
 }
 
 function startDueBadgePolling() {
-  pollDueSoon(); // 啟動後馬上先查一次，不用乾等滿 5 分鐘才看到第一次結果
+  pollDueSoon(); // 啟動後馬上先查一次，不用乾等滿一輪才看到第一次結果（也順便補發剛開機前 10 分鐘內到期的）
   duePollTimer = setInterval(pollDueSoon, DUE_POLL_INTERVAL_MS);
 }
 
