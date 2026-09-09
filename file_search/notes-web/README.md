@@ -74,7 +74,7 @@ AI／語意搜尋時改成依相關度排，其餘一律套這個。分欄檢視
 | 資料同步 | TanStack Query 5 |
 | 後端 | Fastify 5 |
 | 儲存 | 直接讀寫 `indexes/.sticky_notes.json`（原子寫入，保留 `panel` 欄位） |
-| AI | 子行程呼叫 `server/ai_bridge.py` → file_search_app 既有服務（需要 Python，環境變數 `PYTHON` 可指定路徑） |
+| AI | 子行程呼叫 `server/ai_bridge.py` → file_search_app 既有服務（需要 Python，環境變數 `PYTHON` 可指定路徑）。研究生「從專案生成」讀 **PDF** 需要 `pip install pypdf`（沒裝時 PDF 會被略過，其他類型不受影響）；`.docx/.pptx/.xlsx` 純標準庫、`.doc/.ppt/.xls` 走 Windows COM |
 
 ## 開始
 
