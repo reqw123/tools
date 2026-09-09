@@ -288,6 +288,7 @@ _THESIS_SEED_PER_FILE = 9000       # 每個檔案最多餵這麼多字
 _THESIS_SEED_TOTAL = 30000         # 全部合起來的上限
 _THESIS_SEED_MAX_FILES = 8         # 最多挑幾個檔案（預設；使用者可在全域設定調 1–40）
 _THESIS_SEED_SCAN_CAP = 400        # 掃描時最多看幾個候選檔（避免超大專案卡住）
+_SEED_MAX_ENTRY_BYTES = 12 * 1024 * 1024  # 單一文件超過這個大小就略過（純取文字，不需要巨檔）
 _SEED_EXTS = (".md", ".txt", ".docx", ".rst")
 # 檔名／路徑帶這些字的優先（進度、大綱、架構、說明類文件對「產任務」最有料）
 _SEED_NAME_HINTS = (
@@ -351,6 +352,11 @@ def _extract_text(name: str, data: bytes) -> str:
     return data.decode("utf-8", errors="ignore")
 
 
+class SeedSourceError(Exception):
+    """來源（資料夾／.zip）本身有問題——打不開、裡面的檔案全都讀不了等。
+    訊息是給使用者看的繁體中文，cmd_thesis_seed 會原樣回成 error 欄位。"""
+
+
 def _collect_seed_docs(
     source: str,
     per_file: int = _THESIS_SEED_PER_FILE,
@@ -360,8 +366,10 @@ def _collect_seed_docs(
     """source 是一個資料夾或一個 .zip。挑出最多 `max_files` 個文件類檔案
     （依 _seed_score 排序），組成餵給 AI 的文字。`per_file`／`total`／`max_files`
     是每檔／全部的字數上限與檔案數上限（使用者可在 notes-web「全域設定 →
-    研究生」調）。回傳 `(text, used_files)`；找不到任何可讀文件回 ("", [])。"""
+    研究生」調）。回傳 `(text, used_files)`；找不到任何可讀文件回 ("", [])；
+    來源打不開／裡面的檔案全都讀不了時丟 SeedSourceError（訊息給使用者看）。"""
     import zipfile
+    import zlib
 
     per_file = max(1000, int(per_file or _THESIS_SEED_PER_FILE))
     total = max(2000, int(total or _THESIS_SEED_TOTAL))
@@ -373,8 +381,9 @@ def _collect_seed_docs(
     if src.is_file() and src.suffix.lower() == ".zip":
         try:
             zf = zipfile.ZipFile(src)
-        except (OSError, zipfile.BadZipFile):
-            return "", []
+        except (OSError, zipfile.BadZipFile) as exc:
+            raise SeedSourceError(f"打不開這個 .zip：{exc}") from exc
+        skipped_big = skipped_unreadable = 0
         with zf:
             for info in zf.infolist():
                 if info.is_dir() or len(candidates) >= _THESIS_SEED_SCAN_CAP:
@@ -384,11 +393,31 @@ def _collect_seed_docs(
                     continue
                 if any(part in _SEED_SKIP_DIRS for part in rel.replace("\\", "/").split("/")):
                     continue
-                data = zf.read(info)
+                if info.file_size > _SEED_MAX_ENTRY_BYTES:
+                    skipped_big += 1
+                    continue
+                try:
+                    data = zf.read(info)
+                except (OSError, zipfile.BadZipFile, EOFError, RuntimeError,
+                        NotImplementedError, zlib.error):
+                    # Windows 11 內建「壓縮成 ZIP 檔案」對大檔會用 Deflate64（method 9），
+                    # Python 的 zipfile 讀不了 → NotImplementedError；有密碼的 zip → RuntimeError。
+                    skipped_unreadable += 1
+                    continue
                 candidates.append((
                     _seed_score(rel, info.file_size), info.file_size, rel,
                     (lambda d=data, n=rel: _extract_text(n, d)),
                 ))
+        if not candidates and (skipped_big or skipped_unreadable):
+            bits = []
+            if skipped_unreadable:
+                bits.append(
+                    f"{skipped_unreadable} 個檔案讀不了（多半是 Windows 內建壓縮的 Deflate64 格式）——"
+                    "請改用 7-Zip、或在檔案總管選取「資料夾」而不是先壓縮，直接把資料夾路徑貼進來"
+                )
+            if skipped_big:
+                bits.append(f"{skipped_big} 個檔案超過 {_SEED_MAX_ENTRY_BYTES // (1024 * 1024)}MB 已略過")
+            raise SeedSourceError("這個 .zip 裡的文件都無法讀取：" + "；".join(bits))
     elif src.is_dir():
         for path in src.rglob("*"):
             if len(candidates) >= _THESIS_SEED_SCAN_CAP:
@@ -562,15 +591,19 @@ def cmd_thesis_seed(payload, _notes_file):
     if not source or not (p.is_dir() or (p.is_file() and p.suffix.lower() == ".zip")):
         return {"drafts": [], "used_files": [], "error": f"找不到資料夾或 .zip：{source or '(未設定)'}", "call_count": 0}
 
-    docs, used_files = _collect_seed_docs(
-        source,
-        per_file=(payload or {}).get("perFileChars") or _THESIS_SEED_PER_FILE,
-        total=(payload or {}).get("totalChars") or _THESIS_SEED_TOTAL,
-        max_files=(payload or {}).get("maxFiles") or _THESIS_SEED_MAX_FILES,
-    )
+    try:
+        docs, used_files = _collect_seed_docs(
+            source,
+            per_file=(payload or {}).get("perFileChars") or _THESIS_SEED_PER_FILE,
+            total=(payload or {}).get("totalChars") or _THESIS_SEED_TOTAL,
+            max_files=(payload or {}).get("maxFiles") or _THESIS_SEED_MAX_FILES,
+        )
+    except SeedSourceError as exc:
+        return {"drafts": [], "used_files": [], "error": str(exc), "call_count": 0}
     if len(docs) < 200:
+        kind = ".zip" if p.is_file() else "資料夾"
         return {"drafts": [], "used_files": used_files,
-                "error": "在這個來源裡找不到可讀的文件（.md / .txt / .docx / .rst）", "call_count": 0}
+                "error": f"在這個{kind}裡找不到可讀的文件（.md / .txt / .docx / .rst）", "call_count": 0}
 
     ai = _ai()
     ok, reason = ai.is_configured()

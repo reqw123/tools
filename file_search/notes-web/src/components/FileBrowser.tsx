@@ -12,13 +12,17 @@ import { getLastDir, setLastDir } from '../lib/lastDir'
  *
  * mode='file'：挑一個檔案（單擊選取、雙擊直接送出）。
  * mode='dir' ：挑一個資料夾——目前所在的目錄就是選取結果，只列子資料夾。
+ * fileExts   ：file 模式限定副檔名（小寫、含點，如 ['.zip']）——不符的檔案
+ *              直接不列出，計數與空狀態也跟著只算符合的。
  */
 export function FileBrowser({
   mode = 'file',
+  fileExts,
   onPick,
   onPickImmediate,
 }: {
   mode?: 'file' | 'dir'
+  fileExts?: string[]
   /** 選取變化（含清空）時通知父層。dir 模式：每次換目錄回報目前目錄路徑。 */
   onPick: (path: string | null) => void
   /** file 模式：雙擊檔案＝直接送出。 */
@@ -43,8 +47,12 @@ export function FileBrowser({
   }
 
   const q = query.trim().toLowerCase()
+  const exts = mode === 'file' && fileExts?.length ? fileExts.map((e) => e.toLowerCase()) : null
+  const baseFiles = exts
+    ? (data?.files ?? []).filter((f) => exts.some((e) => f.name.toLowerCase().endsWith(e)))
+    : data?.files ?? []
   const dirs = q ? (data?.dirs ?? []).filter((d) => d.name.toLowerCase().includes(q)) : data?.dirs ?? []
-  const files = q ? (data?.files ?? []).filter((f) => f.name.toLowerCase().includes(q)) : data?.files ?? []
+  const files = q ? baseFiles.filter((f) => f.name.toLowerCase().includes(q)) : baseFiles
   const choose = (path: string) => {
     const next = selected === path ? null : path
     setSelected(next)
@@ -81,7 +89,7 @@ export function FileBrowser({
         </div>
       ) : (
         <>
-          {(data.dirs.length > 0 || data.files.length > 0) && (
+          {(data.dirs.length > 0 || baseFiles.length > 0) && (
             <div className="fb-search-row">
               <input
                 type="search"
@@ -92,7 +100,7 @@ export function FileBrowser({
               />
               {q && (
                 <span className="dim mono">
-                  符合 {dirs.length + files.length} / {data.dirs.length + data.files.length}
+                  符合 {dirs.length + files.length} / {data.dirs.length + baseFiles.length}
                 </span>
               )}
             </div>
@@ -105,7 +113,9 @@ export function FileBrowser({
                   ? '// 沒有符合的項目'
                   : mode === 'dir'
                     ? '// 這裡沒有子資料夾'
-                    : '// 這個資料夾是空的'}
+                    : exts
+                      ? `// 這裡沒有 ${exts.join(' / ')} 檔案`
+                      : '// 這個資料夾是空的'}
               </p>
             )}
             {dirs.map((d) => (

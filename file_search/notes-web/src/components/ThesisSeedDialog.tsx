@@ -26,6 +26,7 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
   const [rows, setRows] = useState<Row[]>([])
   const [usedFiles, setUsedFiles] = useState<string[]>([])
   const [aborted, setAborted] = useState(false)
+  const [runErr, setRunErr] = useState('')
   const ctrl = useRef<AbortController | null>(null)
 
   const defaultDir = settings?.thesisProjectDir ?? ''
@@ -44,15 +45,24 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
   const run = useCallback(
     (src: string) => {
       setAborted(false)
+      setRunErr('')
       setPhase('running')
       ctrl.current = new AbortController()
       seed.mutate(
         { source: src, signal: ctrl.current.signal },
         {
           onSuccess: (r) => {
+            const drafts = r.drafts ?? []
+            if (!drafts.length) {
+              // 後端回 200 但沒產出草稿（來源沒有可讀文件、.zip 讀不了、AI 沒照格式…）
+              // ——把 error 攤在選來源畫面上，讓使用者改來源／設定後直接重試。
+              setRunErr(r.error || 'AI 沒有產出可用的草稿，請換個來源或稍後再試。')
+              setPhase('pick')
+              return
+            }
             setUsedFiles(r.used_files ?? [])
             setRows(
-              (r.drafts ?? []).map((d, i) => ({
+              drafts.map((d, i) => ({
                 key: `d${i}`,
                 save: true,
                 title: d.title,
@@ -66,6 +76,8 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
             // AbortError → 回到來源選擇，標「已中斷」，不當成錯誤
             if (e instanceof DOMException && e.name === 'AbortError') {
               setAborted(true)
+            } else {
+              setRunErr(e instanceof Error ? e.message : String(e))
             }
             setPhase('pick')
           },
@@ -113,12 +125,16 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
               （<code>.md / .txt / .docx / .rst</code>）產出任務便利貼草稿。
             </p>
             {aborted && <p className="err">已中斷上一次生成。</p>}
+            {runErr && <p className="err">生成失敗：{runErr}</p>}
             <label className="seed-source">
               <span>來源</span>
               <input
                 value={effectiveSource}
                 placeholder="資料夾或 .zip 的完整路徑"
-                onChange={(e) => setSource(e.target.value)}
+                onChange={(e) => {
+                  setSource(e.target.value)
+                  setRunErr('')
+                }}
               />
             </label>
             <div className="sheet-actions">
@@ -151,13 +167,20 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
             </p>
             <FileBrowser
               mode={phase === 'browseDir' ? 'dir' : 'file'}
+              fileExts={phase === 'browseZip' ? ['.zip'] : undefined}
               onPick={(p) => {
-                if (phase === 'browseDir' && p) setSource(p)
-                else if (phase === 'browseZip' && p && p.toLowerCase().endsWith('.zip')) setSource(p)
+                if (phase === 'browseDir' && p) {
+                  setSource(p)
+                  setRunErr('')
+                } else if (phase === 'browseZip' && p && p.toLowerCase().endsWith('.zip')) {
+                  setSource(p)
+                  setRunErr('')
+                }
               }}
               onPickImmediate={(p) => {
                 if (p.toLowerCase().endsWith('.zip')) {
                   setSource(p)
+                  setRunErr('')
                   setPhase('pick')
                 }
               }}
