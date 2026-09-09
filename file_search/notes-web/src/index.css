@@ -1474,8 +1474,8 @@ body {
   padding: 0.4rem 0.55rem;
   border: 1px solid var(--hair);
   border-radius: 3px;
-  background: var(--paper-filter, #fff);
-  color: var(--paper-ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
 }
 .seed-list {
   display: flex;
@@ -1523,9 +1523,15 @@ body {
   padding: 0.3rem 0.45rem;
   border: 1px solid var(--hair);
   border-radius: 3px;
-  background: var(--paper-filter, #fff);
-  color: var(--paper-ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
   width: 100%;
+}
+.seed-row input:focus,
+.seed-row textarea:focus,
+.seed-source input:focus {
+  outline: none;
+  border-color: var(--brass);
 }
 .seed-body {
   resize: vertical;

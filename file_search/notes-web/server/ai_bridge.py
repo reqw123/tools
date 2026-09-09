@@ -289,7 +289,13 @@ _THESIS_SEED_TOTAL = 30000         # 全部合起來的上限
 _THESIS_SEED_MAX_FILES = 8         # 最多挑幾個檔案（預設；使用者可在全域設定調 1–40）
 _THESIS_SEED_SCAN_CAP = 400        # 掃描時最多看幾個候選檔（避免超大專案卡住）
 _SEED_MAX_ENTRY_BYTES = 12 * 1024 * 1024  # 單一文件超過這個大小就略過（純取文字，不需要巨檔）
-_SEED_EXTS = (".md", ".txt", ".docx", ".rst")
+# 「像文件」的副檔名——純文字類直接讀，.docx 抽 word/document.xml、.ipynb 抽
+# markdown ＋程式碼 cell（跳過輸出）。資料夾與 .zip 用同一份清單。
+_SEED_EXTS = (
+    ".md", ".markdown", ".mdx", ".txt", ".text", ".rst", ".rest",
+    ".docx", ".tex", ".ipynb", ".org", ".adoc", ".asciidoc",
+)
+_SEED_EXTS_LABEL = ".md / .markdown / .txt / .rst / .docx / .tex / .ipynb / .org"
 # 檔名／路徑帶這些字的優先（進度、大綱、架構、說明類文件對「產任務」最有料）
 _SEED_NAME_HINTS = (
     "readme", "context", "overview", "outline", "architecture", "design",
@@ -326,6 +332,30 @@ def _docx_text_from_bytes(data: bytes) -> str:
     return "\n".join(out)
 
 
+def _ipynb_text_from_bytes(data: bytes) -> str:
+    """Jupyter notebook → 只留 markdown cell 的文字 ＋ code cell 的原始碼
+    （跳過執行輸出、base64 圖、metadata）。解析不了就回空字串。"""
+    try:
+        nb = json.loads(data.decode("utf-8", "ignore"))
+        cells = nb.get("cells", [])
+    except (ValueError, AttributeError):
+        return ""
+    out = []
+    for cell in cells:
+        if not isinstance(cell, dict):
+            continue
+        src = cell.get("source", "")
+        text = "".join(src) if isinstance(src, list) else str(src)
+        text = text.strip()
+        if not text:
+            continue
+        if cell.get("cell_type") == "code":
+            out.append("```\n" + text + "\n```")
+        else:
+            out.append(text)
+    return "\n\n".join(out)
+
+
 def _seed_score(rel_path: str, size: int) -> int:
     """rel_path 這個候選文件有多值得餵給 AI——名字/資料夾像文件的加分，
     docx 略加分（多半是論文草稿），太大的稍微減分（tie-break 用）。"""
@@ -339,7 +369,7 @@ def _seed_score(rel_path: str, size: int) -> int:
         score += 3
     if re.match(r"^(0[_-]|\d)", name):
         score += 2
-    if name.endswith(".docx"):
+    if name.endswith((".docx", ".tex")):  # 多半是論文草稿本體
         score += 1
     if size > 60000:
         score -= 1
@@ -347,8 +377,11 @@ def _seed_score(rel_path: str, size: int) -> int:
 
 
 def _extract_text(name: str, data: bytes) -> str:
-    if name.lower().endswith(".docx"):
+    low = name.lower()
+    if low.endswith(".docx"):
         return _docx_text_from_bytes(data)
+    if low.endswith(".ipynb"):
+        return _ipynb_text_from_bytes(data)
     return data.decode("utf-8", errors="ignore")
 
 
@@ -583,7 +616,7 @@ def _parse_thesis_seed(raw: str):
 def cmd_thesis_seed(payload, _notes_file):
     """stdin: {source} → {drafts: [{title,tag,body}], used_files, error, call_count}。
     `source` 是一個資料夾或一個 .zip；自動挑出裡面最像「文件」的幾個檔案
-    （.md/.txt/.docx/.rst，依檔名/路徑評分），一次 AI 呼叫產出一批任務便利貼
+    （純文字類／.docx／.tex／.ipynb，見 _SEED_EXTS，依檔名/路徑評分），一次 AI 呼叫產出一批任務便利貼
     草稿。不寫入——前端審核過再走既有的 /api/ai/save-notes（會存進目前作用中
     的便利貼集合，也就是研究生那份）。"""
     source = ((payload or {}).get("source") or (payload or {}).get("projectDir") or "").strip()
@@ -603,7 +636,7 @@ def cmd_thesis_seed(payload, _notes_file):
     if len(docs) < 200:
         kind = ".zip" if p.is_file() else "資料夾"
         return {"drafts": [], "used_files": used_files,
-                "error": f"在這個{kind}裡找不到可讀的文件（.md / .txt / .docx / .rst）", "call_count": 0}
+                "error": f"在這個{kind}裡找不到可讀的文件（{_SEED_EXTS_LABEL}）", "call_count": 0}
 
     ai = _ai()
     ok, reason = ai.is_configured()
