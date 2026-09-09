@@ -294,8 +294,9 @@ _SEED_MAX_ENTRY_BYTES = 12 * 1024 * 1024  # 單一文件超過這個大小就略
 _SEED_EXTS = (
     ".md", ".markdown", ".mdx", ".txt", ".text", ".rst", ".rest",
     ".docx", ".tex", ".ipynb", ".org", ".adoc", ".asciidoc",
+    ".py", ".json",
 )
-_SEED_EXTS_LABEL = ".md / .markdown / .txt / .rst / .docx / .tex / .ipynb / .org"
+_SEED_EXTS_LABEL = ".md / .markdown / .txt / .rst / .docx / .tex / .ipynb / .org / .py / .json"
 # 檔名／路徑帶這些字的優先（進度、大綱、架構、說明類文件對「產任務」最有料）
 _SEED_NAME_HINTS = (
     "readme", "context", "overview", "outline", "architecture", "design",
@@ -306,6 +307,15 @@ _SEED_DIR_HINTS = ("doc", "docs", "paper", "notes", "spec")
 _SEED_SKIP_DIRS = {
     ".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build",
     ".pytest_cache", "site-packages", ".mypy_cache",
+}
+# 這些檔名沒有「文件」價值、只會浪費挑檔名額／字數（.json/.py 開放後更需要擋）：
+# 套件鎖定檔、建置設定、以及這個 app 自己的便利貼資料檔（餵回去會遞迴又沒意義）。
+_SEED_SKIP_NAMES = {
+    "package-lock.json", "package.json", "tsconfig.json", "tsconfig.node.json",
+    "components.json", "manifest.json", ".eslintrc.json", ".prettierrc.json",
+    ".sticky_notes.json", ".thesis_notes.json", ".ai_settings.json",
+    ".ai_usage.json", ".tag_colors.json", ".thesis_tag_colors.json",
+    "__init__.py", "conftest.py", "setup.py",
 }
 
 _THESIS_TAGS = [
@@ -424,7 +434,8 @@ def _collect_seed_docs(
                 rel = info.filename
                 if not rel.lower().endswith(_SEED_EXTS):
                     continue
-                if any(part in _SEED_SKIP_DIRS for part in rel.replace("\\", "/").split("/")):
+                parts = rel.replace("\\", "/").split("/")
+                if any(p in _SEED_SKIP_DIRS for p in parts) or parts[-1].lower() in _SEED_SKIP_NAMES:
                     continue
                 if info.file_size > _SEED_MAX_ENTRY_BYTES:
                     skipped_big += 1
@@ -457,10 +468,12 @@ def _collect_seed_docs(
                 break
             if not path.is_file() or path.suffix.lower() not in _SEED_EXTS:
                 continue
-            if any(part in _SEED_SKIP_DIRS for part in path.parts):
+            if any(part in _SEED_SKIP_DIRS for part in path.parts) or path.name.lower() in _SEED_SKIP_NAMES:
                 continue
             try:
                 size = path.stat().st_size
+                if size > _SEED_MAX_ENTRY_BYTES:
+                    continue
             except OSError:
                 continue
             rel = str(path.relative_to(src))
@@ -616,7 +629,7 @@ def _parse_thesis_seed(raw: str):
 def cmd_thesis_seed(payload, _notes_file):
     """stdin: {source} → {drafts: [{title,tag,body}], used_files, error, call_count}。
     `source` 是一個資料夾或一個 .zip；自動挑出裡面最像「文件」的幾個檔案
-    （純文字類／.docx／.tex／.ipynb，見 _SEED_EXTS，依檔名/路徑評分），一次 AI 呼叫產出一批任務便利貼
+    （純文字類／.docx／.tex／.ipynb／.py／.json，見 _SEED_EXTS，依檔名/路徑評分），一次 AI 呼叫產出一批任務便利貼
     草稿。不寫入——前端審核過再走既有的 /api/ai/save-notes（會存進目前作用中
     的便利貼集合，也就是研究生那份）。"""
     source = ((payload or {}).get("source") or (payload or {}).get("projectDir") or "").strip()

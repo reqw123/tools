@@ -10,7 +10,7 @@ type Phase = 'pick' | 'browseDir' | 'browseZip' | 'running' | 'review'
 
 /**
  * 研究生模式「從專案生成」——AI 讀一個資料夾或一個 .zip 裡最像文件的幾個檔案
- * （純文字類／.docx／.tex／.ipynb，見 ai_bridge._SEED_EXTS），一次呼叫產出一批任務便利貼草稿。使用者逐則勾選／
+ * （純文字類／.docx／.tex／.ipynb／.py／.json，見 ai_bridge._SEED_EXTS），一次呼叫產出一批任務便利貼草稿。使用者逐則勾選／
  * 編輯，按「存入」一次寫進研究生便利貼（走既有的 /api/ai/save-notes）。
  * 生成過程可按「中斷」——後端會連帶殺掉那個十幾秒的子行程。
  */
@@ -123,7 +123,8 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
             <p className="dim">
               選一個資料夾或一個 <code>.zip</code>，AI 會挑出裡面最像文件的幾個檔案
               （<code>.md</code>／<code>.markdown</code>／<code>.txt</code>／<code>.rst</code>／
-              <code>.docx</code>／<code>.tex</code>／<code>.ipynb</code>／<code>.org</code>）產出任務便利貼草稿。
+              <code>.docx</code>／<code>.tex</code>／<code>.ipynb</code>／<code>.org</code>／
+              <code>.py</code>／<code>.json</code>）產出任務便利貼草稿。
             </p>
             {aborted && <p className="err">已中斷上一次生成。</p>}
             {runErr && <p className="err">生成失敗：{runErr}</p>}
