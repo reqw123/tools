@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useBulkCreateNotes } from '../hooks/useNotes'
 import { TagInput } from './TagInput'
+import { scrimClose } from '../lib/scrimClose'
 
 /**
  * 批次新增：先選分類與數量 → 一次建立 N 張空白便利貼（標題 `<前綴> 1..N`，
@@ -42,7 +43,7 @@ export function BatchCreateDialog({
   const effPrefix = prefix.trim() || tag.trim() || '便利貼'
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div className="scrim" {...scrimClose(onClose)}>
       <div
         className="sheet plain"
         role="dialog"

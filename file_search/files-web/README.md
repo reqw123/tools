@@ -4,13 +4,14 @@
 索引項目用網頁 UI 攤開來看——搜尋、依分類／資料夾篩選、標示已遺失的檔案、
 一鍵開啟檔案或所在資料夾。也能維護項目（**只動 `.md`，不碰硬碟上的實體檔案**）：
 加入單筆、**原地編輯分類／說明**、移除單筆、**批次匯入資料夾**、
-**批次補說明（可用 AI）**、**批次刪除**。
+**批次補說明（可用 AI）**、**批次分類**（補空白／舊→新）、**批次刪除**。
 
 跟便利貼版 [`notes-web`](../notes-web) 是**同層的兩個獨立分流**：
-共用技術棧、各自一個資料夾、不共用程式碼。改**路徑**、前言 prose、
-索引集的**刪除**、AI 全文搜尋等仍只在桌面版 `file_search.py`；索引集的**建立**
-則放寬成可以「匯入既有 `.md`」（見 `docs/adr/0003`），跟桌面版的「📥 匯入
-索引集」對應。
+共用技術棧、各自一個資料夾、不共用程式碼。改**路徑**、在網頁 UI 裡直接編輯
+前言 prose、**重新命名索引集**、AI 全文搜尋等仍只在桌面版 `file_search.py`
+（重新命名桌面版也沒有）。索引集層級的其他動作都做了：**匯入（=建立）／
+匯出**（見 `docs/adr/0003`）、**新增空白 `.md`／刪除整份／用系統文字編輯器開
+這份 `.md`**（見 `docs/adr/0004`），對應桌面版索引集選單那幾個按鈕。
 「批次補說明」的 AI 模式跟便利貼牆一樣：透過 `server/ai_bridge.py` 子行程呼叫
 桌面版的 `AIDescriptionService`，不重寫 AI 邏輯（需要環境有 Python +
 `file_search_app`；缺了只有 `/api/ai/*` 回 502，其餘照常）。
@@ -19,6 +20,10 @@
   [`docs/adr/0001-…`](./docs/adr/0001-separate-readonly-app-with-ported-parser.md)
 - 為什麼後來放寬成允許「項目層級」增刪：見
   [`docs/adr/0002-…`](./docs/adr/0002-allow-entry-level-editing.md)
+- 為什麼索引集層級的匯入／匯出也放寬：見
+  [`docs/adr/0003-…`](./docs/adr/0003-allow-index-set-create-import.md)
+- 為什麼新增空白／刪除／開編輯器也搬上網頁：見
+  [`docs/adr/0004-…`](./docs/adr/0004-allow-index-set-create-blank-delete-edit.md)
 - 詞彙（索引集／索引項目／分類／說明／前言／遺失項目）：見 [`CONTEXT.md`](./CONTEXT.md)
 
 ## 技術棧
@@ -77,14 +82,14 @@ npm run lint    # oxlint
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/api/indexes` | `indexes/` 最上層所有 `.md` 檔名（非遞迴，跟桌面版 `list_index_files()` 一致） |
-| GET | `/api/indexes/:name` | 解析後的一份索引集：`{ name, entries[], preamble, raw, skipped }`（`raw` = 整份 .md 原文，給「原文檢視」用） |
+| GET | `/api/indexes/:name` | 解析後的一份索引集：`{ name, entries[], preamble, raw, skipped }`（`raw` = 整份 .md 原文，給「文件檢視」用） |
 | POST | `/api/exists` | `{ paths[] }` → `{ stats: { <path>: { exists, size?, mtime? } } }`，前端拿目前可見的列來批次查 |
 | POST | `/api/open` | `{ path, select? }` → 用系統檔案總管開啟（`select:true` 開資料夾並選中該檔）。非絕對路徑回 400 |
 | POST | `/api/preview` | `{ path }` → `{ kind, text?, truncated?, bytes? }`。純文字／markdown 檔案回內容（上限 256 KB，超過 8 MB 不讀）；其他回 `kind:"unsupported"` |
 | GET | `/api/file?path=…` | 串流被索引的檔案本身（圖片／影音／PDF）。支援 `Range`（影音拖進度），非絕對路徑 400、找不到 404 |
 | GET | `/api/browse?path=…` | 選檔／選資料夾視窗用。`path` 空 → 磁碟機／根目錄清單；否則列該目錄的子資料夾與檔案（上限 4000 筆）。回 `{ path, parent, dirs[], files[], truncated }` |
 | POST | `/api/scan` | `{ dir, recursive?, categories? }` → 遞迴掃描資料夾（`categories` 是類型標籤，空 = 全部）。回 `{ files[], truncated, categoryCounts[] }`；超過 1000 筆 `truncated:true`（不該拿去匯入）。移植自 `scan_service.py` |
-| GET | `/api/scan-categories` | 檔案類型篩選按鈕的 `{ label, icon, color }`（跟 `scan` 同一份 `EXT_CATEGORIES`，icon/color 對齊桌面版 `config`）|
+| GET | `/api/scan-categories` | 檔案類型篩選按鈕的 `{ label, icon, color }`（跟 `scan` 同一份 `EXT_CATEGORIES`；**跟便利貼牆「AI 生成便利貼」的掃描分類同一份**——含「程式碼」「設定與資料」「筆記本」，「其他」也可選）|
 | GET | `/api/indexes/:name/blank-suggestions` | 「批次補說明」步驟 1：說明是空的、檔案還在的項目 + 內容擷取建議。回 `{ items[], truncated }`。移植自 `find_blank_entries` + `build_suggestion` |
 
 AI（「批次補說明」的 AI 模式 + AI 設定；全部透過 `server/ai_bridge.py` 子行程
@@ -112,8 +117,18 @@ Python 不在（`PYTHON` 環境變數或 `python` 找不到、`file_search_app` 
 | POST | `/api/indexes/:name/entries/bulk-delete` | `{ items: [{ serial, path? }] }` → 一次移除多列（都對原始列序，一次寫入）。回 `{ removed }`。移植自 `remove_rows_by_occurrences` |
 | PATCH | `/api/indexes/:name/entries` | `{ updates: [{ serial, path?, category?, description? }] }` → 原地改既有列的分類／說明（省略的欄位沿用原值，路徑與位置不動），一次寫入。回 `{ updated }`。移植自 `update_row_by_occurrence`。單列「編輯」送一筆；「批次補說明」步驟 2 送一批（只帶 `description`） |
 
+索引集層級（見 `docs/adr/0003`、`0004`）：
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| POST | `/api/indexes/import` | `{ name, content }` → 把一份既有 `.md` 的內容存成新索引集。撞名／不合法檔名回 422。`validateIndexName()` 對齊桌面版 `validate_name()` |
+| POST | `/api/indexes` | `{ name }` → 建立一份**空白**索引集（內建範本＝桌面版 `_DEFAULT_INDEX_TEMPLATE`）。回 `{ name }`。對應桌面版「🗂 新增索引集」 |
+| DELETE | `/api/indexes/:name` | 刪掉整份 `.md` 索引集（**不碰實體檔案**）。找不到回 404。二次確認在前端 `DeleteIndexDialog`。對應桌面版「🗑️ 刪除索引集」 |
+| POST | `/api/indexes/:name/edit` | 在跑 server 的那台電腦用系統文字編輯器（VS Code → 記事本／`open -t`／`xdg-open`）開啟這份 `.md`。對應桌面版「編輯索引檔案」 |
+
 `:name` 只接受單一 `.md` 檔名，含 `/` `\` `..` 一律 404（擋路徑穿越）。所有寫入
-走原子替換（暫存檔 + rename，對應桌面版 `atomic_io.py`）。
+走原子替換（暫存檔 + rename，對應桌面版 `atomic_io.py`）；`DELETE` 是直接
+`unlink`。
 
 ### 索引集解析
 
@@ -128,8 +143,15 @@ Python 不在（`PYTHON` 環境變數或 `python` 找不到、`file_search_app` 
 
 ## 前端行為
 
-- **清單 / 原文 切換**（頂部右側）：「清單」是可搜尋篩選的項目瀏覽器；「原文」把
-  整份 `.md`（前言 + 表格）用 `marked` render 成一頁看。原文模式下篩選列收起來。
+- **對話框關閉**：Esc、右上 ×、或**點背景**。「點背景關閉」用 `lib/scrimClose.ts`
+  ——只有滑鼠按下＋放開都落在背景本身才算，所以從對話框裡的輸入框往外拖曳
+  選字（右到左框選容易滑出邊界）放開時不會誤關。
+- **清單 / 文件 切換**（頂部右側）：「清單」是可搜尋篩選的項目瀏覽器；「文件」把
+  整份索引集的 `.md`（前言 + 表格）用 `marked` render 成一頁看。文件模式下只保留
+  一個搜尋框——輸入後**只留下符合的表格列**（不符合的列、以及前言等非項目區塊都
+  收起來，套 `.dv-hide`），符合的文字高亮，右下角小徽章顯示符合筆數；清空搜尋字
+  就恢復整份文件（`DocView` 走訪 DOM 自己加 class／包 `<mark>`，不重打 `marked`）。
+  （這顆鈕原本叫「原文」，會被誤會成「看某個索引項目的原始內容」，已改名。）
 - **看被索引的檔案本身**：展開一列後，可預覽的類型會多一顆「預覽內容」，直接在
   網頁上看：
   - 圖片 → `<img>`；影音（`.mp4` `.mp3`…）→ `<video>`／`<audio>`，可拖進度（後端支援 Range）
@@ -137,6 +159,9 @@ Python 不在（`PYTHON` 環境變數或 `python` 找不到、`file_search_app` 
   - `.md` → render 成 HTML；`.txt` / `.json` / 程式碼 → 等寬字顯示（上限 256 KB）
   - Office（`.docx` `.pptx` `.xlsx`）、壓縮檔等 → 不預覽，請「開啟檔案」
   - `.mkv` / `.mov` 之類瀏覽器可能沒有解碼器，`<video>` 會顯示錯誤——那也請「開啟檔案」
+  - 文字／markdown 預覽框上方有字級縮放（`−` `N%` `+`）；滑鼠移到框上時
+    `Ctrl`/`⌘` + `+` / `−` / `0`、或 `Ctrl`＋滾輪也能縮，只縮這個框、不動整頁
+    瀏覽器縮放，倍率記在 `localStorage`（`usePreviewZoom`）
 - **索引集**：頂部下拉切換，一次一份。記住上次開的（`localStorage`），下次直接
   載入；那份不在了就退回清單第一份。切換時清掉篩選、捲回頂部。**不做**「全部
   索引」聚合。
@@ -156,13 +181,23 @@ Python 不在（`PYTHON` 環境變數或 `python` 找不到、`file_search_app` 
   索引檔被外部改過時會擋下。
 - **批次（工具列第二排）**——都只動 `.md`，不碰實體檔案：
   - **匯入資料夾**：選資料夾 →「包含子資料夾」＋類型篩選（每個類型一個色＋
-    圖示的按鈕）→ 掃描看筆數／各類別分佈（彩色藥丸，0 筆淡化）→ 填一個共用
-    分類 → 一次匯入。對應「匯入資料夾…」。
+    圖示的按鈕；分類清單跟便利貼牆「AI 生成便利貼」同一份，含程式碼／設定與
+    資料／筆記本，「其他」也可選）→ 掃描看筆數／各類別分佈（彩色藥丸，0 筆
+    淡化）→ 填一個共用分類 → 一次匯入。遞迴時 `node_modules`／`.git`／`dist`
+    這類產出物資料夾整個略過（`SCAN_SKIP_DIRS`）。對應「匯入資料夾…」。
   - **批次補說明**：對「說明是空的、檔案還在」的項目擷取內容（純文字／markdown
     取前 1200 字）當建議，逐筆看過／改／取消勾選 → 只寫說明欄。也能對勾選的
     項目改按「🤖 用 AI 產生」：送出前的確認視窗列出去向／模型／位址／累計呼叫
     次數（雲端 Provider 另有計費警告），確認後逐檔跑、顯示進度、可中途停止；
     AI 回來的建議一樣回清單逐筆看過，「套用」時才寫進 `.md`。
+  - **批次分類**（`BatchCategoryDialog`）——一顆按鈕、頂端兩個分頁：
+    - **補上空白的**：對「分類是空的」項目逐筆帶一個建議分類（預設**上層資料夾
+      名**，可切換成**檔案類型**：圖片／文件／PDF…），逐筆看過／改／取消勾選。
+      要看到具體項目所以有清單。純前端算建議（`Entry.parent` ＋ `kindOf`）。
+    - **舊分類 → 新分類**：把目前是某分類（或未分類）的項目整批換成另一個分類
+      ——只是換名字，不用逐筆挑。舊分類從一排**可點選的晶片**挑（分類多時上面有
+      篩選框）、新分類是 `<input list=…>`，看「符合 N 筆」後套用。
+    兩者都只寫分類欄，套用走既有的 `PATCH .../entries`，不需要 AI／新後端。
   - **AI 設定**（工具列）：Provider 二選一、Ollama 本機／區網雙選、可自填 IP、
     測試連線、讀取已安裝模型清單。跟桌面版與便利貼牆共用同一份設定檔。
   - **批次刪除**：搜尋＋「只看路徑遺失」＋勾選，兩段確認 → 一次移除多列。
@@ -184,19 +219,23 @@ server/
                目錄瀏覽（browseDir）、資料夾掃描（scanFolder）、內容擷取建議
                （suggestDescription / blankSuggestions）
   routes.ts    唯讀端點 + 項目增刪改（含 bulk / bulk-delete / PATCH）
-               + /browse + /scan + blank-suggestions
+               + 索引集層級（import／POST 建空白／DELETE／edit）+ /browse + /scan + blank-suggestions
   ai.ts        runBridge()：把 server/ai_bridge.py 當子行程叫（stdin JSON / stdout JSON）
   ai-routes.ts /api/ai/*（target · settings · test · models · suggest）
   ai_bridge.py Node ↔ file_search_app 的 AI 橋接（AIDescriptionService / PreviewService）
 src/
   lib/       api · ai（aiApi）· ollamaUrl（Ollama 位址正規化，跟便利貼牆同一份）·
-             format（類型分組／大小／時間）· lastIndex／lastDir（localStorage）
-  hooks/     useIndexes（清單＋單份＋useBrowse／useAddEntry／useUpdateEntry／useDeleteEntry／
+             format（類型分組／大小／時間）· lastIndex／lastDir（localStorage）·
+             scrimClose（點背景關閉，拖曳選字滑出邊界不誤關）
+  hooks/     useIndexes（清單＋單份＋useImportIndex／useCreateIndex／useDeleteIndex／useEditIndex／
+             useBrowse／useAddEntry／useUpdateEntry／useDeleteEntry／
              useScan／useBulkAdd／useBlankSuggestions／useBulkDescribe／useBulkDelete）·
              useAi（useAiTarget／useAiSettings／useSaveAiSettings／useTestConnection／useOllamaModels）· useExists
   components/ App · Toolbar · Preamble · DocView · EntryList · EntryRow（含「編輯」「從索引移除」）·
              FilePreview · FileBrowser（選檔／選資料夾，mode='file'|'dir'）· AiSettingsDialog ·
-             AddEntryDialog · BatchImportDialog · BatchDescribeDialog（含 AI 模式）· BatchDeleteDialog · ThemeToggle
+             AddEntryDialog · BatchImportDialog · BatchDescribeDialog（含 AI 模式）·
+             BatchCategoryDialog（批次分類：補空白／舊→新）· BatchDeleteDialog ·
+             ImportIndexDialog · CreateIndexDialog · DeleteIndexDialog（索引集層級）· ThemeToggle
   index.css  Tailwind + 「檔案室 / 索引卡」手寫視覺（冷調紙面、鋼藍標記色、
              等寬字排路徑、三態主題）
 ```
@@ -211,7 +250,9 @@ src/
   `.ai_usage.json`（在這裡改設定，桌面版與便利貼牆也生效），且不重寫 AI 邏輯——
   `server/ai_bridge.py` 子行程直接呼叫桌面版的 `AIDescriptionService`。
   網頁版不做音訊／影片轉錄（那類檔案會被當「沒有可摘要的內容」略過）。
-- **AI 全文搜尋、改路徑、前言 prose 編輯、索引集的刪除、全文快取、
-  重複偵測、清除失效項目**：一律不做——那些是桌面版的職責。索引集的
-  **建立／匯出**（見 `docs/adr/0003`）跟工具列的「匯入索引集」「匯出索引集」
-  例外，兩者都做了。
+- **AI 全文搜尋、改路徑、在網頁 UI 裡編輯前言 prose、重新命名索引集、
+  全文快取、重複偵測、清除失效項目**：一律不做——那些是桌面版的職責
+  （重新命名桌面版也沒有；前言 prose 現在的答案是「編輯索引集」按鈕開系統
+  編輯器自己改）。索引集層級的**匯入（=建立）／匯出**（`docs/adr/0003`）、
+  **新增空白 `.md`／刪除整份／開系統編輯器**（`docs/adr/0004`）都做了，
+  對應工具列「匯出索引集」右邊那排正方形小按鈕。

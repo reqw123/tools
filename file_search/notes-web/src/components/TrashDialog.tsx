@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { colorForTag } from '../lib/color'
 import { stamp } from '../lib/format'
 import { useEmptyTrash, usePurgeNote, useRestoreNote, useTagColors, useTrash } from '../hooks/useNotes'
+import { scrimClose } from '../lib/scrimClose'
 
 /**
  * 垃圾桶——「刪除」（單筆或批次）現在只是把便利貼搬到這裡，不是真的消失。
@@ -48,7 +49,7 @@ export function TrashDialog({ onClose }: { onClose: () => void }) {
   const list = trash ?? []
 
   return (
-    <div className="scrim" onClick={() => !busy && onClose()}>
+    <div className="scrim" {...scrimClose(() => { if (!busy) onClose() })}>
       <div
         className="sheet plain wide"
         role="dialog"

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { File } from 'lucide-react'
 import { useAddEntry } from '../hooks/useIndexes'
 import { FileBrowser } from './FileBrowser'
+import { scrimClose } from '../lib/scrimClose'
 
 /**
  * 「加入索引」——對應桌面版的「新增檔案…」＋ AddEntryDialog：
@@ -60,7 +61,7 @@ export function AddEntryDialog({
   const fileName = picked.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || picked
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div className="scrim" {...scrimClose(onClose)}>
       <div
         className="modal"
         role="dialog"

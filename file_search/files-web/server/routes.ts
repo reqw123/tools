@@ -5,12 +5,15 @@ import {
   blankSuggestions,
   browseDir,
   clearCategoryColor,
+  createBlankIndex,
   createIndexFile,
+  deleteIndex,
   fileStream,
   getCategoryColors,
   listIndexes,
   mimeOf,
   openInExplorer,
+  openIndexInEditor,
   previewFile,
   readIndex,
   removeEntriesByOccurrences,
@@ -57,6 +60,46 @@ export const routes: FastifyPluginAsync = async (app) => {
       return reply.code(201).send({ name: filename })
     },
   )
+
+  // ── 新增一份空白索引集（帶格式規定前言、空表格，見 docs/adr/0004）─────
+  // 對應桌面版「🗂 新增索引集」——跟 /indexes/import 的差別只在內容來源：
+  // import 存的是使用者挑的既有 .md，這裡存的是內建範本。
+  app.post<{ Body: { name?: string } }>(
+    '/indexes',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['name'],
+          properties: { name: { type: 'string', minLength: 1, maxLength: 255 } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { filename, error } = validateIndexName(req.body.name ?? '')
+      if (!filename) return reply.code(422).send({ error })
+      createBlankIndex(filename)
+      return reply.code(201).send({ name: filename })
+    },
+  )
+
+  // ── 刪除整份索引集（見 docs/adr/0004）──────────────────────────────
+  // 對應桌面版「🗑️ 刪除索引集」。只刪 .md 索引紀錄，不碰實體檔案。二次確認
+  // （顯示名稱＋項目筆數）在前端 DeleteIndexDialog 做，這裡是最後一道防線。
+  app.delete<{ Params: { name: string } }>('/indexes/:name', async (req, reply) => {
+    const r = deleteIndex(decodeURIComponent(req.params.name))
+    if (!r.ok) return reply.code(r.code).send({ error: r.error })
+    return { ok: true }
+  })
+
+  // ── 用系統文字編輯器開啟這份索引集的 .md（見 docs/adr/0004）──────────
+  // 對應桌面版「編輯索引檔案」。本機動作（在跑 server 的那台電腦開窗），跟
+  // /open 一樣靠 server 只綁 127.0.0.1 把關。
+  app.post<{ Params: { name: string } }>('/indexes/:name/edit', async (req, reply) => {
+    const r = openIndexInEditor(decodeURIComponent(req.params.name))
+    if (!r.ok) return reply.code(r.code).send({ error: r.error })
+    return { ok: true }
+  })
 
   // ── 新增／刪除索引項目（項目層級，見 docs/adr/0002）──────────────
   // 只動索引集 .md 的表格列，絕不碰硬碟上的實體檔案。

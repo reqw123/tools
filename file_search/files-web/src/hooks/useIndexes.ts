@@ -13,6 +13,32 @@ export function useImportIndex() {
   })
 }
 
+/** 新增一份空白索引集——桌面版「🗂 新增索引集」。 */
+export function useCreateIndex() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => api.createIndex(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['indexes'] }),
+  })
+}
+
+/** 刪除整份索引集——桌面版「🗑️ 刪除索引集」。 */
+export function useDeleteIndex() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => api.deleteIndex(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['indexes'] }),
+  })
+}
+
+/** 用系統文字編輯器開啟這份 .md——桌面版「編輯索引檔案」。純本機動作，
+ *  沒有要 invalidate 的 query（改完存檔後靠使用者自己重新整理／切換索引集）。 */
+export function useEditIndex() {
+  return useMutation({
+    mutationFn: (name: string) => api.editIndex(name),
+  })
+}
+
 export function useIndex(name: string | null) {
   return useQuery({
     queryKey: ['index', name],

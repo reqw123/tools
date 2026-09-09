@@ -6,6 +6,7 @@ import { aiApi, type NoteDraft } from '../lib/ai'
 import { humanSize } from '../lib/format'
 import { FileBrowser } from './FileBrowser'
 import { TagInput } from './TagInput'
+import { scrimClose } from '../lib/scrimClose'
 
 type ScannedFile = { path: string; name: string; size: number; ext: string }
 type DraftRow = { key: string; source: ScannedFile; save: boolean; title: string; tag: string; body: string }
@@ -211,7 +212,7 @@ export function GenerateNotesDialog({
   const cloudWarn = t?.provider === 'openai'
 
   return (
-    <div className="scrim" onClick={() => !busy && onClose()}>
+    <div className="scrim" {...scrimClose(() => { if (!busy) onClose() })}>
       <div
         className="sheet plain wide"
         role="dialog"

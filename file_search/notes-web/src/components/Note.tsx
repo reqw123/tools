@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
+import { Check, X } from 'lucide-react'
 import { noteThumbUrl, REPEAT_LABELS, type Note as NoteT } from '../lib/api'
 import { paperVars } from '../lib/color'
-import { dueLabel, dueStatus, seedOf, stamp, tiltOf } from '../lib/format'
+import { dueLabel, dueStatus, seedOf, stamp, tiltOf, todoProgress } from '../lib/format'
 import {
   useAppSettings, useReminderSettings, useSetNotePinned, useTagColors, useToggleNoteLine,
 } from '../hooks/useNotes'
@@ -40,16 +41,19 @@ export function Note({
   const drag = useRef<DragState | null>(null)
   const justDragged = useRef(false)
 
-  const seed = seedOf(note.title + note.tag)
-  const rot = tiltOf(seed)
-  const usePin = seed % 3 === 2
   const { data: tagColors } = useTagColors()
   const { data: appSettings } = useAppSettings()
+  const seed = seedOf(note.title + note.tag)
+  // 「全域設定 → 外觀」可關掉歪斜（預設關）或自訂最大角度；關掉時 rot=0，膠帶也擺正。
+  const rot = appSettings?.wall.tilt ? tiltOf(seed, appSettings.wall.tiltMax) : 0
+  const usePin = seed % 3 === 2
   const style = paperVars(note.tag, rot, index, tagColors, appSettings?.defaultNoteColor)
   const { data: reminderSettings } = useReminderSettings()
   const due = dueStatus(note.due_at, reminderSettings?.dueSoonHours)
   const toggleLine = useToggleNoteLine()
   const setPinned = useSetNotePinned()
+  // 待辦清單才畫勾／叉章：全部勾完＝綠色打勾，還有沒完成的＝紅色叉。
+  const todo = todoProgress(note.body)
 
   const open = () => {
     // 剛剛在拖（不管有沒有真的拖出去），這次 click 是拖曳動作的副產物，
@@ -206,7 +210,33 @@ export function Note({
       >
         {note.pinned ? '★' : '☆'}
       </button>
+      {todo && (
+        <span
+          className={`todo-stamp ${todo.done === todo.total ? 'all-done' : 'pending'}`}
+          aria-hidden
+          title={
+            todo.done === todo.total
+              ? '待辦全部完成'
+              : `待辦還有 ${todo.total - todo.done} 項未完成`
+          }
+        >
+          {todo.done === todo.total ? <Check strokeWidth={3.5} /> : <X strokeWidth={3.5} />}
+        </span>
+      )}
       <h3>{note.title}</h3>
+      {/* 到期／重複提示緊貼標題下方——擺在內文後面的話，長內文會把它擠到
+          看不到的地方（回報過）。寧可蓋住一點內文也要讓它一直看得見。 */}
+      {due && (
+        <p className={`due-badge ${due}`}>
+          {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{dueLabel(note.due_at)}
+        </p>
+      )}
+      {note.repeat && note.due_at && (
+        <p className="repeat-badge" title={`重複到期：${REPEAT_LABELS[note.repeat] ?? note.repeat}`}>
+          🔁 {REPEAT_LABELS[note.repeat] ?? note.repeat}
+          {!due && `　·　下次 ${dueLabel(note.due_at)}`}
+        </p>
+      )}
       {note.image && (
         <img
           className="note-img"
@@ -224,17 +254,6 @@ export function Note({
         limit={5}
         onToggleLine={(srcIndex) => toggleLine.mutate({ id: note.id, srcIndex })}
       />
-      {due && (
-        <p className={`due-badge ${due}`}>
-          {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{dueLabel(note.due_at)}
-        </p>
-      )}
-      {note.repeat && note.due_at && (
-        <p className="repeat-badge" title={`重複到期：${REPEAT_LABELS[note.repeat] ?? note.repeat}`}>
-          🔁 {REPEAT_LABELS[note.repeat] ?? note.repeat}
-          {!due && `　·　下次 ${dueLabel(note.due_at)}`}
-        </p>
-      )}
       <footer>
         <span className="tag-pill">{note.tag || '未分類'}</span>
         <span className="stamp">{stamp(note.created_at)}</span>

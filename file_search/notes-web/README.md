@@ -20,9 +20,48 @@ AI 邏輯**。AI 設定（Provider、API Key、模型）跟桌面版共用同一
 一份**獨立互動 HTML**——完整內文、依分類配色、**點卡片可跳出大張唯讀檢視**（Esc／點外面關）、
 可離線開、可列印。inline CSS+JS、零相依、純前端產生（桌面版是匯出 Markdown）。
 
+**牆面排序**（工具列，搜尋框右邊的下拉）：最新建立／最早建立／標題 A→Z／
+未完成待辦最多／未完成待辦最少。**釘選的永遠排最前**（釘選內部也照同一個 key）；
+選的值記在 `localStorage`（`lib/noteSort.ts`）。「只看快到期」時改成依到期日排、
+AI／語意搜尋時改成依相關度排，其餘一律套這個。分欄檢視（沒篩選時）下，每個
+分類段落／直欄的內部也照這個排。「未完成待辦」＝內文裡沒打勾的清單行（`parseBody`
+把每個非填空欄的行都當一個方框，沒有 `[x]` 就算未完成——跟牆上看到的空框一致）。
+
+**待辦勾記與完成章**（`Body.tsx` / `Note.tsx` / `format.ts` 的 `todoProgress`）：多行
+內文的每一行都畫一個 14px 方框、可點切換 `[x]`；打勾的方框填**鮮綠**（`#16a34a`）並用
+兩條白邊框畫出勾記。整則便利貼若是「待辦清單」（`todoProgress` 非 null＝內文 ≥2 行且
+至少一行是待辦不是填空欄），卡片**右上角**蓋一枚章：**全部勾完 → 綠色 ✓**，
+**還有沒完成的 → 紅色 ✗**。章是絕對定位、不進版面流、不溢出卡片；`.note:has(.todo-stamp)`
+時標題與釘選星號會讓出右邊空間。
+
+**填空欄**（`format.ts` 的 `FIELD_LINE_RE`）：一行開頭是「不含空白的短標籤 + 冒號」
+就當表單欄位畫填空底線（`http://` 網址、`3:30` 這種句子排除掉）。**冒號後面填了值
+也一樣是欄位**、底線不會消失（舊版填字會退回當待辦）——值寫在底線上（`.fld-value`），
+底線比舊版粗且加深（`.fld-fill` 2px dotted、`paper-ink 66%`）。
+
+**到期／重複提示**在 `Note.tsx` 裡緊貼標題下方（不再排在內文後面被長內文擠到看不見）；
+點開放大檢視（`.sheet`）時 `.due-badge` 隱藏，讓那個畫面專心讀內文。
+
+**牆面排版**（全域設定 → 外觀）：欄寬、動態排版開關，以及「看全部」時同分類便利貼的
+排法——**直向**（一分類一直行、由左到右，預設）或**橫向**（一分類一橫段、卡片
+左到右換行、分類由上到下）。存在 `wall.tagAxis`（`settings.wall`）；有搜尋／篩選時
+不受影響，一律大致等高排版。`Wall.tsx` 的 `layout()` 依 `columnPerTag` + `tagAxis`
+分三種擺法，其餘（釘選列、拖曳、卡片本身）完全不變。
+
+**便利貼歪斜效果**（全域設定 → 外觀）：預設**關閉**（每張擺正）。打開後 `Note.tsx`
+依 `seedOf(title+tag)` 算 `tiltOf(seed, tiltMax)` 給每張一個固定的隨機傾斜（±`tiltMax`
+度之間，膠帶反向轉）。存 `wall.tilt`（開關）＋ `wall.tiltMax`（角度，0.5–15、預設
+2.5；打開歪斜後才出現滑桿）。關閉時 `rot=0`，`paperVars` 連 `--tape-rot` 也一起歸零。
+
 **批次新增**（工具列 ⧉）：先選分類、數量（1–50）、標題前綴，一次建立 N 張同分類的空白便利貼
 （`前綴 1`…`前綴 N`，時間戳相差 1ms 以維持排序）。建完之後那個分類會**記成之後單張「新增便利貼」
 的預設分類**（存在 `localStorage`，分類欄仍可改）。
+
+**批次標籤**（工具列 🏷，`BatchTagDialog`）：一顆按鈕、頂端兩個分頁——
+- **補上空白的**：列出所有「沒有標籤」的便利貼（有清單、預設全勾、可增減），統一補一個標籤。
+- **舊標籤 → 新標籤**：把目前是某標籤（或無標籤）的便利貼整批換成另一個標籤——只是換名字。舊標籤從一排**可點選的晶片**挑（標籤多時上面有篩選框），新標籤是 `<input list=…>`。
+
+跟索引牆的「批次分類」對稱。
 
 **批次刪除**（工具列 🗑）：勾選清單（可搜尋、可全選目前結果），兩段式確認後一次刪掉。前端做
 樂觀更新，牆上立刻消失。
@@ -121,11 +160,13 @@ server/
   ai.ts          子行程呼叫 ai_bridge.py 的小工具
   ai_bridge.py   ← file_search_app 的既有 AI 邏輯（stdin/stdout JSON）
 src/
-  lib/       api · ai · color（配色移植）· md5 · format · exportHtml（匯出 HTML）
+  lib/       api · ai · color（配色移植）· md5 · format · exportHtml（匯出 HTML）·
+             noteSort（牆面排序＋未完成待辦計數）·
+             scrimClose（點背景關閉，拖曳選字滑出邊界不誤關）
   lib/defaultTag.ts  批次新增選過的分類 → localStorage → 單張新增的預設分類
   hooks/     useNotes（Query + 單張三個 mutation + 批次新增／批次刪除）· useAi（target / settings / test / search）
   components/ Wall · Note · Body · Toolbar · TagBar · NoteDialog · NoteForm
              · ThemeToggle · AiAnswerDialog · AiSettingsDialog
-             · BatchCreateDialog · BatchDeleteDialog
+             · BatchCreateDialog · BatchTagDialog（補空白／舊→新）· BatchDeleteDialog
   index.css  Tailwind + 便利貼牆的手寫視覺（紙張、膠帶、圖釘、摺角、明暗主題）
 ```

@@ -78,6 +78,37 @@ function waitReady() {
   return Promise.all([waitForPort(WEBS.sticky.port), waitForPort(WEBS.index.port)]);
 }
 
+// 埠「空出來」＝連不上（跟 waitForPort 相反）。killAll 的 taskkill /f 是非同步的，
+// 重啟前要等舊 server 真的死透、埠釋放，不然新 server 撞 EADDRINUSE。
+function waitForPortFree(port, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const tick = () => {
+      const sock = net.connect(port, '127.0.0.1');
+      sock.once('connect', () => {
+        sock.destroy();
+        if (Date.now() > deadline) resolve();
+        else setTimeout(tick, 250);
+      });
+      sock.once('error', () => {
+        sock.destroy();
+        resolve();
+      });
+    };
+    tick();
+  });
+}
+
+// 「清除快取並重新載入」用——把兩個 server 子行程收掉、等埠釋放、重新 spawn，
+// 讓 server 端的程式改動也生效（子行程不是 tsx watch，不會自己重載）。
+async function restartAll(onLog) {
+  const ports = Object.values(WEBS).map((w) => w.port);
+  killAll();
+  await Promise.all(ports.map((p) => waitForPortFree(p)));
+  startAll(onLog);
+  await waitReady();
+}
+
 function urlFor(key, opts) {
   const q = new URLSearchParams({ surface: 'desktop', wall: String(opts.wallOpacity) });
   return `http://127.0.0.1:${WEBS[key].port}/?${q.toString()}`;
@@ -99,4 +130,4 @@ function killAll() {
   running.clear();
 }
 
-module.exports = { startAll, waitReady, urlFor, killAll, WEBS };
+module.exports = { startAll, waitReady, restartAll, urlFor, killAll, WEBS };

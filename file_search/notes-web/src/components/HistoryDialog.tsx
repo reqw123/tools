@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useHistory, useRestoreSnapshot } from '../hooks/useNotes'
+import { scrimClose } from '../lib/scrimClose'
 
 /**
  * 版本記錄（時光機）——每次便利貼有實質變動，`.sticky_notes.json` 就會自動
@@ -31,7 +32,7 @@ export function HistoryDialog({ onClose }: { onClose: () => void }) {
   const fmt = (iso: string) => iso.replace('T', ' ').slice(0, 19)
 
   return (
-    <div className="scrim" onClick={() => !busy && onClose()}>
+    <div className="scrim" {...scrimClose(() => { if (!busy) onClose() })}>
       <div
         className="sheet plain wide"
         role="dialog"

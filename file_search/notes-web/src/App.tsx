@@ -7,16 +7,16 @@ import { useMinuteTick } from './hooks/useMinuteTick'
 import { useAiSearch, useAiTarget, useSemanticSearch, useSemanticStatus } from './hooks/useAi'
 import { hasDesktopWall } from './lib/desktopWall'
 import { dueStatus } from './lib/format'
+import { openTodoCount, readNoteSort, saveNoteSort, sortNotes, type NoteSort } from './lib/noteSort'
 import { Toolbar } from './components/Toolbar'
 import { Wall } from './components/Wall'
 import { CropOverlay } from './components/CropOverlay'
 import { NoteDialog } from './components/NoteDialog'
-import { ThemeToggle } from './components/ThemeToggle'
 import { AiAnswerDialog } from './components/AiAnswerDialog'
 import { GlobalSettingsDialog, type SettingsTab } from './components/GlobalSettingsDialog'
 import { BatchCreateDialog } from './components/BatchCreateDialog'
 import { BatchDeleteDialog } from './components/BatchDeleteDialog'
-import { BatchRecategorizeDialog } from './components/BatchRecategorizeDialog'
+import { BatchTagDialog } from './components/BatchTagDialog'
 import { GenerateNotesDialog } from './components/GenerateNotesDialog'
 import { ThesisSeedDialog } from './components/ThesisSeedDialog'
 import { ImportNotesDialog } from './components/ImportNotesDialog'
@@ -55,6 +55,11 @@ export function App() {
   const { data: notes, isLoading, isError, error } = useNotes()
   const [query, setQuery] = useState('')
   const [tag, setTag] = useState<string | null>(null)
+  const [noteSort, setNoteSort] = useState<NoteSort>(readNoteSort)
+  const changeNoteSort = useCallback((v: NoteSort) => {
+    setNoteSort(v)
+    saveNoteSort(v)
+  }, [])
   const [dialog, setDialog] = useState<DialogState>(null)
 
   // 「研究生模式」——整面牆換成論文專案專用的另一份便利貼（見 lib/api 的
@@ -102,7 +107,7 @@ export function App() {
   const aiSearch = useAiSearch()
 
   const [batchCreate, setBatchCreate] = useState(false)
-  const [batchRecategorize, setBatchRecategorize] = useState(false)
+  const [batchTag, setBatchTag] = useState(false)
   const [batchDelete, setBatchDelete] = useState(false)
   const [generateNotes, setGenerateNotes] = useState(false)
   const [thesisSeed, setThesisSeed] = useState(false)
@@ -222,6 +227,8 @@ export function App() {
 
   const deferredQuery = useDeferredValue(query)
   const list = useMemo(() => notes ?? [], [notes])
+  // note.id → 未完成待辦數（給「未完成待辦最多／最少」排序用，算一次就好）。
+  const todoCounts = useMemo(() => new Map(list.map((n) => [n.id, openTodoCount(n.body)])), [list])
 
   // 語意搜尋：開關開著且查詢句非空時自動跑（隨 deferredQuery 去抖動後重查）。
   const semanticStatus = useSemanticStatus(semanticOn)
@@ -297,18 +304,23 @@ export function App() {
     }
     if (tag) base = base.filter((n) => n.tag === tag)
     if (dueOnly) {
-      // 疊加在其他篩選之上，同時把排序從「最新建立在上」換成「最早到期在
-      // 上」——due_at 是 ISO 字串，字典序排序就是時間序，不用另外解析。
+      // 疊加在其他篩選之上，同時把排序從工具列選的那個換成「最早到期在上」
+      // ——due_at 是 ISO 字串，字典序排序就是時間序，不用另外解析。
       const soonHours = reminderSettings?.dueSoonHours
       base = base
         .filter((n) => dueStatus(n.due_at, soonHours))
         // 釘選的仍排最前面，其餘依到期日由早到晚。
         .sort((a, b) => Number(b.pinned) - Number(a.pinned) || (a.due_at < b.due_at ? -1 : 1))
+    } else if (!aiResult && !(semanticActive && semanticRank)) {
+      // AI／語意搜尋有自己的「依相關度排」，不套工具列的排序；其餘一律套。
+      base = sortNotes(base, noteSort, todoCounts)
     }
     if (groupByTag) {
       // 釘選的維持在最前面（Wall 會把它們排成頂端一列）；其餘依分類分群，
       // 群的順序跟工具列的分類 chip 一致（＝「全域設定」的 tagSort），無分類
       // 的殿後。群內維持 created_at 由新到舊。Wall 收到後照 data-tag 分直行。
+      // base 已經照工具列排序排好（釘選在前），這裡只再按分類分群——Array.sort
+      // 穩定，所以群內維持剛才的排序。
       const rank = new Map(knownTags.map((t, i) => [t, i]))
       const tagRank = (t: string) => (t ? (rank.get(t) ?? knownTags.length) : knownTags.length + 1)
       base = [
@@ -320,7 +332,7 @@ export function App() {
     return floatedIds.size ? base.filter((n) => !floatedIds.has(n.id)) : base
     // minuteTick：每分鐘重算，讓「只看快到期」的篩選/排序隨時間翻新。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list, tag, deferredQuery, aiMode, aiResult, semanticActive, semanticRank, croppedIds, floatedIds, dueOnly, reminderSettings, minuteTick, groupByTag, knownTags])
+  }, [list, tag, deferredQuery, aiMode, aiResult, semanticActive, semanticRank, croppedIds, floatedIds, dueOnly, reminderSettings, minuteTick, groupByTag, knownTags, noteSort, todoCounts])
 
   // 詳細視窗的「上一則／下一則」——在目前這份篩選/排序出的清單（shown）裡移
   // 動，不是整份未篩選清單，這樣使用者在「只看快到期」之類的篩選底下瀏覽
@@ -380,7 +392,7 @@ export function App() {
   }, [clearAi])
 
   const anyDialogOpen =
-    !!dialog || batchCreate || batchRecategorize || batchDelete || generateNotes || thesisSeed || importNotes ||
+    !!dialog || batchCreate || batchTag || batchDelete || generateNotes || thesisSeed || importNotes ||
     trashOpen || historyOpen || settingsOpen !== null || reminderSettingsOpen
   // 已經在裁切中就不能再拉一次框——先恢復完整畫面才能重新選——不然兩個裁切
   // 範圍疊在一起的語意會很奇怪。
@@ -438,6 +450,8 @@ export function App() {
       <Toolbar
         query={query}
         onQuery={setQuery}
+        sort={noteSort}
+        onSort={changeNoteSort}
         tag={tag}
         onTag={setTag}
         tags={tags}
@@ -493,7 +507,7 @@ export function App() {
         onExportJson={() => void downloadNotesJson()}
         onImportJson={() => setImportNotes(true)}
         onBatchCreate={() => setBatchCreate(true)}
-        onBatchRecategorize={() => setBatchRecategorize(true)}
+        onBatchTag={() => setBatchTag(true)}
         onBatchDelete={() => setBatchDelete(true)}
         dueOnly={dueOnly}
         onToggleDueOnly={() => setDueOnly((v) => !v)}
@@ -541,6 +555,7 @@ export function App() {
           minColWidth={appSettings?.wall.minColWidth}
           masonry={appSettings?.wall.masonry ?? true}
           columnPerTag={groupByTag}
+          tagAxis={appSettings?.wall.tagAxis ?? 'vertical'}
         />
       )}
 
@@ -551,8 +566,6 @@ export function App() {
         設定與用量計數也跟桌面版共用。<br />
         技術棧：Vite + React 19 + TypeScript + Tailwind 4 · Fastify · TanStack Query。
       </footer>
-
-      <ThemeToggle />
 
       {dialog && (
         <NoteDialog
@@ -576,12 +589,8 @@ export function App() {
           }}
         />
       )}
-      {batchRecategorize && (
-        <BatchRecategorizeDialog
-          notes={list}
-          knownTags={knownTags}
-          onClose={() => setBatchRecategorize(false)}
-        />
+      {batchTag && (
+        <BatchTagDialog notes={list} knownTags={knownTags} onClose={() => setBatchTag(false)} />
       )}
       {batchDelete && (
         <BatchDeleteDialog notes={list} onClose={() => setBatchDelete(false)} />

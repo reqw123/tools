@@ -1,7 +1,7 @@
 'use strict';
 const {
   app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, screen, ipcMain, shell, net,
-  Notification,
+  Notification, session,
 } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -145,6 +145,30 @@ function currentUrl() {
 
 function loadWall() {
   if (win) win.loadURL(currentUrl());
+}
+
+// 「清除快取並重新載入」——開發時 notes-web / files-web 的 dist 常常重建，
+// 這顆把 Chromium 的 HTTP 快取＋已編譯的 JS code cache 全清掉、把兩個 server
+// 子行程重啟（讓 server 端的改動也生效），再重載牆面與所有懸浮視窗。
+let clearingCache = false;
+async function clearCacheAndReload() {
+  if (clearingCache) return;
+  clearingCache = true;
+  refreshTray(); // 選單項目變「清除快取中…」、暫時停用
+  try {
+    await session.defaultSession.clearCache();
+    // urls 不給＝清掉全部已編譯的 JS code cache（Electron 12+）。
+    await session.defaultSession.clearCodeCaches({});
+    await servers.restartAll((key, chunk) => process.stdout.write(`[${key}] ${chunk}`));
+  } catch (err) {
+    console.error('[wallpaper-app] 清除快取／重啟 server 失敗：', err && err.message);
+  }
+  loadWall();
+  for (const w of pinnedWindows.values()) {
+    if (w && !w.isDestroyed()) w.webContents.reload();
+  }
+  clearingCache = false;
+  refreshTray();
 }
 
 function switchWall(which) {
@@ -442,6 +466,11 @@ function buildTrayMenu() {
     { type: 'separator' },
     { label: `設定 / 自訂快捷鍵…  (${accelLabel('openSettings')})`, click: openSettings },
     { label: '重新載入這面牆', click: loadWall },
+    {
+      label: clearingCache ? '清除快取中…' : '清除快取並重新載入',
+      enabled: !clearingCache,
+      click: clearCacheAndReload,
+    },
     { type: 'separator' },
     { label: '結束', click: () => app.quit() },
   ]);

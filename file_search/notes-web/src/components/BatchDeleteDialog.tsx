@@ -3,6 +3,7 @@ import type { Note } from '../lib/api'
 import { colorForTag } from '../lib/color'
 import { stamp } from '../lib/format'
 import { useBulkDeleteNotes, useTagColors } from '../hooks/useNotes'
+import { scrimClose } from '../lib/scrimClose'
 
 /** 批次刪除：列出全部便利貼、勾選要刪的（預設全不勾）、可搜尋、兩段確認。 */
 export function BatchDeleteDialog({
@@ -57,7 +58,7 @@ export function BatchDeleteDialog({
   const n = checked.size
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div className="scrim" {...scrimClose(onClose)}>
       <div
         className="sheet plain wide"
         role="dialog"

@@ -1,5 +1,8 @@
 import {
   Download,
+  FilePenLine,
+  FilePlus2,
+  FileX2,
   FolderPlus,
   FolderTree,
   PencilLine,
@@ -44,11 +47,14 @@ export function Toolbar({
   onAdd,
   onBatchImport,
   onBatchDescribe,
-  onBatchRecategorize,
+  onBatchCategory,
   onBatchDelete,
   onOpenAiSettings,
   onImportIndex,
   onExportIndex,
+  onCreateIndex,
+  onEditIndex,
+  onDeleteIndex,
 }: {
   indexes: string[]
   index: string | null
@@ -76,11 +82,15 @@ export function Toolbar({
   onAdd: () => void
   onBatchImport: () => void
   onBatchDescribe: () => void
-  onBatchRecategorize: () => void
+  onBatchCategory: () => void
   onBatchDelete: () => void
   onOpenAiSettings: () => void
   onImportIndex: () => void
   onExportIndex: () => void
+  /** 索引集層級：新增空白 / 用系統編輯器開啟 / 刪除整份——都需選定一份，否則停用。 */
+  onCreateIndex: () => void
+  onEditIndex: () => void
+  onDeleteIndex: () => void
 }) {
   return (
     <div className="bar">
@@ -112,6 +122,29 @@ export function Toolbar({
           >
             <Download size={15} strokeWidth={2.2} aria-hidden />
           </button>
+          <button
+            className="btn ghost icon"
+            onClick={onEditIndex}
+            disabled={!index}
+            title="編輯索引集（用系統文字編輯器開啟這份 .md，改前言／路徑／格式）"
+          >
+            <FilePenLine size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button
+            className="btn ghost icon"
+            onClick={onCreateIndex}
+            title="新增索引集（在 indexes/ 底下建立一份新的空白 .md）"
+          >
+            <FilePlus2 size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button
+            className="btn ghost icon danger"
+            onClick={onDeleteIndex}
+            disabled={!index}
+            title="刪除索引集（刪掉整份 .md 索引紀錄，不碰硬碟上的實體檔案）"
+          >
+            <FileX2 size={15} strokeWidth={2.2} aria-hidden />
+          </button>
           <div className="counts mono">
             <span>
               <b>{view === 'doc' ? total : shown}</b>
@@ -124,16 +157,22 @@ export function Toolbar({
           </div>
           <div className="spacer" />
           <div className="seg" role="group" aria-label="檢視方式">
-            {(['list', 'doc'] as const).map((v) => (
-              <button
-                key={v}
-                className={view === v ? 'on' : ''}
-                onClick={() => onView(v)}
-                aria-pressed={view === v}
-              >
-                {v === 'list' ? '清單' : '原文'}
-              </button>
-            ))}
+            <button
+              className={view === 'list' ? 'on' : ''}
+              onClick={() => onView('list')}
+              aria-pressed={view === 'list'}
+              title="清單：把索引項目一張張列出來，可搜尋、依分類／資料夾篩選、逐列開檔或編輯"
+            >
+              清單
+            </button>
+            <button
+              className={view === 'doc' ? 'on' : ''}
+              onClick={() => onView('doc')}
+              aria-pressed={view === 'doc'}
+              title="文件：把整份索引集的 .md（前言＋表格）當一份文件排版呈現，唯讀"
+            >
+              文件
+            </button>
           </div>
           <ThemeToggle />
         </div>
@@ -160,11 +199,11 @@ export function Toolbar({
           </button>
           <button
             className="btn sm"
-            onClick={onBatchRecategorize}
+            onClick={onBatchCategory}
             disabled={!index}
-            title="勾選項目，統一改成同一個分類"
+            title="批次分類——「補上空白的」（逐筆帶建議、有清單）或「舊分類→新分類」（整批換名）"
           >
-            <Tags size={14} strokeWidth={2.2} aria-hidden /> 批次改分類
+            <Tags size={14} strokeWidth={2.2} aria-hidden /> 批次分類
           </button>
           <button
             className="btn sm"
@@ -183,6 +222,21 @@ export function Toolbar({
           </button>
           <span className="acts-note mono">寫入只動 .md · 不碰實體檔案</span>
         </div>
+
+        {view === 'doc' && (
+        <div className="bar-row">
+          <label className="field">
+            <Search size={15} strokeWidth={2.4} aria-hidden />
+            <input
+              type="search"
+              value={query}
+              placeholder="在整份文件裡尋找…"
+              onChange={(e) => onQuery(e.target.value)}
+            />
+          </label>
+          <span className="acts-note mono">只留下符合的表格列，其餘（含前言）收起來；清空即恢復整份</span>
+        </div>
+        )}
 
         {view === 'list' && (
         <div className="bar-row">

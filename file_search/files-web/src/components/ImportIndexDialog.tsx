@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FileText } from 'lucide-react'
 import { useImportIndex } from '../hooks/useIndexes'
+import { scrimClose } from '../lib/scrimClose'
 
 const INVALID_CHARS = new Set('<>:"/\\|?*')
 
@@ -85,7 +86,7 @@ export function ImportIndexDialog({
   const busy = importIndex.isPending
 
   return (
-    <div className="scrim" onClick={() => !busy && onClose()}>
+    <div className="scrim" {...scrimClose(() => { if (!busy) onClose() })}>
       <div
         className="modal"
         role="dialog"

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { scrimClose } from '../lib/scrimClose'
 
 /** AI 搜尋的自然語言回答——可捲動、可整段複製。牆上同時已經篩成命中的便利貼。 */
 export function AiAnswerDialog({
@@ -25,7 +26,7 @@ export function AiAnswerDialog({
   }, [onClose])
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div className="scrim" {...scrimClose(onClose)}>
       <div
         className="sheet answer"
         role="dialog"

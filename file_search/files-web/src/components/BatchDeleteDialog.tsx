@@ -4,6 +4,7 @@ import type { Entry, PathStat } from '../lib/api'
 import { api } from '../lib/api'
 import { kindOf } from '../lib/format'
 import { useBulkDelete } from '../hooks/useIndexes'
+import { scrimClose } from '../lib/scrimClose'
 
 const MAX_SHOWN = 500
 
@@ -84,7 +85,7 @@ export function BatchDeleteDialog({
   }
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div className="scrim" {...scrimClose(onClose)}>
       <div
         className="modal wide"
         role="dialog"

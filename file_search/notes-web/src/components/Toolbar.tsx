@@ -1,11 +1,13 @@
 import {
-  AlarmClock, Bot, CopyPlus, CornerDownLeft, Download, GraduationCap, HardDriveDownload, History, Home, Plus, Recycle,
-  Search, Settings2, Sparkles, Sprout, Tags, Timer, Trash2, Upload,
+  AlarmClock, ArrowDownUp, Bot, CopyPlus, CornerDownLeft, Download, GraduationCap, HardDriveDownload, History, Home,
+  Plus, Recycle, Search, Settings2, Sparkles, Sprout, Tags, Timer, Trash2, Upload,
 } from 'lucide-react'
+import { NOTE_SORTS, type NoteSort } from '../lib/noteSort'
 import type { AiTarget } from '../lib/ai'
 import type { NoteCollection } from '../lib/api'
 import type { TagCount } from './TagBar'
 import { TagBar } from './TagBar'
+import { ThemeToggle } from './ThemeToggle'
 
 /** 「語意」開關的即時狀態，給搜尋列底下那行揭露文字用。 */
 export type SemanticState =
@@ -18,6 +20,8 @@ export type SemanticState =
 export function Toolbar({
   query,
   onQuery,
+  sort,
+  onSort,
   tag,
   onTag,
   tags,
@@ -42,7 +46,7 @@ export function Toolbar({
   onExportJson,
   onImportJson,
   onBatchCreate,
-  onBatchRecategorize,
+  onBatchTag,
   onBatchDelete,
   onGenerateNotes,
   onTrash,
@@ -53,6 +57,8 @@ export function Toolbar({
 }: {
   query: string
   onQuery: (v: string) => void
+  sort: NoteSort
+  onSort: (v: NoteSort) => void
   tag: string | null
   onTag: (t: string | null) => void
   tags: TagCount[]
@@ -79,7 +85,7 @@ export function Toolbar({
   onExportJson: () => void
   onImportJson: () => void
   onBatchCreate: () => void
-  onBatchRecategorize: () => void
+  onBatchTag: () => void
   onBatchDelete: () => void
   onGenerateNotes: () => void
   onTrash: () => void
@@ -91,32 +97,38 @@ export function Toolbar({
   return (
     <div className="bar">
       <div className="bar-inner">
-        {collection && (
-          <div className="collection-row" role="group" aria-label="便利貼集合">
-            <button
-              type="button"
-              className={`coll-tab${collection === 'life' ? ' on' : ''}`}
-              aria-pressed={collection === 'life'}
-              onClick={() => onSwitchCollection('life')}
-            >
-              <Home size={14} strokeWidth={2.2} aria-hidden /> 生活
-            </button>
-            <button
-              type="button"
-              className={`coll-tab${collection === 'thesis' ? ' on' : ''}`}
-              aria-pressed={collection === 'thesis'}
-              onClick={() => onSwitchCollection('thesis')}
-            >
-              <GraduationCap size={15} strokeWidth={2.2} aria-hidden /> 研究生
-            </button>
-            {collection === 'thesis' && (
-              <span className="coll-note mono">
-                論文專案專用便利貼 · 存在 C:\ai_project · 跟生活便利貼完全分開
-              </span>
-            )}
-          </div>
-        )}
-        <div className="bar-row">
+        {/* 第一排：便利貼集合分頁（桌面牆才有）＋主題鈕（靠右） */}
+        <div className="collection-row">
+          {collection && (
+            <div className="coll-tabs" role="group" aria-label="便利貼集合">
+              <button
+                type="button"
+                className={`coll-tab${collection === 'life' ? ' on' : ''}`}
+                aria-pressed={collection === 'life'}
+                onClick={() => onSwitchCollection('life')}
+              >
+                <Home size={14} strokeWidth={2.2} aria-hidden /> 生活
+              </button>
+              <button
+                type="button"
+                className={`coll-tab${collection === 'thesis' ? ' on' : ''}`}
+                aria-pressed={collection === 'thesis'}
+                onClick={() => onSwitchCollection('thesis')}
+              >
+                <GraduationCap size={15} strokeWidth={2.2} aria-hidden /> 研究生
+              </button>
+              {collection === 'thesis' && (
+                <span className="coll-note mono">
+                  論文專案專用便利貼 · 存在 C:\ai_project · 跟生活便利貼完全分開
+                </span>
+              )}
+            </div>
+          )}
+          <ThemeToggle />
+        </div>
+
+        {/* 第二排：搜尋框（拉長填滿）→ 排序 → 新增便利貼，三者同高。 */}
+        <div className="bar-row bar-row-find">
           <label className={`field${aiMode ? ' ai' : ''}${semanticOn ? ' semantic' : ''}`}>
             {aiMode ? (
               <Bot size={16} strokeWidth={2.2} aria-hidden />
@@ -158,6 +170,24 @@ export function Toolbar({
               </button>
             )}
           </label>
+          <label className="sort-pick" title="牆面排序（釘選永遠在最前）">
+            <ArrowDownUp size={14} strokeWidth={2.2} aria-hidden />
+            <select value={sort} onChange={(e) => onSort(e.target.value as NoteSort)}>
+              {NOTE_SORTS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="btn add-note" onClick={onAdd}>
+            <Plus size={16} strokeWidth={2.6} aria-hidden />
+            新增便利貼
+          </button>
+        </div>
+
+        {/* 第三排：所有工具鈕，統一尺寸的正方形圖示鈕。 */}
+        <div className="bar-row bar-row-tools">
           <button
             className={`btn ghost icon${aiMode ? ' on' : ''}`}
             onClick={onToggleAiMode}
@@ -174,9 +204,6 @@ export function Toolbar({
           >
             <Sprout size={16} strokeWidth={2.2} aria-hidden />
           </button>
-          <button className="btn ghost icon" onClick={() => onOpenSettings()} title="全域設定">
-            <Settings2 size={15} strokeWidth={2.2} aria-hidden />
-          </button>
           <button
             className={`btn ghost icon${dueOnly ? ' on' : ''}`}
             onClick={onToggleDueOnly}
@@ -184,6 +211,9 @@ export function Toolbar({
             title="只看快到期／已逾期（依到期日由早到晚排序）"
           >
             <AlarmClock size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button className="btn ghost icon" onClick={() => onOpenSettings()} title="全域設定">
+            <Settings2 size={15} strokeWidth={2.2} aria-hidden />
           </button>
           <button
             className="btn ghost icon"
@@ -226,14 +256,18 @@ export function Toolbar({
           </button>
           {collection === 'thesis' && (
             <button
-              className="btn ghost"
+              className="btn ghost icon"
               onClick={onThesisSeed}
-              title="AI 讀 C:\ai_project 的文件，產出一批論文任務便利貼草稿"
+              title="從專案生成——AI 讀 C:\ai_project 的文件，產出一批論文任務便利貼草稿"
             >
-              <GraduationCap size={15} strokeWidth={2.2} aria-hidden /> 從專案生成
+              <GraduationCap size={16} strokeWidth={2.2} aria-hidden />
             </button>
           )}
-          <button className="btn ghost icon" onClick={onBatchRecategorize} title="批次改標籤">
+          <button
+            className="btn ghost icon"
+            onClick={onBatchTag}
+            title="批次標籤——「補上空白的」（有清單）或「舊標籤→新標籤」（整批換名）"
+          >
             <Tags size={15} strokeWidth={2.2} aria-hidden />
           </button>
           <button className="btn ghost icon" onClick={onBatchDelete} title="批次刪除">
@@ -248,10 +282,6 @@ export function Toolbar({
             title="版本記錄（自動備份；批次操作出錯、內容被覆蓋時整份還原到某個時間點）"
           >
             <History size={15} strokeWidth={2.2} aria-hidden />
-          </button>
-          <button className="btn" onClick={onAdd}>
-            <Plus size={16} strokeWidth={2.6} aria-hidden />
-            新增便利貼
           </button>
         </div>
 

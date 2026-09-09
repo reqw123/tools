@@ -462,16 +462,18 @@ export function setNotePinned(id: string, pinned: boolean): Note | undefined {
   return updated
 }
 
-// 一行待辦的結構——跟前端 src/lib/format.ts 的 TASK_LINE_RE 同一份，改一邊
-// 記得改另一邊（ADR 0001：server 刻意各留一份 parser，不跨層 import）。
+// 一行待辦／填空欄的結構——跟前端 src/lib/format.ts 的 TASK_LINE_RE /
+// FIELD_LINE_RE 同一份，改一邊記得改另一邊（ADR 0001：server 刻意各留一份
+// parser，不跨層 import）。FIELD_LINE_RE＝短標籤 + 冒號（值可有可無）。
 const TASK_LINE_RE = /^(\s*(?:\d+[.、)]|[-•])?\s*)(\[[ xX]\]\s*)?(.*)$/
+const FIELD_LINE_RE = /^\s*[^\s:：]{1,20}[:：](?!\/)/
 
 /**
  * 切換一則便利貼內文第 `srcIndex` 行（`body.split('\n')` 的索引）的待辦
  * 勾選狀態——在該行加上或拿掉開頭的 `[x]` 標記。**不動 `created_at`**：
  * 打勾是「使用清單」不是「編輯內容」，不該把便利貼推回牆頂（跟
  * `setNoteImage` 同一個道理）。回傳更新後的便利貼；找不到 id 回 undefined；
- * `srcIndex` 超界或那行是填空欄（結尾「：」）→ 回傳現況、不寫檔。
+ * `srcIndex` 超界或那行是填空欄（FIELD_LINE_RE）→ 回傳現況、不寫檔。
  */
 export function toggleNoteLine(id: string, srcIndex: number): Note | undefined {
   const raw = readRaw()
@@ -479,7 +481,7 @@ export function toggleNoteLine(id: string, srcIndex: number): Note | undefined {
   if (idx < 0) return undefined
   const n = parseNote(raw.notes[idx])!
   const lines = n.body.split('\n')
-  if (srcIndex < 0 || srcIndex >= lines.length || /[:：]\s*$/.test(lines[srcIndex])) {
+  if (srcIndex < 0 || srcIndex >= lines.length || FIELD_LINE_RE.test(lines[srcIndex])) {
     return n
   }
   const m = lines[srcIndex].match(TASK_LINE_RE)!
@@ -1008,6 +1010,14 @@ export interface WallPref {
   minColWidth: number
   /** false＝關掉 JS 動態 masonry，用單純等寬格線。 */
   masonry: boolean
+  /** 「看全部」時同一分類的便利貼怎麼排：
+   *  'vertical'＝一分類一直行、分類由左到右（預設，原本的行為）；
+   *  'horizontal'＝一分類一橫段、卡片由左到右換行、分類由上到下。 */
+  tagAxis: 'vertical' | 'horizontal'
+  /** 便利貼卡片是否照標題雜湊帶一點隨機歪斜（連膠帶也跟著轉）。預設 false＝擺正。 */
+  tilt: boolean
+  /** 歪斜開啟時的最大傾斜角（度）——每張在 ±tiltMax 之間穩定取值。0.5–15，預設 2.5。 */
+  tiltMax: number
 }
 
 /** 到期通知的四個管道——各自獨立開關（true＝開著會發）。GET /notes/due-soon
@@ -1129,7 +1139,16 @@ function coerceAppSettings(data: unknown): AppSettings {
       typeof o.defaultNoteColor === 'string' && HEX_COLOR_RE.test(o.defaultNoteColor)
         ? o.defaultNoteColor.toLowerCase()
         : DEFAULT_NOTE_COLOR,
-    wall: { minColWidth, masonry: typeof w.masonry === 'boolean' ? w.masonry : true },
+    wall: {
+      minColWidth,
+      masonry: typeof w.masonry === 'boolean' ? w.masonry : true,
+      tagAxis: w.tagAxis === 'horizontal' ? 'horizontal' : 'vertical',
+      tilt: w.tilt === true,
+      tiltMax:
+        typeof w.tiltMax === 'number' && Number.isFinite(w.tiltMax)
+          ? Math.min(15, Math.max(0.5, Math.round(w.tiltMax * 10) / 10))
+          : 2.5,
+    },
     embedModel:
       typeof o.embedModel === 'string' && o.embedModel.trim()
         ? o.embedModel.trim().slice(0, 120)

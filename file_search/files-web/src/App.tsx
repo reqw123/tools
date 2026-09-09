@@ -4,6 +4,7 @@ import { api } from './lib/api'
 import {
   useCategoryColors,
   useDeleteEntry,
+  useEditIndex,
   useIndex,
   useIndexList,
   useSetCategoryColor,
@@ -19,10 +20,12 @@ import { EntryList } from './components/EntryList'
 import { AddEntryDialog } from './components/AddEntryDialog'
 import { BatchImportDialog } from './components/BatchImportDialog'
 import { BatchDescribeDialog } from './components/BatchDescribeDialog'
+import { BatchCategoryDialog } from './components/BatchCategoryDialog'
 import { BatchDeleteDialog } from './components/BatchDeleteDialog'
-import { BatchRecategorizeDialog } from './components/BatchRecategorizeDialog'
 import { AiSettingsDialog } from './components/AiSettingsDialog'
 import { ImportIndexDialog } from './components/ImportIndexDialog'
+import { CreateIndexDialog } from './components/CreateIndexDialog'
+import { DeleteIndexDialog } from './components/DeleteIndexDialog'
 import { downloadIndexMarkdown } from './lib/exportIndex'
 
 // wallpaper-app 重開時用 `?floated=<JSON 陣列>` 把「已經是懸浮視窗」的項目
@@ -100,7 +103,16 @@ export function App() {
   const [sort, setSort] = useState<Sort>('serial')
   const [toast, setToast] = useState('')
   const [dialog, setDialog] = useState<
-    'add' | 'import' | 'describe' | 'recategorize' | 'delete' | 'ai' | 'import-index' | null
+    | 'add'
+    | 'import'
+    | 'describe'
+    | 'category'
+    | 'delete'
+    | 'ai'
+    | 'import-index'
+    | 'create-index'
+    | 'delete-index'
+    | null
   >(null)
 
   const deferredQuery = useDeferredValue(query)
@@ -240,6 +252,27 @@ export function App() {
     downloadIndexMarkdown(index, payload.raw)
   }, [index, payload])
 
+  const editIndex = useEditIndex()
+  const onEditIndex = useCallback(() => {
+    if (!index) return
+    editIndex.mutate(index, {
+      onSuccess: () => flash('已用系統編輯器開啟（存檔後重新整理即可看到變更）'),
+      onError: (e: Error) => flash(e.message || '開啟編輯器失敗'),
+    })
+  }, [index, editIndex, flash])
+
+  const onDeletedIndex = useCallback(
+    (name: string) => {
+      setDialog(null)
+      // 讓推導出的 index 重新落到清單第一份（或 null）——清掉使用者手動選的、
+      // 以及「上次開的」如果剛好就是被刪掉這份。
+      setPicked(null)
+      if (getLastIndex() === name) setLastIndex('')
+      flash(`已刪除「${name}」（實體檔案保留）`)
+    },
+    [flash],
+  )
+
   const categoryCount = useMemo(
     () => new Set(entries.filter((e) => e.category).map((e) => e.category)).size,
     [entries],
@@ -291,11 +324,14 @@ export function App() {
         onAdd={() => setDialog('add')}
         onBatchImport={() => setDialog('import')}
         onBatchDescribe={() => setDialog('describe')}
-        onBatchRecategorize={() => setDialog('recategorize')}
+        onBatchCategory={() => setDialog('category')}
         onBatchDelete={() => setDialog('delete')}
         onOpenAiSettings={() => setDialog('ai')}
         onImportIndex={() => setDialog('import-index')}
         onExportIndex={onExportIndex}
+        onCreateIndex={() => setDialog('create-index')}
+        onEditIndex={onEditIndex}
+        onDeleteIndex={() => setDialog('delete-index')}
       />
 
       <main className="wrap">
@@ -311,7 +347,7 @@ export function App() {
           <p className="notice err mono">// 載入失敗：{error?.message}</p>
         ) : payload ? (
           view === 'doc' ? (
-            <DocView markdown={payload.raw} />
+            <DocView markdown={payload.raw} query={deferredQuery} />
           ) : (
           <>
             <Preamble markdown={payload.preamble} />
@@ -389,15 +425,15 @@ export function App() {
           }}
         />
       )}
-      {dialog === 'recategorize' && index && (
-        <BatchRecategorizeDialog
+      {dialog === 'category' && index && (
+        <BatchCategoryDialog
           indexName={index}
           entries={entries}
           categories={rawCategories}
           onClose={() => setDialog(null)}
-          onDone={(updated) => {
+          onDone={(n, verb) => {
             setDialog(null)
-            flash(`已更新 ${updated} 筆的分類`)
+            flash(`已${verb === '補' ? '補上' : '更新'} ${n} 筆的分類`)
           }}
         />
       )}
@@ -422,6 +458,25 @@ export function App() {
             pickIndex(name)
             flash(`已匯入「${name}」`)
           }}
+        />
+      )}
+      {dialog === 'create-index' && (
+        <CreateIndexDialog
+          existingNames={indexes ?? []}
+          onClose={() => setDialog(null)}
+          onDone={(name) => {
+            setDialog(null)
+            pickIndex(name)
+            flash(`已新增「${name}」`)
+          }}
+        />
+      )}
+      {dialog === 'delete-index' && index && (
+        <DeleteIndexDialog
+          indexName={index}
+          entryCount={entries.length}
+          onClose={() => setDialog(null)}
+          onDone={onDeletedIndex}
         />
       )}
 

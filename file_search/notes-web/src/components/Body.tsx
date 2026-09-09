@@ -25,8 +25,10 @@ export function Body({
       {shown.map((line, i) =>
         line.kind === 'field' ? (
           <li key={i} className="fld">
-            <span>{line.text}</span>
-            <i />
+            <span className="fld-label">{line.label ?? line.text}</span>
+            <span className="fld-fill">
+              {line.value ? <span className="fld-value">{line.value}</span> : null}
+            </span>
           </li>
         ) : (
           <li key={i} className={`task${line.checked ? ' done' : ''}`}>

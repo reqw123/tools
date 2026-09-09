@@ -10,6 +10,7 @@ import {
   normalizeBaseUrl,
   splitStandardUrl,
 } from '../lib/ollamaUrl'
+import { scrimClose } from '../lib/scrimClose'
 
 type Provider = 'openai' | 'ollama'
 type Where = 'local' | 'lan'
@@ -32,7 +33,7 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
   }, [onClose])
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div className="scrim" {...scrimClose(onClose)}>
       <div
         className="modal"
         role="dialog"

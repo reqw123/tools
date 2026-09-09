@@ -105,6 +105,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, content }),
     }),
+  /** 新增一份空白索引集（帶格式規定前言、空表格）——桌面版「🗂 新增索引集」。 */
+  createIndex: (name: string) =>
+    req<{ name: string }>('/indexes', { method: 'POST', body: JSON.stringify({ name }) }),
+  /** 刪除整份索引集（只刪 .md 索引紀錄，不碰實體檔案）——桌面版「🗑️ 刪除索引集」。 */
+  deleteIndex: (name: string) =>
+    req<{ ok: true }>(`/indexes/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  /** 在跑 server 的那台電腦用系統文字編輯器開啟這份 .md——桌面版「編輯索引檔案」。 */
+  editIndex: (name: string) =>
+    req<{ ok: true }>(`/indexes/${encodeURIComponent(name)}/edit`, { method: 'POST' }),
   exists: (paths: string[]) =>
     req<{ stats: Record<string, PathStat> }>('/exists', {
       method: 'POST',

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useImportNotesJson } from '../hooks/useNotes'
+import { scrimClose } from '../lib/scrimClose'
 
 /**
  * 匯入便利貼資料——讀取用「💾 匯出資料」（或桌面版「💾 匯出資料」，格式
@@ -47,7 +48,7 @@ export function ImportNotesDialog({ onClose }: { onClose: () => void }) {
   const busy = importJson.isPending
 
   return (
-    <div className="scrim" onClick={() => !busy && onClose()}>
+    <div className="scrim" {...scrimClose(() => { if (!busy) onClose() })}>
       <div
         className="sheet plain"
         role="dialog"

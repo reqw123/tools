@@ -4,6 +4,7 @@ import { TagSortSettings } from './TagSortSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { TrashSettings } from './TrashSettings'
 import { ThesisSettings } from './ThesisSettings'
+import { scrimClose } from '../lib/scrimClose'
 
 export type SettingsTab = 'ai' | 'tags' | 'appearance' | 'trash' | 'thesis'
 
@@ -41,7 +42,7 @@ export function GlobalSettingsDialog({
   }, [onClose])
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div className="scrim" {...scrimClose(onClose)}>
       <div
         className="sheet plain settings-sheet"
         role="dialog"

@@ -180,6 +180,9 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
               properties: {
                 minColWidth: { type: 'number', minimum: 160, maximum: 520 },
                 masonry: { type: 'boolean' },
+                tagAxis: { type: 'string', enum: ['vertical', 'horizontal'] },
+                tilt: { type: 'boolean' },
+                tiltMax: { type: 'number', minimum: 0.5, maximum: 15 },
               },
             },
           },

@@ -16,6 +16,7 @@ export function Wall({
   minColWidth,
   masonry = true,
   columnPerTag = false,
+  tagAxis = 'vertical',
 }: {
   notes: NoteT[]
   onOpen: (n: NoteT) => void
@@ -28,6 +29,9 @@ export function Wall({
   /** true＝一個分類一（直）行、不同分類由左到右（「看全部」時用）；
    *  false＝忽略分類、單純 column-major 大致等高（搜尋／篩選時用）。 */
   columnPerTag?: boolean
+  /** columnPerTag 生效時，同一分類的卡片排法：'vertical'＝一分類一直行（預設）；
+   *  'horizontal'＝一分類一橫段、卡片左到右換行、分類由上到下。 */
+  tagAxis?: 'vertical' | 'horizontal'
 }) {
   const MIN_COL_W = minColWidth && minColWidth > 0 ? minColWidth : DEFAULT_MIN_COL_W
   const wallRef = useRef<HTMLElement>(null)
@@ -98,6 +102,37 @@ export function Wall({
       colH[c] += h + GAP
     }
 
+    if (columnPerTag && tagAxis === 'horizontal') {
+      // 一個分類一「橫段」：同 data-tag 的卡片依序 0,1,2,0,1,2… 分欄（維持
+      // 左到右的閱讀順序），但**每一欄各自記自己的底部**——所以同一段裡某張
+      // 卡片比較矮時，它下面那張會往上補、不留一大塊空白。段與段之間不互相
+      // 補位：下一個分類直接從這一段最深的欄底下開始，比較淺的欄留白沒關係。
+      let y = padT + topOffset
+      let i = 0
+      while (i < cards.length) {
+        const tag = cards[i].dataset.tag ?? ''
+        let j = i
+        while (j < cards.length && (cards[j].dataset.tag ?? '') === tag) j += 1
+        const colBottom = new Array<number>(numCols).fill(y) // 這一段裡每欄目前的底
+        for (let k = i; k < j; k += 1) {
+          const c = (k - i) % numCols
+          cards[k].style.left = `${padL + c * (colW + GAP)}px`
+          cards[k].style.top = `${colBottom[c]}px`
+          colBottom[c] += heights[k] + GAP
+        }
+        y = Math.max(...colBottom) // 下一段起點（GAP 已含在 colBottom 裡）
+        i = j
+      }
+      // 這個分支自己算高度（不用 colH），直接寫回後收尾。
+      wall.style.height = `${Math.max(padT + topOffset, y - GAP) + padB}px`
+      wall.classList.add('is-masonry')
+      if (!readyRef.current) {
+        requestAnimationFrame(() => wallRef.current?.classList.add('masonry-ready'))
+        readyRef.current = true
+      }
+      return
+    }
+
     if (columnPerTag) {
       // 一個分類一（直）行：把 DOM 上連續、同 data-tag 的卡片當成一整塊，
       // 整塊塞進「當下最矮」的欄。前 numCols 個分類（欄都還空）因此自然由
@@ -138,7 +173,7 @@ export function Wall({
       })
       readyRef.current = true
     }
-  }, [MIN_COL_W, masonry, columnPerTag])
+  }, [MIN_COL_W, masonry, columnPerTag, tagAxis])
 
   const schedule = useCallback(() => {
     cancelAnimationFrame(rafRef.current)

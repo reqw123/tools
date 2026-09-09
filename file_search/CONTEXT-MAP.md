@@ -11,8 +11,10 @@
   （Vite + React + Fastify）。直接讀寫 `indexes/.sticky_notes.json`，跟桌面版共用。
 - **[索引牆 files-web](./files-web/CONTEXT.md)** — 檔案索引的網頁檢視器。
   一次看一份 `indexes/*.md`；可維護項目（加入／移除／批次匯入／批次補說明／
-  批次刪除，只動 `.md` 表格列、不碰實體檔案）。AI 批次說明、編輯既有列的分類、
-  索引集本身也能匯入（=建立，見 `docs/adr/0003`）／匯出，但**刪除**仍是桌面版的事。
+  批次刪除，只動 `.md` 表格列、不碰實體檔案）。AI 批次說明、編輯既有列的分類。
+  索引集層級：匯入（=建立，見 `docs/adr/0003`）／匯出／新增空白／刪除／
+  用系統編輯器開這份 `.md`（後三者見 `docs/adr/0004`）——只差「重新命名」
+  （桌面版也沒有）。
 - **[桌面牆 wallpaper-app](./wallpaper-app/CONTEXT.md)** — Electron 殼，把上面兩個
   網頁牆之一貼成桌面背景（透明、可穿透）。
 
@@ -24,11 +26,13 @@
 - **file_search_app → files-web**：不共用程式碼——files-web 把
   `IndexRepository` 的表格解析（`_ROW_RE`）＋寫入（`append_row(s)` /
   `remove_rows_by_occurrences` / `update_row_by_occurrence` / `_sanitize_cell` /
-  `_format_path_code` / `atomic_io`）＋掃描（`scan_service`）＋內容擷取建議
+  `_format_path_code` / `atomic_io`）＋掃描（`scan_service`；類型分類清單改跟
+  **便利貼牆**的一致，不是桌面版那份）＋內容擷取建議
   （`description_service.build_suggestion`）各自移植成一份 TS。格式若變，兩邊都要改。
   項目層級的增／刪／改（單列編輯分類說明＝桌面版「✏️ 編輯所選列」）都做，
-  索引集本身的匯入（建立）／匯出也做了；改路徑／前言 prose／索引集的刪除
-  仍只在桌面版。
+  索引集層級的匯入（建立）／匯出／新增空白／刪除／「開系統編輯器改這份 .md」
+  也都做了（見 `files-web/docs/adr/0003`、`0004`）。改路徑、在網頁 UI 裡直接
+  編輯前言 prose、重新命名索引集仍不做（重新命名桌面版也沒有）。
 - **notes-web → file_search_app**（AI 搜尋）：`server/ai_bridge.py` 子行程
   呼叫 file_search_app 既有的 `StickyNoteService` / `AIDescriptionService`，AI 設定
   與用量計數也共用。

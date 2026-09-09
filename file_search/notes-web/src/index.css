@@ -228,6 +228,11 @@ body {
   flex-direction: column;
   gap: 0.65rem;
 }
+.bar {
+  /* 工具列所有控制項共用的高度——搜尋框／排序下拉／新增便利貼／每顆圖示鈕
+     都吃這個，橫向對齊整齊。 */
+  --tb-h: 2.4rem;
+}
 .bar-row {
   display: flex;
   gap: 0.6rem;
@@ -235,12 +240,62 @@ body {
   flex-wrap: wrap;
 }
 
-/* 研究生模式切換——只在桌面牆（wallpaper）出現 */
+/* 工具列分三排：
+   ① 生活／研究生分頁（左，桌面牆才有）＋主題鈕（絕對定位靠右）
+   ② 搜尋框（拉長填滿）→ 排序下拉 → 新增便利貼，三者同高
+   ③ 所有工具鈕：統一尺寸的正方形圖示鈕 */
 .collection-row {
+  position: relative;
+  padding-right: 6.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-height: var(--tb-h);
+}
+.coll-tabs {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+.collection-row > .toggle {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  height: auto;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.82rem;
+  border-radius: 2px;
+}
+
+/* ── 第二排：搜尋 / 排序 / 新增 ── */
+.bar-row-find { gap: 0.5rem; }
+.bar-row-find .field {
+  flex: 1 1 auto;
+  max-width: none; /* 拉長填滿右邊，不留空隙 */
+  height: var(--tb-h);
+  box-sizing: border-box;
+  padding: 0 0.8rem;
+}
+.bar-row-find .sort-pick,
+.bar-row-find .add-note {
+  flex: none;
+  height: var(--tb-h);
+  box-sizing: border-box;
+}
+.bar-row-find .sort-pick { padding: 0 0.55rem 0 0.6rem; }
+.bar-row-find .add-note { padding: 0 1rem; }
+
+/* ── 第三排：工具鈕，全部同尺寸正方形 ── */
+.bar-row-tools { gap: 0.4rem; }
+.bar-row-tools .btn.icon {
+  width: var(--tb-h);
+  height: var(--tb-h);
+  padding: 0;
+  justify-content: center;
+  box-sizing: border-box;
 }
 .coll-tab {
   display: inline-flex;
@@ -279,7 +334,9 @@ body {
   padding: 0.5rem 0.8rem;
   flex: 1;
   min-width: 12rem;
-  max-width: 24rem;
+  /* 第二排只有 搜尋＋排序＋AI／語意／到期，沒有「新增便利貼」在搶空間，
+     搜尋框可以放寬一點填掉右邊，不留一塊空白。 */
+  max-width: 34rem;
 }
 .field svg {
   flex: none;
@@ -299,6 +356,30 @@ body {
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
   font-size: 0.8rem;
 }
+
+/* 牆面排序下拉（工具列，搜尋框右邊） */
+.sort-pick {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.5rem 0.4rem 0.55rem;
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  background: var(--panel);
+  color: var(--ink-soft);
+}
+.sort-pick svg { flex: none; }
+.sort-pick select {
+  font: inherit;
+  font-size: 0.85rem;
+  border: 0;
+  background: var(--panel);
+  color: var(--ink);
+  outline: none;
+  cursor: pointer;
+}
+
 .btn {
   flex: none;
   display: inline-flex;
@@ -689,9 +770,10 @@ body {
   line-height: 1.5;
 }
 .lines .task .box {
+  position: relative;
   flex: none;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   margin-top: 2px;
   border: 1.5px solid color-mix(in srgb, var(--paper-ink) 55%, transparent);
   border-radius: 3px;
@@ -708,9 +790,21 @@ body {
   border-color: var(--paper-ink);
   background: color-mix(in srgb, var(--paper-ink) 14%, transparent);
 }
+/* 打勾＝鮮綠色填滿 + 白色勾記（勾記用兩條邊框畫，跟著方框大小縮放）。 */
 .lines .task.done .box {
-  background: color-mix(in srgb, var(--paper-ink) 62%, transparent);
-  border-color: color-mix(in srgb, var(--paper-ink) 62%, transparent);
+  background: #16a34a;
+  border-color: #16a34a;
+}
+.lines .task.done .box::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 30%;
+  height: 62%;
+  transform: translate(-50%, -50%) rotate(42deg);
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
 }
 .lines .task.done > span {
   text-decoration: line-through;
@@ -721,15 +815,22 @@ body {
   align-items: baseline;
   gap: 0.4rem;
 }
-.lines .fld span {
+.lines .fld-label {
   flex: none;
   color: color-mix(in srgb, var(--paper-ink) 82%, transparent);
 }
-.lines .fld i {
+/* 填空底線——比舊版粗、顏色加深（1.4px→2px、42%→66%）。冒號後面有沒有
+   填字都畫這條線（舊版填了字就退回當待辦、線消失，使用者不要那行為）；
+   填的值寫在線上。往下推一點點才像「可以寫字的底線」，用 em 跟著字級縮放。 */
+.lines .fld-fill {
   flex: 1;
-  height: 0;
-  border-bottom: 1.4px dotted color-mix(in srgb, var(--paper-ink) 42%, transparent);
-  transform: translateY(-3px);
+  min-width: 1.5rem;
+  border-bottom: 2px dotted color-mix(in srgb, var(--paper-ink) 66%, transparent);
+  transform: translateY(0.16em);
+}
+.lines .fld-value {
+  color: color-mix(in srgb, var(--paper-ink) 92%, transparent);
+  overflow-wrap: anywhere;
 }
 .lines .more {
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
@@ -761,6 +862,43 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 待辦清單的完成章——絕對定位在右上角、稍微轉一點角度像蓋章，不進版面流
+   （不推擠內文），尺寸固定在卡片內、不會溢出。全部勾完＝綠色打勾，還有沒
+   完成的＝紅色叉。 */
+.todo-stamp {
+  position: absolute;
+  right: 0.5rem;
+  top: 0.5rem;
+  z-index: 3;
+  width: 1.9rem;
+  height: 1.9rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  transform: rotate(-9deg);
+  pointer-events: none;
+}
+/* 有完成章時：標題留出右邊空間別壓到章底下；hover 才出現的釘選星號往左讓位。 */
+.note:has(.todo-stamp) > h3 {
+  padding-right: 2.3rem;
+}
+.note:has(.todo-stamp) .pin-toggle {
+  right: 2.6rem;
+}
+.todo-stamp svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+.todo-stamp.all-done {
+  color: #15803d;
+  background: color-mix(in srgb, #22c55e 20%, var(--face));
+}
+.todo-stamp.pending {
+  color: #b91c1c;
+  background: color-mix(in srgb, #ef4444 15%, var(--face));
+}
+
 /* 到期日提醒——純視覺提示，配色跟桌面版 config.py 的到期日相關色彩常數
    對齊，同一則便利貼在兩邊看起來是同一種「急迫程度」。 */
 .due-badge {
@@ -768,8 +906,15 @@ body {
   font-weight: 600;
   padding: 0.2rem 0.5rem;
   border-radius: 3px;
-  margin: 0.4rem 0 0;
+  margin: 0.1rem 0 0.55rem;
   width: fit-content;
+  position: relative;
+  z-index: 1;
+}
+/* 點開放大檢視（.sheet）時把到期紅字藏起來——那個畫面是要好好讀內文的，
+   不需要紅字擋著（重複到期資訊還在，「這次完成」按鈕也還在）。 */
+.sheet .due-badge {
+  display: none;
 }
 .due-badge.overdue {
   background: #fecaca;
@@ -786,7 +931,7 @@ body {
   font-weight: 600;
   padding: 0.18rem 0.5rem;
   border-radius: 3px;
-  margin: 0.3rem 0 0;
+  margin: 0.25rem 0 0.5rem;
   width: fit-content;
   background: rgba(31, 41, 55, 0.09);
   color: rgba(31, 41, 55, 0.82);
@@ -1077,22 +1222,29 @@ body {
   border-radius: 2px;
 }
 
-/* ─── theme toggle ──────────────────────────────────────────────── */
+/* ─── theme toggle ──────────────────────────────────────────────────
+   放在第一排（生活／研究生 那排）最右邊——定位見上面 `.collection-row > .toggle`。
+   窄畫面退回一般行內、靠右。 */
 .toggle {
-  position: fixed;
-  right: 1rem;
-  bottom: 1rem;
-  z-index: 40;
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
+  flex: none;
+  height: 2.1rem;
+  padding: 0 0.62rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   border: 1px solid var(--hair);
-  border-radius: 50%;
+  border-radius: 8px;
   background: var(--panel);
-  color: var(--ink);
+  color: var(--ink-soft);
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.toggle:hover { border-color: var(--brass); color: var(--ink); }
+@media (max-width: 640px) {
+  .collection-row { padding-right: 0; }
+  .collection-row > .toggle { position: static; transform: none; margin-left: auto; }
+  .bar-row-find .field { flex-basis: 100%; }
 }
 .toggle:focus-visible {
   outline: 2px solid var(--brass);
@@ -1428,6 +1580,18 @@ body {
 }
 .form .check-inline input { width: auto; accent-color: var(--brass); }
 
+/* 便利貼歪斜的自訂角度（勾選「歪斜效果」後才出現）——縮排一點，視覺上掛在
+   那個核取方塊底下。 */
+.appearance .tilt-angle { margin-left: 1.4rem; }
+.appearance .tilt-angle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+}
+.appearance .tilt-angle-row input[type='range'] { flex: 1 1 auto; accent-color: var(--brass); }
+.appearance .tilt-angle-row input[type='number'] { flex: none; width: 4.2rem; }
+
 /* ─── 「提醒設定」：到期通知管道多開關 ─────────────────────────────── */
 .chan-block {
   display: flex;
@@ -1607,7 +1771,7 @@ body {
   border-bottom-color: var(--brass);
 }
 
-.tag-sort .mode-row {
+.mode-row {
   border: 1px solid var(--hair);
   border-radius: 3px;
   padding: 0.7rem 0.85rem;
@@ -1615,15 +1779,16 @@ body {
   flex-direction: column;
   gap: 0.55rem;
 }
-.tag-sort .mode-row legend {
+.mode-row legend {
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--ink);
   padding: 0 0.3rem;
 }
-.tag-sort .mode-row .radio { align-items: flex-start !important; }
-.tag-sort .mode-row .radio > span { display: flex; flex-direction: column; }
-.tag-sort .mode-row .hint { display: block; }
+.mode-row legend .hint { font-weight: 400; }
+.mode-row .radio { align-items: flex-start !important; }
+.mode-row .radio > span { display: flex; flex-direction: column; }
+.mode-row .hint { display: block; }
 
 .tag-sort-list {
   max-height: 42vh;
@@ -2211,20 +2376,86 @@ body {
 .field-block { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.85rem; }
 .field-block label { font-size: 0.82rem; font-weight: 600; }
 
+/* 批次標籤對話框（BatchTagDialog）：分頁下方的 field-block 輸入框／下拉
+   ——這個對話框不包在 .form 裡，所以既有的 .sheet.plain .form 規則吃不到；
+   用 aria-label 精準框住這個對話框，不影響別處的 .field-block。 */
+.bt-change { display: flex; flex-direction: column; gap: 0.1rem; }
+[aria-label='批次標籤'] .field-block { margin-bottom: 0.5rem; }
+[aria-label='批次標籤'] .field-block:last-of-type { max-width: 24rem; }
+[aria-label='批次標籤'] .bd-search { max-width: 16rem; margin-bottom: 0.2rem; }
+
+/* 「舊標籤」的可點選晶片清單——取代 <select>／datalist，字級和底色自己控制。 */
+.bt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-height: 30vh;
+  overflow-y: auto;
+  padding: 0.15rem;
+}
+.bt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.32rem 0.72rem;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bt-chip:hover { border-color: var(--ink-soft); color: var(--ink); }
+.bt-chip[aria-pressed='true'] {
+  border-color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 14%, transparent);
+  color: var(--ink);
+  font-weight: 600;
+}
+.bt-chip-dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15); }
+.bt-chips-empty { font-size: 0.8rem; color: var(--ink-soft); padding: 0.3rem; }
+[aria-label='批次標籤'] .field-block > label,
+[aria-label='批次標籤'] .field-block > span {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--ink) 84%, transparent);
+}
+[aria-label='批次標籤'] .field-block input,
+[aria-label='批次標籤'] .field-block select {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  padding: 0.45rem 0.6rem;
+  outline: none;
+}
+[aria-label='批次標籤'] .field-block input:focus,
+[aria-label='批次標籤'] .field-block select:focus { border-color: var(--brass); }
+
+/* 原生 <select> 展開的選單：深色模式下若底是半透明，選項會看不清——
+   明確給實色底＋字色（跟索引 md 牆同一套處理）。 */
+select option {
+  background: var(--panel);
+  color: var(--ink);
+}
+
 /* 沒有包在 .form 裡的錯誤訊息（GenerateNotesDialog 掃描／儲存失敗）—— .form .err
    只在表單內生效，這裡補一個獨立版本，顏色跟 .notice.err 一致。 */
 .err { color: #c0392b; font-size: 0.82rem; }
 
 /* ─── focus note：拉框裁切 + 拖出去變懸浮視窗（只有 wallpaper-app 會用到）── */
 
-/* 裁切中——只留牆面本身，標題／工具列／AI 提示／頁尾都先讓開，呼應
-   「除了這則便利貼其他區塊都消失」的需求；.toggle 也一併藏起來，
-   維持畫面乾淨，要換主題／新增等操作請先按左上角恢復。 */
+/* 裁切中——只留牆面本身，標題／工具列（含最右邊的主題鈕）／AI 提示／頁尾
+   都先讓開，呼應「除了這則便利貼其他區塊都消失」的需求；要換主題／新增等
+   操作請先按左上角恢復。 */
 .page.cropped .hero,
 .page.cropped .bar,
 .page.cropped .ai-banner,
-.page.cropped .colophon,
-.page.cropped .toggle {
+.page.cropped .colophon {
   display: none;
 }
 /* 裁切視窗現在照使用者畫的框原尺寸開，可能非常小——固定寫死一個剛好夠
@@ -2329,6 +2560,14 @@ body {
   height: 1.4rem;
   -webkit-app-region: drag;
   z-index: 6;
+  cursor: move;
+}
+/* 拖曳區是透明的、又很窄，不好抓——滑鼠移進去時改游標＋淡淡亮一條，
+   讓「這裡按住可以拖」看得出來。 */
+.focused-drag-handle:hover,
+.focused-drag-edge:hover {
+  background: color-mix(in srgb, var(--brass) 26%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 55%, transparent);
 }
 /* 上緣以外的三邊也給一條拖曳區——這個視窗常常緊貼著某側螢幕邊界生出來，
    只有上緣能拖的話，貼著左/右/下邊界時那條把手可能整個被邊界吃掉、
@@ -2340,24 +2579,25 @@ body {
   position: absolute;
   -webkit-app-region: drag;
   z-index: 6;
+  cursor: move;
 }
 .focused-drag-edge.edge-bottom {
-  left: 14px;
-  right: 14px;
+  left: 16px;
+  right: 16px;
   bottom: 0;
-  height: 10px;
+  height: 14px;
 }
 .focused-drag-edge.edge-left {
   top: 1.4rem;
-  bottom: 14px;
+  bottom: 16px;
   left: 0;
-  width: 10px;
+  width: 14px;
 }
 .focused-drag-edge.edge-right {
   top: 1.4rem;
-  bottom: 14px;
+  bottom: 16px;
   right: 0;
-  width: 10px;
+  width: 14px;
 }
 /* 收回按鈕——沒有系統標題列就沒有 ✕，這是懸浮視窗唯一能關掉自己、放回
    牆上的方式，一定要疊在拖曳把手之上（no-drag，不然按下去變成拖視窗）。 */

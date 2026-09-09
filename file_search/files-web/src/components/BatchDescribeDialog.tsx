@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useBlankSuggestions, useBulkDescribe } from '../hooks/useIndexes'
 import { useAiTarget } from '../hooks/useAi'
 import { aiApi } from '../lib/ai'
+import { scrimClose } from '../lib/scrimClose'
 
 const MAX_SHOWN = 300
 
@@ -133,7 +134,7 @@ export function BatchDescribeDialog({
   const cloudWarn = t?.provider === 'openai'
 
   return (
-    <div className="scrim" onClick={() => !aiRunning && onClose()}>
+    <div className="scrim" {...scrimClose(() => { if (!aiRunning) onClose() })}>
       <div
         className="modal wide"
         role="dialog"

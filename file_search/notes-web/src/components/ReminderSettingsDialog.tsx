@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useReminderSettings, useSetReminderSettings } from '../hooks/useNotes'
 import type { AlarmChannels, ReminderSettings } from '../lib/api'
+import { scrimClose } from '../lib/scrimClose'
 
 /**
  * 「快到期」門檻 ＋ 四個到期通知管道的開關。
@@ -25,7 +26,7 @@ export function ReminderSettingsDialog({ onClose }: { onClose: () => void }) {
   }, [onClose])
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div className="scrim" {...scrimClose(onClose)}>
       <div
         className="sheet plain"
         role="dialog"

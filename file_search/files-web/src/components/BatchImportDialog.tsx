@@ -2,6 +2,7 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderOpen } from 'lucide-react'
 import { useBulkAdd, useScan, useScanCategories } from '../hooks/useIndexes'
 import { FileBrowser } from './FileBrowser'
+import { scrimClose } from '../lib/scrimClose'
 
 /** 「是不是同一個檔案」的比對 key——對齊桌面版 path_key（Windows：大小寫、`/`↔`\` 統一）。 */
 const norm = (p: string) => p.replace(/\//g, '\\').toLowerCase()
@@ -30,11 +31,12 @@ export function BatchImportDialog({
   const scan = useScan()
   const add = useBulkAdd(indexName)
 
-  // label -> { icon, color }；「其他」（掃描結果會出現、但不是可篩選類型）用中性灰。
+  // label -> { icon, color }——後端現在會把「其他」也一起回（可篩選類型），
+  // 這裡的 fallback 只在舊後端沒回時補上。
   const meta = useMemo(() => {
     const m = new Map<string, { icon: string; color: string }>()
     for (const c of scanCats ?? []) m.set(c.label, { icon: c.icon, color: c.color })
-    m.set('其他', { icon: '📁', color: '#94a3b8' })
+    if (!m.has('其他')) m.set('其他', { icon: '📦', color: '#64748b' })
     return m
   }, [scanCats])
   const iconFor = (label: string) => meta.get(label)?.icon ?? '📄'
@@ -93,7 +95,7 @@ export function BatchImportDialog({
   }
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div className="scrim" {...scrimClose(onClose)}>
       <div
         className="modal"
         role="dialog"

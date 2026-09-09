@@ -10,6 +10,7 @@ import {
   readSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
   type Stats,
 } from 'node:fs'
@@ -162,6 +163,111 @@ export function validateIndexName(raw: string): ValidateNameResult {
 export function createIndexFile(filename: string, content: string): void {
   mkdirSync(indexDir, { recursive: true })
   writeFileSync(join(indexDir, filename), content, 'utf8')
+}
+
+/**
+ * 新增一份「空白」索引集用的範本——移植自桌面版 `IndexRepository` 的
+ * `_DEFAULT_INDEX_TEMPLATE`（開頭附一段格式規定，方便日後手動編輯這份 .md
+ * 的人知道規則；表格只有表頭兩列、沒有資料）。這是純敘述文字（會變成新索引集
+ * 的「前言」），內容若跟桌面版那份範本drift也只影響新建索引集的前言，不影響
+ * 解析——但兩邊還是儘量保持一致。
+ */
+const DEFAULT_INDEX_TEMPLATE = `# 📑 檔案快速索引
+
+> 這份文件是 \`file_search.py\` 的其中一份索引來源，**完全手動維護**——程式不會
+> 掃描任何資料夾，只讀這份表格（或用「拖曳檔案」「新增檔案...」「匯入資料夾...」
+> 功能自動新增列）。
+>
+> \`file_search.py\` 支援**多份索引檔案**：\`indexes/\` 資料夾底下每一個 \`.md\` 檔
+> 都是獨立一份索引集，程式標題列的下拉選單可以切換要搜尋哪一份；要新增一份
+> 新的索引集，直接在 \`indexes/\` 底下新建一個 \`.md\` 檔、照同樣的表格格式寫即可，
+> 不用改程式碼。
+>
+> **格式規定（跟這一行格式不一樣的列，程式會直接跳過、不會出錯，但那筆資料就搜尋不到）**：
+>
+> \`\`\`
+> | \`完整路徑\\檔名.副檔名\` | 分類 | 一句話說明或關鍵字 |
+> \`\`\`
+>
+> - 開頭是 \`|\`，接著檔名用單一反引號 \`\` \` \`\` 包住，然後是**分類**欄（自訂文字，
+>   例如「論文」「截圖」「教學筆記」——程式會依目前這份索引裡出現過的分類自動
+>   組成篩選下拉選單，同一個分類名稱打法要一致，不然會被當成兩種不同分類），
+>   最後是**說明**欄
+> - 路徑裡有反引號的話沒辦法收錄，實務上檔名幾乎不會用到反引號，不用擔心
+> - 路徑建議用**完整絕對路徑**，因為這些檔案通常散落在硬碟各處，不像同一個
+>   專案資料夾底下的檔案能用相對路徑
+> - 分類欄、說明欄都不能包含 \`|\` 符號（會被誤判成表格分隔線，文字會被腰斬），
+>   要表達「或」的意思請用「／」
+> - 分類欄留空（\`| \\\`路徑\\\` |  | 說明 |\`）也可以，篩選下拉選單會把這種歸類成
+>   「未分類」
+> - 一行只能收錄一個檔案；同一個檔案要多個關鍵字都搜得到，就把關鍵字都寫進說明欄，
+>   搜尋是比對說明欄全文，不是只比對第一個詞
+> - 用「拖曳檔案」「新增檔案...」「匯入資料夾...」新增的列，會自動照這個格式
+>   附加到表格最後一行，不用手動維護對齊；表格裡列的先後順序不影響搜尋結果，
+>   純粹是你閱讀這份文件時的順序
+
+| 路徑 | 分類 | 說明 |
+|---|---|---|
+`
+
+/**
+ * 在 indexDir 底下建立一份新的**空白**索引集（帶格式規定前言、空表格）——
+ * 對應桌面版「🗂 新增索引集」（`IndexRepository.create_index_file()`）。
+ * 呼叫端要先用 `validateIndexName()` 檢查過檔名合法、沒有撞名。
+ */
+export function createBlankIndex(filename: string): void {
+  createIndexFile(filename, DEFAULT_INDEX_TEMPLATE)
+}
+
+/**
+ * 刪除一份索引集（整份 .md 檔）——對應桌面版「🗑️ 刪除索引集」。只刪索引
+ * 紀錄本身，**絕不碰**索引指向的實體檔案。files-web 沒有全文快取／加入時間
+ * 紀錄（那些只在桌面版），分類自訂顏色是以分類名為鍵、跨索引集共用，所以
+ * 這裡不像桌面版 `IndexService.delete_index()` 要一併清附屬資料，單純 unlink。
+ */
+export function deleteIndex(name: string): MutResult {
+  const p = safeIndexPath(name)
+  if (!p) return { ok: false, code: 404, error: '找不到這份索引集' }
+  try {
+    unlinkSync(p)
+  } catch {
+    return { ok: false, code: 404, error: '找不到這份索引集（可能已被別處刪除）' }
+  }
+  return { ok: true, count: 1 }
+}
+
+/**
+ * 用系統文字編輯器開啟一份索引集的 .md，方便手動改前言 prose／路徑／格式
+ * ——對應桌面版「編輯索引檔案」（`file_actions.open_in_text_editor`：優先
+ * VS Code，退回記事本）。跟 `openInExplorer` 一樣是本機動作，靠 server 只綁
+ * 127.0.0.1 把關；在非本機的瀏覽器分頁按下去只會在跑 server 的那台電腦開窗。
+ */
+export function openIndexInEditor(name: string): MutResult {
+  const p = safeIndexPath(name)
+  if (!p) return { ok: false, code: 404, error: '找不到這份索引集' }
+  try {
+    if (!statSync(p).isFile()) return { ok: false, code: 404, error: '找不到這份索引集' }
+  } catch {
+    return { ok: false, code: 404, error: '找不到這份索引集' }
+  }
+  if (process.platform === 'win32') {
+    // `code` 在 Windows 是 code.cmd，execFile 直接叫不到 → 透過 cmd /c；
+    // 沒裝 VS Code 時 cmd 回非 0，callback 收到 err，退回記事本（固定路徑，
+    // 不靠 PATH，對應桌面版避免 PATH 不含 System32 的處理）。
+    const notepad = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'notepad.exe')
+    execFile('cmd', ['/c', 'code', p], (err) => {
+      if (err) execFile(notepad, [p], () => {})
+    })
+  } else if (process.platform === 'darwin') {
+    execFile('code', [p], (err) => {
+      if (err) execFile('open', ['-t', p], () => {})
+    })
+  } else {
+    execFile('code', [p], (err) => {
+      if (err) execFile('xdg-open', [p], () => {})
+    })
+  }
+  return { ok: true, count: 1 }
 }
 
 /** 只允許 indexDir 底下的單一 .md 檔名，擋掉 ../ 與絕對路徑。 */
@@ -427,21 +533,59 @@ export function updateRowsByOccurrences(
 const SCAN_SOFT_LIMIT = 1000 // 可直接匯入的安全筆數（對應桌面版 SCAN_SOFT_LIMIT）
 const SCAN_WALK_HARD_LIMIT = 200_000 // 走檔迴圈的絕對上限，避免選到磁碟機根目錄卡死
 
-// label / icon / color 跟桌面版 config.EXT_CATEGORIES 對齊——前端的類型按鈕與
-// 掃描結果統計靠 icon+color 一眼分辨。
+// 資料夾掃描的類型篩選——**跟便利貼牆「AI 生成便利貼」的掃描分類同一份**
+// （`notes-web/server/store.ts` 的 `EXT_CATEGORIES`）：比桌面版 config 多了
+// 「程式碼」「設定與資料」「筆記本」，而且「其他」也能直接選。使用者要求兩邊
+// 挑檔的分類一致；便利貼牆那份若改了，這裡要跟著改。
 const EXT_CATEGORIES: { label: string; icon: string; color: string; exts: Set<string> }[] = [
-  { label: '文件', icon: '📄', color: '#2874a6', exts: new Set(['.doc', '.docx', '.rtf']) },
-  { label: '簡報', icon: '📊', color: '#ca6f1e', exts: new Set(['.ppt', '.pptx']) },
-  { label: '試算表', icon: '📈', color: '#1e8449', exts: new Set(['.xls', '.xlsx', '.csv']) },
+  { label: '文件', icon: '📄', color: '#2874a6', exts: new Set(['.doc', '.docx', '.rtf', '.odt']) },
+  { label: '簡報', icon: '📊', color: '#ca6f1e', exts: new Set(['.ppt', '.pptx', '.odp']) },
+  { label: '試算表', icon: '📈', color: '#1e8449', exts: new Set(['.xls', '.xlsx', '.csv', '.tsv', '.ods']) },
   { label: 'PDF', icon: '📕', color: '#c0392b', exts: new Set(['.pdf']) },
-  { label: '文字', icon: '📃', color: '#64748b', exts: new Set(['.txt', '.md']) },
+  { label: '文字', icon: '📃', color: '#64748b', exts: new Set(['.txt', '.md', '.rst', '.log', '.tex']) },
+  {
+    label: '程式碼',
+    icon: '💻',
+    color: '#0f766e',
+    exts: new Set([
+      '.py', '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.ino', '.c', '.h', '.cpp', '.hpp',
+      '.cc', '.java', '.go', '.rs', '.rb', '.php', '.cs', '.swift', '.kt', '.sh', '.bat', '.ps1',
+      '.html', '.htm', '.css', '.scss', '.vue', '.sql', '.r', '.m', '.lua', '.pl',
+    ]),
+  },
+  {
+    label: '設定與資料',
+    icon: '⚙️',
+    color: '#a16207',
+    exts: new Set([
+      '.json', '.jsonl', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.env',
+      '.xml', '.properties', '.gitignore',
+    ]),
+  },
+  { label: '筆記本', icon: '📓', color: '#7c3aed', exts: new Set(['.ipynb']) },
   { label: '圖片', icon: '🖼️', color: '#7d3c98', exts: new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']) },
   { label: '音樂', icon: '🎵', color: '#0e9488', exts: new Set(['.mp3', '.wav', '.flac', '.m4a']) },
   { label: '影片', icon: '🎬', color: '#4f46b5', exts: new Set(['.mp4', '.mov', '.avi', '.mkv', '.wmv']) },
-  { label: '壓縮檔', icon: '🗜️', color: '#8b5a2b', exts: new Set(['.zip', '.rar', '.7z']) },
+  { label: '壓縮檔', icon: '🗜️', color: '#8b5a2b', exts: new Set(['.zip', '.rar', '.7z', '.tar', '.gz']) },
 ]
 
-export const scanCategories = EXT_CATEGORIES.map(({ label, icon, color }) => ({ label, icon, color }))
+/** 屬於任何一類的副檔名的聯集——「其他」＝不在這裡面。 */
+const KNOWN_EXTS = new Set<string>()
+for (const c of EXT_CATEGORIES) for (const e of c.exts) KNOWN_EXTS.add(e)
+
+const OTHER_CATEGORY = { label: '其他', icon: '📦', color: '#64748b' } as const
+
+// 遞迴掃描時整個略過的資料夾——產出物／依賴／版控內部，沒有值得收進索引的東西。
+const SCAN_SKIP_DIRS = new Set([
+  '.git', 'node_modules', '__pycache__', '.venv', 'venv', 'env', '.mypy_cache',
+  '.pytest_cache', '.ruff_cache', '.idea', '.vscode', 'dist', 'build', '.next',
+  '.cache', '.tox', 'site-packages', '.gradle', 'target', '.svn',
+])
+
+export const scanCategories = [
+  ...EXT_CATEGORIES.map(({ label, icon, color }) => ({ label, icon, color })),
+  OTHER_CATEGORY,
+]
 
 export interface ScanResult {
   files: { path: string; name: string; size: number; ext: string }[]
@@ -473,6 +617,8 @@ export function scanFolder(
 
   const want = new Set<string>()
   for (const c of EXT_CATEGORIES) if (categories.includes(c.label)) for (const e of c.exts) want.add(e)
+  const wantOther = categories.includes(OTHER_CATEGORY.label)
+  const hasFilter = want.size > 0 || wantOther
 
   const files: ScanResult['files'] = []
   const counts = EXT_CATEGORIES.map((c) => ({ label: c.label, count: 0 }))
@@ -509,11 +655,14 @@ export function scanFolder(
         }
       }
       if (isDir) {
-        if (recursive) stack.push(full)
+        // 產出物／依賴／版控內部整個跳過，別讓它們洗版「其他」類、也別浪費走檔額度。
+        if (recursive && !SCAN_SKIP_DIRS.has(de.name)) stack.push(full)
         continue
       }
-      const ext = extname(de.name).toLowerCase()
-      if (want.size && !want.has(ext)) continue
+      // Node 的 extname('.gitignore') 是 ''——沒有一般副檔名的 dotfile 用整個
+      // 檔名當「副檔名」，讓 .gitignore / .env 這種能被歸類。
+      const ext = extname(de.name).toLowerCase() || (de.name.startsWith('.') ? de.name.toLowerCase() : '')
+      if (hasFilter && !want.has(ext) && !(wantOther && !KNOWN_EXTS.has(ext))) continue
       let st
       try {
         st = statSync(full)

@@ -3,6 +3,7 @@ import { FolderOpen, GraduationCap, Package, X } from 'lucide-react'
 import { useAiTarget, useSaveGeneratedNotes, useThesisSeed } from '../hooks/useAi'
 import { useAppSettings } from '../hooks/useNotes'
 import { FileBrowser } from './FileBrowser'
+import { scrimClose } from '../lib/scrimClose'
 
 type Row = { key: string; save: boolean; title: string; tag: string; body: string }
 type Phase = 'pick' | 'browseDir' | 'browseZip' | 'running' | 'review'
@@ -87,7 +88,7 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
   }
 
   return (
-    <div className="scrim" onClick={() => !busy && onClose()}>
+    <div className="scrim" {...scrimClose(() => { if (!busy) onClose() })}>
       <div
         className="sheet plain wide"
         role="dialog"

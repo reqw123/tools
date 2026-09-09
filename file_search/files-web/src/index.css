@@ -293,11 +293,19 @@ code {
 .select-field select {
   font: inherit;
   border: none;
-  background: transparent;
+  /* 不能用 transparent——Chrome/Windows 深色模式下展開的選單會跟著透明，
+     選項文字整片看不清。給實色底（跟外層 .select-field 同色，關起來看不出差別）。 */
+  background: var(--raise);
   color: var(--ink);
   outline: none;
   max-width: 12rem;
   cursor: pointer;
+}
+/* 原生 <select> 展開的選單：明確指定每個選項的底色與字色（Firefox／其他
+   瀏覽器靠這行，Chrome 靠上面 select 的實色底）。 */
+select option {
+  background: var(--raise);
+  color: var(--ink);
 }
 
 .seg {
@@ -355,16 +363,24 @@ code {
 
 .toggle {
   font: inherit;
-  font-size: 1rem;
-  width: 2.1rem;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   height: 2.1rem;
+  padding: 0 0.62rem;
   border: 1px solid var(--line);
   background: var(--raise);
-  color: var(--ink);
+  color: var(--ink-soft);
   border-radius: 8px;
   cursor: pointer;
+  white-space: nowrap;
 }
-.toggle:hover { border-color: var(--marker); background: color-mix(in srgb, var(--marker) 10%, var(--raise)); }
+.toggle:hover {
+  border-color: var(--marker);
+  background: color-mix(in srgb, var(--marker) 10%, var(--raise));
+  color: var(--marker-ink);
+}
 
 /* ─── main ─────────────────────────────────────────────────────────── */
 .wrap {
@@ -421,7 +437,7 @@ code {
 }
 .preamble-body pre code { background: none; padding: 0; }
 
-/* ─── 原文檢視 ─────────────────────────────────────────────────────── */
+/* ─── 文件檢視（工具列切換鈕「文件」；整份索引 .md render 成一頁） ─────── */
 .doc {
   max-width: 100%;
   overflow-x: auto;
@@ -462,6 +478,10 @@ code {
 .doc pre code { background: none; padding: 0; font-size: 0.86rem; }
 .doc table {
   width: 100%;
+  /* 固定版面：欄寬不隨內容撐開，所以某一格塞了一長串沒有空白的字（例如
+     說明欄被貼進一堆亂碼）也只會在自己那欄裡換行，不會把整張表推寬、
+     也不會逼出水平捲軸。 */
+  table-layout: fixed;
   border-collapse: collapse;
   margin: 1rem 0;
   font-size: 0.82rem;
@@ -472,11 +492,36 @@ code {
   text-align: left;
   vertical-align: top;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .doc th { background: color-mix(in srgb, var(--marker) 12%, var(--raise)); font-weight: 700; }
 .doc tbody tr:nth-child(even) td { background: var(--paper); }
 .doc td code { font-size: 0.92em; word-break: break-all; }
 .doc hr { border: none; border-top: 1px solid var(--line); margin: 1.4rem 0; }
+
+/* 文件內搜尋——有搜尋字時只留下符合的表格列（其餘列＋前言等非項目內容收起來），
+   符合的文字高亮；右下角一個小徽章顯示符合筆數。 */
+.doc-wrap { position: relative; }
+.doc.dv-filtering .dv-hide { display: none; }
+.doc mark[data-find] {
+  background: color-mix(in srgb, #ffd54a 62%, var(--raise));
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 0.05em;
+}
+.doc-find {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 30;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  color: var(--ink);
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-2);
+}
 
 /* ─── 檔案內容預覽（展開列裡） ─────────────────────────────────────── */
 .preview {
@@ -486,6 +531,7 @@ code {
   overflow: hidden;
   background: var(--raise);
 }
+.preview:focus-visible { outline: 2px solid var(--marker); outline-offset: -2px; }
 .preview .doc.mini {
   border: none;
   border-radius: 0;
@@ -493,7 +539,7 @@ code {
   max-height: 60vh;
   overflow-y: auto;
   padding: 0.9rem 1.1rem;
-  font-size: 0.85rem;
+  font-size: calc(0.85rem * var(--preview-zoom, 1));
 }
 .preview .doc.mini :is(h1, h2, h3, h4) { margin-top: 1rem; }
 .preview-text {
@@ -502,11 +548,38 @@ code {
   overflow: auto;
   padding: 0.9rem 1.1rem;
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 0.8rem;
+  font-size: calc(0.8rem * var(--preview-zoom, 1));
   line-height: 1.5;
   white-space: pre;
   color: var(--ink);
 }
+/* 字級縮放小工具（Ctrl +/-/0、Ctrl+滾輪也可） */
+.preview-zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+.preview-zoom button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.4rem;
+  padding: 0 0.3rem;
+  font: inherit;
+  font-size: 0.68rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--raise);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.preview-zoom button:hover:not(:disabled) { border-color: var(--marker); color: var(--marker-ink); }
+.preview-zoom button:disabled { opacity: 0.45; cursor: default; }
+.preview-zoom-hint { margin-left: auto; font-size: 0.64rem; color: var(--ink-faint); }
 .preview-msg {
   margin: 0;
   padding: 0.6rem 0.9rem;
@@ -974,7 +1047,8 @@ code {
 .field-block { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.85rem; }
 .field-block label { font-size: 0.82rem; font-weight: 600; }
 .field-block label .sub { font-weight: 400; color: var(--ink-faint); font-size: 0.75rem; }
-.field-block input {
+.field-block input,
+.field-block select {
   font: inherit;
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--line);
@@ -982,13 +1056,56 @@ code {
   background: var(--raise);
   color: var(--ink);
 }
-.field-block input:focus {
+.field-block input:focus,
+.field-block select:focus {
   outline: none;
   border-color: var(--marker);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--marker) 22%, transparent);
 }
 /* AiSettingsDialog 用 <label class="field-block"><span>標題</span><input> 這個結構 */
 .field-block > span:first-child { font-size: 0.82rem; font-weight: 600; }
+
+/* 批次分類對話框：頂端「補上空白的 / 舊→新」分頁 + 「舊→新」那頁的內容 */
+.bd-tabs { align-self: flex-start; margin-bottom: 0.2rem; }
+.bd-tabs button { padding: 0.44rem 0.95rem; }
+.bc-change { display: flex; flex-direction: column; gap: 0.15rem; }
+.bc-change .field-block { margin-bottom: 0.4rem; }
+.bc-change .field-block:last-of-type { max-width: 24rem; }
+.bc-change .bd-search { max-width: 16rem; margin-bottom: 0.15rem; }
+
+/* 「舊分類/舊標籤」的可點選晶片清單——取代原本 <select>／datalist，字級和
+   底色都自己控制、看得清。 */
+.bt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-height: 30vh;
+  overflow-y: auto;
+  padding: 0.15rem;
+}
+.bt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.34rem 0.72rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raise);
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bt-chip:hover { border-color: var(--marker); color: var(--marker-ink); }
+.bt-chip[aria-pressed='true'] {
+  border-color: var(--marker);
+  background: color-mix(in srgb, var(--marker) 16%, var(--raise));
+  color: var(--marker-ink);
+  font-weight: 600;
+}
+.bt-chip-dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15); }
+.bt-chips-empty { font-size: 0.8rem; color: var(--ink-faint); padding: 0.3rem; }
 .modal-body > .sub {
   font-size: 0.82rem;
   color: var(--ink-soft);
@@ -1257,6 +1374,37 @@ code {
   overflow-y: auto;
   padding: 0.2rem;
 }
+
+/* 「依分類快速勾選」下拉（批次改分類；比照便利貼牆的依標籤快速勾選） */
+.bd-quick { font-size: 0.82rem; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 0.3rem; }
+.bd-quick select {
+  font: inherit;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--raise);
+  color: var(--ink);
+}
+
+/* 批次改分類：清單自己捲，「改成分類」欄與底部按鈕固定留在對話框框內，
+   不會被長清單推到框外還要再捲一層。 */
+.modal-body.bd-fit {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.modal-body.bd-fit .bd-list {
+  flex: 1 1 auto;
+  min-height: 5rem;
+  max-height: none;
+}
+.bd-apply {
+  padding: 0.7rem 1.1rem 0.25rem;
+  border-top: 1px solid var(--line);
+}
+.bd-apply .field-block { margin-bottom: 0.35rem; }
 .bd-card {
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -1378,11 +1526,18 @@ code {
   position: absolute;
   -webkit-app-region: drag;
   z-index: 6;
+  cursor: move;
+}
+/* 拖曳區是透明的、又很窄，不好抓——滑鼠移進去時改游標＋淡淡亮一條。 */
+.focused-drag-handle:hover,
+.focused-drag-edge:hover {
+  background: color-mix(in srgb, var(--marker) 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--marker) 55%, transparent);
 }
 .focused-drag-handle { top: 0; left: 0; right: 0; height: 1.4rem; }
-.focused-drag-edge.edge-bottom { left: 14px; right: 14px; bottom: 0; height: 10px; }
-.focused-drag-edge.edge-left { top: 1.4rem; bottom: 14px; left: 0; width: 10px; }
-.focused-drag-edge.edge-right { top: 1.4rem; bottom: 14px; right: 0; width: 10px; }
+.focused-drag-edge.edge-bottom { left: 16px; right: 16px; bottom: 0; height: 14px; }
+.focused-drag-edge.edge-left { top: 1.4rem; bottom: 16px; left: 0; width: 14px; }
+.focused-drag-edge.edge-right { top: 1.4rem; bottom: 16px; right: 0; width: 14px; }
 
 /* 收回按鈕——沒有系統標題列就沒有 ✕，這是懸浮視窗唯一能關掉自己、放回
    列表的方式，一定要疊在拖曳把手之上（no-drag，不然按下去變成拖視窗）。 */

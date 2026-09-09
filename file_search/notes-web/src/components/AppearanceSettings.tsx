@@ -43,6 +43,7 @@ export function AppearanceSettings() {
   useEffect(() => () => commitRef.current(), [])
 
   const [widthDraft, setWidthDraft] = useState<string | null>(null)
+  const [tiltDraft, setTiltDraft] = useState<string | null>(null)
 
   // 語意搜尋的 embedding 模型——文字輸入 + datalist（讀那台 Ollama 已安裝的
   // 清單），失焦才送出。位址沿用「AI 請求」分頁設定的 ollama.base_url。
@@ -117,6 +118,86 @@ export function AppearanceSettings() {
         牆面動態排版（大致等高、上下緊貼）
         <span className="hint">關掉就用單純的等寬格線，不做緊貼排版。</span>
       </label>
+
+      <label className="check-inline">
+        <input
+          type="checkbox"
+          checked={settings.wall.tilt}
+          onChange={(e) => patch.mutate({ wall: { tilt: e.target.checked } })}
+        />
+        便利貼歪斜效果
+        <span className="hint">打開後每張便利貼會照標題帶一點隨機傾斜（連膠帶也跟著轉）。預設關閉、擺正。</span>
+      </label>
+
+      {settings.wall.tilt && (
+        <label className="tilt-angle">
+          最大傾斜角度（0.5–15°，每張在 ±這個角度之間）
+          <span className="tilt-angle-row">
+            <input
+              type="range"
+              min={0.5}
+              max={15}
+              step={0.5}
+              value={tiltDraft ?? String(settings.wall.tiltMax)}
+              onChange={(e) => setTiltDraft(e.target.value)}
+              onPointerUp={() => {
+                const n = Number(tiltDraft)
+                setTiltDraft(null)
+                if (Number.isFinite(n) && n !== settings.wall.tiltMax) {
+                  patch.mutate({ wall: { tiltMax: n } })
+                }
+              }}
+            />
+            <input
+              type="number"
+              min={0.5}
+              max={15}
+              step={0.5}
+              value={tiltDraft ?? String(settings.wall.tiltMax)}
+              onChange={(e) => setTiltDraft(e.target.value)}
+              onBlur={() => {
+                const n = Math.round(Number(tiltDraft) * 10) / 10
+                setTiltDraft(null)
+                if (Number.isFinite(n) && n >= 0.5 && n <= 15 && n !== settings.wall.tiltMax) {
+                  patch.mutate({ wall: { tiltMax: n } })
+                }
+              }}
+            />
+            <span className="dim">°</span>
+          </span>
+        </label>
+      )}
+
+      <fieldset className="mode-row">
+        <legend>
+          同分類的便利貼怎麼排
+          <span className="hint">只在「看全部」（沒搜尋、沒選分類）時生效；有篩選時一律大致等高。</span>
+        </legend>
+        <label className="radio">
+          <input
+            type="radio"
+            name="wall-tag-axis"
+            checked={settings.wall.tagAxis !== 'horizontal'}
+            onChange={() => patch.mutate({ wall: { tagAxis: 'vertical' } })}
+          />
+          <span>
+            直向
+            <span className="hint">一個分類一直行，分類由左到右排（原本的樣子）。</span>
+          </span>
+        </label>
+        <label className="radio">
+          <input
+            type="radio"
+            name="wall-tag-axis"
+            checked={settings.wall.tagAxis === 'horizontal'}
+            onChange={() => patch.mutate({ wall: { tagAxis: 'horizontal' } })}
+          />
+          <span>
+            橫向
+            <span className="hint">一個分類一橫段，卡片由左到右、放不下換行，分類由上到下疊。</span>
+          </span>
+        </label>
+      </fieldset>
 
       <label>
         語意搜尋的嵌入模型

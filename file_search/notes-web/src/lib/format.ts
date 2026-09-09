@@ -3,6 +3,10 @@ export interface Line {
   text: string
   /** task 專用：內文那一行開頭有 `[x]` 就是已勾選。field 一律 undefined。 */
   checked?: boolean
+  /** field 專用：冒號（含）之前的欄位名，例如「姓名：」。 */
+  label?: string
+  /** field 專用：冒號之後已經填的值（沒填就是空字串）。 */
+  value?: string
   /** 這一項對應到 `body.split('\n')` 的第幾行——勾選切換時要改的就是那行
    *  （parseBody 會濾掉空行、trim，所以顯示順序 ≠ 原始行號，得另外帶）。 */
   srcIndex: number
@@ -16,9 +20,17 @@ export interface Line {
 export const TASK_LINE_RE = /^(\s*(?:\d+[.、)]|[-•])?\s*)(\[[ xX]\]\s*)?(.*)$/
 
 /**
+ * 表單欄位行：開頭一段「短標籤」（1–20 個字元，不含空白與冒號）緊接一個冒號。
+ * 冒號後面填不填值都算欄位——空的就畫一整條填空底線，有值就把值寫在底線上。
+ * 舊版只認「冒號結尾」，填了字就退回當待辦、底線消失；使用者不要那個行為。
+ * 標籤不含空白＝排除「記得 3:30 開會」這種句子；`(?!\/)` 排除 `http://` 網址。
+ */
+export const FIELD_LINE_RE = /^\s*[^\s:：]{1,20}[:：](?!\/)/
+
+/**
  * 便利貼內文分行後判斷型態：
  *  - 只有一行（或整段是一句話）→ 當段落，回傳 { paragraph }
- *  - 以「：」「:」結尾 → 表單欄位（畫虛線填空）
+ *  - 符合 FIELD_LINE_RE（短標籤 + 冒號，值可有可無）→ 表單欄位（畫底線填空）
  *  - 其餘 → 待辦項（畫方框；開頭 `[x]`/`[ ]` 及項目符號/編號會被吃掉，
  *    `[x]` 記成 checked）
  */
@@ -30,7 +42,8 @@ export function parseBody(body: string): { paragraph: string } | { lines: Line[]
   })
   if (nonBlank.length <= 1) return { paragraph: nonBlank[0]?.text ?? '' }
   const lines: Line[] = nonBlank.map(({ text: l, srcIndex }) => {
-    if (/[:：]$/.test(l)) return { kind: 'field', text: l, srcIndex }
+    const fm = l.match(/^\s*([^\s:：]{1,20}[:：](?!\/))\s*(.*)$/)
+    if (fm) return { kind: 'field', text: l, label: fm[1].trim(), value: fm[2].trim(), srcIndex }
     const m = l.match(TASK_LINE_RE)!
     return { kind: 'task', text: m[3], checked: /x/i.test(m[2] ?? ''), srcIndex }
   })
@@ -38,15 +51,29 @@ export function parseBody(body: string): { paragraph: string } | { lines: Line[]
 }
 
 /**
+ * 這則便利貼是不是「待辦清單」，以及完成度。
+ *  - 內文是單行／一段話、或多行但沒有任何一行是待辦（全是結尾「：」的填空欄）
+ *    → 回 `null`（不是待辦清單，卡片上不畫勾／叉章）。
+ *  - 否則回 `{ done, total }`，只計 `kind:'task'` 的行（填空欄不算）。
+ */
+export function todoProgress(body: string): { done: number; total: number } | null {
+  const p = parseBody(body)
+  if (!('lines' in p)) return null
+  const tasks = p.lines.filter((l) => l.kind === 'task')
+  if (!tasks.length) return null
+  return { done: tasks.filter((l) => l.checked).length, total: tasks.length }
+}
+
+/**
  * 切換 `body` 裡第 `srcIndex` 行（`body.split('\n')` 的索引）的待辦勾選——
  * 在該行前綴後面加上 `[x] `，或（已勾選時）直接拿掉標記回到「沒有框」。
- * 回傳新的 body 字串；索引超界、或那行是填空欄（結尾「：」）就原樣回傳。
+ * 回傳新的 body 字串；索引超界、或那行是填空欄（FIELD_LINE_RE）就原樣回傳。
  * 前端樂觀更新用；真正的存檔走 server 端同一套規則（toggleNoteLine）。
  */
 export function toggleBodyLine(body: string, srcIndex: number): string {
   const lines = body.split('\n')
   if (srcIndex < 0 || srcIndex >= lines.length) return body
-  if (/[:：]\s*$/.test(lines[srcIndex])) return body
+  if (FIELD_LINE_RE.test(lines[srcIndex])) return body
   const m = lines[srcIndex].match(TASK_LINE_RE)!
   const checked = /x/i.test(m[2] ?? '')
   lines[srcIndex] = checked ? `${m[1]}${m[3]}` : `${m[1]}[x] ${m[3]}`
@@ -71,8 +98,10 @@ export function seedOf(s: string): number {
   return h >>> 0
 }
 
-export function tiltOf(seed: number): number {
-  return ((seed % 1000) / 1000) * 5 - 2.5
+/** 便利貼傾斜角：由 seed 在 ±max 度之間穩定取一個值（重新整理不變）。
+ *  max 預設 2.5（原本寫死的振幅），可由「全域設定 → 外觀」的自訂角度覆寫。 */
+export function tiltOf(seed: number, max = 2.5): number {
+  return ((seed % 1000) / 1000 - 0.5) * 2 * max
 }
 
 // 到期日提醒——純視覺提示，不主動跳通知，跟桌面版 sticky_note_service.py

@@ -220,6 +220,13 @@ export interface AppSettings {
     minColWidth: number
     /** false＝關掉 JS 動態排版，用單純等寬格線。 */
     masonry: boolean
+    /** 「看全部」時同分類的便利貼排法：'vertical'＝一分類一直行（預設）；
+     *  'horizontal'＝一分類一橫段、卡片左到右換行、分類上到下。 */
+    tagAxis: 'vertical' | 'horizontal'
+    /** 便利貼卡片是否帶一點隨機歪斜。預設 false＝擺正。 */
+    tilt: boolean
+    /** 歪斜開啟時的最大傾斜角（度）；每張在 ±tiltMax 間取值。預設 2.5。 */
+    tiltMax: number
   }
   /** 「語意搜尋」用的本機 Ollama embedding 模型名稱（位址沿用 AI 設定的
    *  ollama.base_url）。空字串＝用預設 bge-m3。 */

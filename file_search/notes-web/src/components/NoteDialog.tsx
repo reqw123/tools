@@ -19,6 +19,7 @@ import {
 import { Body } from './Body'
 import { FileBrowser } from './FileBrowser'
 import { NoteForm } from './NoteForm'
+import { scrimClose } from '../lib/scrimClose'
 
 type Mode = 'view' | 'edit' | 'new'
 
@@ -162,7 +163,7 @@ export function NoteDialog({
   const err = (create.error || update.error || remove.error || removeImage.error)?.message
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div className="scrim" {...scrimClose(onClose)}>
       <article
         className="sheet"
         role="dialog"

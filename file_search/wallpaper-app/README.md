@@ -36,6 +36,10 @@ npm start
 > `.bat` 在兩個 `dist/` 都存在時會**跳過** build。改了 `notes-web` /
 > `files-web` 的前端後，刪掉它們的 `dist/` 再跑 `.bat`，或直接
 > `npm run build:webs`。桌面捷徑本身（`make-shortcut.ps1`）失敗不會擋啟動。
+>
+> 重 build 後不用整支關掉重開：系統匣選單 → **「清除快取並重新載入」**——清掉
+> Chromium 的 HTTP／code cache、重啟兩個 server 子行程（server 端的改動也生效）、
+> 重載牆面與所有懸浮視窗。單純只想重載網頁用「重新載入這面牆」就好。
 
 ### 快捷鍵（全域，可自訂）
 
