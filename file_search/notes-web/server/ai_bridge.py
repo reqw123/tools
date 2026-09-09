@@ -289,14 +289,19 @@ _THESIS_SEED_TOTAL = 30000         # 全部合起來的上限
 _THESIS_SEED_MAX_FILES = 8         # 最多挑幾個檔案（預設；使用者可在全域設定調 1–40）
 _THESIS_SEED_SCAN_CAP = 400        # 掃描時最多看幾個候選檔（避免超大專案卡住）
 _SEED_MAX_ENTRY_BYTES = 12 * 1024 * 1024  # 單一文件超過這個大小就略過（純取文字，不需要巨檔）
-# 「像文件」的副檔名——純文字類直接讀，.docx 抽 word/document.xml、.ipynb 抽
-# markdown ＋程式碼 cell（跳過輸出）。資料夾與 .zip 用同一份清單。
-_SEED_EXTS = (
+# 「像文件」的副檔名——資料夾與 .zip 用同一份清單。純文字類直接 decode；
+# .ipynb 抽 markdown＋code cell（跳過輸出）；.docx/.doc/.pptx/.ppt/.xlsx/.xls/
+# .pdf 借桌面版 PreviewService（解 OOXML／pdf 走 pypdf／舊版 Office 走 COM）。
+_SEED_PLAINTEXT_EXTS = (
     ".md", ".markdown", ".mdx", ".txt", ".text", ".rst", ".rest",
-    ".docx", ".tex", ".ipynb", ".org", ".adoc", ".asciidoc",
-    ".py", ".json",
+    ".org", ".adoc", ".asciidoc", ".py", ".json", ".tex", ".csv",
 )
-_SEED_EXTS_LABEL = ".md / .markdown / .txt / .rst / .docx / .tex / .ipynb / .org / .py / .json"
+_SEED_RICH_EXTS = (".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".pdf")
+_SEED_EXTS = _SEED_PLAINTEXT_EXTS + _SEED_RICH_EXTS + (".ipynb",)
+_SEED_EXTS_LABEL = (
+    ".md / .txt / .rst / .org / .csv / .py / .json / .tex / .ipynb / "
+    ".docx / .doc / .pdf / .pptx / .ppt / .xlsx / .xls"
+)
 # 檔名／路徑帶這些字的優先（進度、大綱、架構、說明類文件對「產任務」最有料）
 _SEED_NAME_HINTS = (
     "readme", "context", "overview", "outline", "architecture", "design",
@@ -324,22 +329,8 @@ _THESIS_TAGS = [
 ]
 
 
-def _docx_text_from_bytes(data: bytes) -> str:
-    import io
-    import zipfile
-
-    try:
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
-            xml = z.read("word/document.xml").decode("utf-8", "ignore")
-    except (KeyError, zipfile.BadZipFile):
-        return ""
-    out = []
-    for para in re.findall(r"<w:p[ >].*?</w:p>", xml, re.S):
-        runs = re.findall(r"<w:t[^>]*>([^<]*)</w:t>", para)
-        text = "".join(runs).strip()
-        if text:
-            out.append(text)
-    return "\n".join(out)
+# 桌面版的內容擷取（docx/pptx/xlsx/pdf/舊版 Office/純文字），thesis-seed 直接借用。
+_PREVIEW = PreviewService()
 
 
 def _ipynb_text_from_bytes(data: bytes) -> str:
@@ -379,20 +370,58 @@ def _seed_score(rel_path: str, size: int) -> int:
         score += 3
     if re.match(r"^(0[_-]|\d)", name):
         score += 2
-    if name.endswith((".docx", ".tex")):  # 多半是論文草稿本體
+    if name.endswith((".docx", ".doc", ".pdf", ".tex")):  # 多半是論文草稿／論文本體
         score += 1
     if size > 60000:
         score -= 1
     return score
 
 
-def _extract_text(name: str, data: bytes) -> str:
+def _extract_via_preview(path: Path, max_chars: int) -> str:
+    """docx/doc/pptx/ppt/xlsx/xls/pdf → 借 PreviewService 擷取純文字。
+    pdf 需要環境裝了 pypdf（沒裝回空字串）；舊版 .doc/.ppt/.xls 走 COM 子行程。"""
+    try:
+        return _PREVIEW.extract_preview_text(path, max_chars) or ""
+    except Exception:  # noqa: BLE001 - PreviewService 內部已吞例外，這裡只是保險
+        return ""
+
+
+def _extract_text_path(path: Path, max_chars: int) -> str:
+    low = path.name.lower()
+    try:
+        if low.endswith(".ipynb"):
+            return _ipynb_text_from_bytes(path.read_bytes())
+        if low.endswith(_SEED_PLAINTEXT_EXTS):
+            return path.read_text("utf-8", errors="ignore")
+    except OSError:
+        return ""
+    return _extract_via_preview(path, max_chars)
+
+
+def _extract_text(name: str, data: bytes, max_chars: int = _THESIS_SEED_PER_FILE) -> str:
+    """zip entry 版：bytes 進、純文字出。非純文字類（Office／pdf）先落地暫存檔
+    再交給 PreviewService（它吃路徑）。"""
     low = name.lower()
-    if low.endswith(".docx"):
-        return _docx_text_from_bytes(data)
     if low.endswith(".ipynb"):
         return _ipynb_text_from_bytes(data)
-    return data.decode("utf-8", errors="ignore")
+    if low.endswith(_SEED_PLAINTEXT_EXTS):
+        return data.decode("utf-8", errors="ignore")
+    import tempfile
+
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=Path(name).suffix or ".bin", delete=False) as tf:
+            tf.write(data)
+            tmp = Path(tf.name)
+        return _extract_via_preview(tmp, max_chars)
+    except OSError:
+        return ""
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 class SeedSourceError(Exception):
@@ -434,8 +463,8 @@ def _collect_seed_docs(
                 rel = info.filename
                 if not rel.lower().endswith(_SEED_EXTS):
                     continue
-                parts = rel.replace("\\", "/").split("/")
-                if any(p in _SEED_SKIP_DIRS for p in parts) or parts[-1].lower() in _SEED_SKIP_NAMES:
+                segs = rel.replace("\\", "/").split("/")
+                if any(s in _SEED_SKIP_DIRS for s in segs) or segs[-1].lower() in _SEED_SKIP_NAMES:
                     continue
                 if info.file_size > _SEED_MAX_ENTRY_BYTES:
                     skipped_big += 1
@@ -450,7 +479,7 @@ def _collect_seed_docs(
                     continue
                 candidates.append((
                     _seed_score(rel, info.file_size), info.file_size, rel,
-                    (lambda d=data, n=rel: _extract_text(n, d)),
+                    (lambda d=data, n=rel: _extract_text(n, d, per_file)),
                 ))
         if not candidates and (skipped_big or skipped_unreadable):
             bits = []
@@ -479,18 +508,19 @@ def _collect_seed_docs(
             rel = str(path.relative_to(src))
             candidates.append((
                 _seed_score(rel, size), size, rel,
-                (lambda p=path, n=rel: _extract_text(n, p.read_bytes())),
+                (lambda p=path: _extract_text_path(p, per_file)),
             ))
     else:
         return "", []
 
-    # 分數高→低，同分小檔優先；docx 至少留一個（論文草稿）
+    # 分數高→低，同分小檔優先；論文本體（docx/doc/pdf/tex）至少留一個
+    _BODY = (".docx", ".doc", ".pdf", ".tex")
     candidates.sort(key=lambda c: (-c[0], c[1]))
     picked = candidates[:max_files]
-    if not any(lbl.lower().endswith(".docx") for _s, _z, lbl, _g in picked):
-        docx = next((c for c in candidates if c[2].lower().endswith(".docx")), None)
-        if docx:
-            picked = picked[: max(0, max_files - 1)] + [docx]
+    if not any(lbl.lower().endswith(_BODY) for _s, _z, lbl, _g in picked):
+        body = next((c for c in candidates if c[2].lower().endswith(_BODY)), None)
+        if body:
+            picked = picked[: max(0, max_files - 1)] + [body]
 
     parts, used = [], []
     for _score, _size, label, getter in picked:
@@ -629,7 +659,8 @@ def _parse_thesis_seed(raw: str):
 def cmd_thesis_seed(payload, _notes_file):
     """stdin: {source} → {drafts: [{title,tag,body}], used_files, error, call_count}。
     `source` 是一個資料夾或一個 .zip；自動挑出裡面最像「文件」的幾個檔案
-    （純文字類／.docx／.tex／.ipynb／.py／.json，見 _SEED_EXTS，依檔名/路徑評分），一次 AI 呼叫產出一批任務便利貼
+    （純文字類／.docx／.doc／.pdf／.pptx／.ppt／.xlsx／.tex／.ipynb／.py／.json／.csv，
+    見 _SEED_EXTS，依檔名/路徑評分），一次 AI 呼叫產出一批任務便利貼
     草稿。不寫入——前端審核過再走既有的 /api/ai/save-notes（會存進目前作用中
     的便利貼集合，也就是研究生那份）。"""
     source = ((payload or {}).get("source") or (payload or {}).get("projectDir") or "").strip()
