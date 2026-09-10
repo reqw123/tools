@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Minus, Plus } from 'lucide-react'
 import { marked } from 'marked'
 import { api, type PreviewResult } from '../lib/api'
@@ -10,16 +11,12 @@ const MESSAGE: Record<string, string> = {
   toobig: '檔案太大，不在網頁上預覽。',
 }
 
-/** 被索引檔案本身的內容預覽：圖片／影音／PDF 直接串流，純文字／markdown 抓內容 render。 */
-export function FilePreview({ path, kind }: { path: string; kind: Kind }) {
+/** 被索引檔案本身的內容預覽：圖片／影音／PDF 直接串流，純文字／markdown／CSV 抓內容 render。 */
+export function FilePreview({ path, kind, ext }: { path: string; kind: Kind; ext?: string }) {
   const url = api.fileUrl(path)
 
   if (kind === 'image') {
-    return (
-      <div className="preview">
-        <img className="preview-media" src={url} alt={path} loading="lazy" />
-      </div>
-    )
+    return <ImagePreview url={url} alt={path} />
   }
   if (kind === 'video') {
     return (
@@ -42,7 +39,140 @@ export function FilePreview({ path, kind }: { path: string; kind: Kind }) {
       </div>
     )
   }
-  return <TextPreview path={path} />
+  return <TextPreview path={path} ext={ext} />
+}
+
+const IMG_ZOOM_MIN = 0.4
+const IMG_ZOOM_MAX = 8
+const clampImgZoom = (v: number) => Math.min(IMG_ZOOM_MAX, Math.max(IMG_ZOOM_MIN, v))
+
+/** 圖片預覽——點一下放大：蓋在最上層（portal 掛到 body 避開列容器的
+ *  content-visibility / stacking context），預設就撐滿視窗（小圖也放大）；
+ *  Ctrl/⌘ + 滾輪、Ctrl/⌘ +/−/0 再縮放，放大到超出畫面可捲動。點任意處或 Esc 收回。 */
+function ImagePreview({ url, alt }: { url: string; alt: string }) {
+  const [zoomed, setZoomed] = useState(false)
+  const [scale, setScale] = useState(1)
+  const scrimRef = useRef<HTMLDivElement>(null)
+  // 每次打開都從 100% 起——在事件裡重設，不在 effect 裡 setState。
+  const open = () => {
+    setScale(1)
+    setZoomed(true)
+  }
+
+  useEffect(() => {
+    if (!zoomed) return
+    const el = scrimRef.current
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setZoomed(false)
+        return
+      }
+      if (!(e.ctrlKey || e.metaKey)) return
+      if (e.key === '0') {
+        e.preventDefault()
+        setScale(1)
+      } else if (e.key === '=' || e.key === '+' || e.code === 'NumpadAdd') {
+        e.preventDefault()
+        setScale((s) => clampImgZoom(s * 1.25))
+      } else if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') {
+        e.preventDefault()
+        setScale((s) => clampImgZoom(s / 1.25))
+      }
+    }
+    // React 的 onWheel 是 passive，preventDefault 擋不掉整頁縮放——自己綁 non-passive。
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      setScale((s) => clampImgZoom(s * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))
+    }
+    window.addEventListener('keydown', onKey)
+    el?.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      el?.removeEventListener('wheel', onWheel)
+    }
+  }, [zoomed])
+
+  return (
+    <div className="preview">
+      <img
+        className="preview-media preview-img-zoomable"
+        src={url}
+        alt={alt}
+        loading="lazy"
+        title="點一下放大"
+        onClick={open}
+      />
+      {zoomed &&
+        createPortal(
+          <div
+            ref={scrimRef}
+            className="zoom-scrim"
+            role="dialog"
+            aria-modal="true"
+            aria-label="放大檢視圖片"
+            onClick={() => setZoomed(false)}
+          >
+            <img
+              className="zoom-img"
+              src={url}
+              alt={alt}
+              draggable={false}
+              style={{ '--img-zoom': String(scale) } as CSSProperties}
+            />
+            <div className="zoom-hud mono" onClick={(e) => e.stopPropagation()}>
+              <button type="button" onClick={() => setScale((s) => clampImgZoom(s / 1.25))} aria-label="縮小">
+                <Minus size={13} aria-hidden />
+              </button>
+              <button type="button" onClick={() => setScale(1)} disabled={scale === 1}>
+                {Math.round(scale * 100)}%
+              </button>
+              <button type="button" onClick={() => setScale((s) => clampImgZoom(s * 1.25))} aria-label="放大">
+                <Plus size={13} aria-hidden />
+              </button>
+              <span className="zoom-hud-hint">Ctrl+滾輪 · Esc 關閉</span>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>
+  )
+}
+
+/** 一行 CSV/TSV——處理雙引號包住、內含分隔符／換行的欄位。 */
+function parseDelimited(text: string, sep: string, maxRows = 300): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let quoted = false
+  for (let i = 0; i < text.length && rows.length < maxRows; i += 1) {
+    const c = text[i]
+    if (quoted) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          cell += '"'
+          i += 1
+        } else quoted = false
+      } else cell += c
+    } else if (c === '"') {
+      quoted = true
+    } else if (c === sep) {
+      row.push(cell)
+      cell = ''
+    } else if (c === '\n') {
+      row.push(cell)
+      rows.push(row)
+      row = []
+      cell = ''
+    } else if (c !== '\r') {
+      cell += c
+    }
+  }
+  if (rows.length < maxRows && (cell !== '' || row.length)) {
+    row.push(cell)
+    rows.push(row)
+  }
+  return rows
 }
 
 const ZOOM_KEY = 'iw-preview-zoom'
@@ -128,10 +258,11 @@ function usePreviewZoom() {
   return { zoom, boxProps, bump, reset }
 }
 
-function TextPreview({ path }: { path: string }) {
+function TextPreview({ path, ext }: { path: string; ext?: string }) {
   const [res, setRes] = useState<PreviewResult | null>(null)
   const [err, setErr] = useState('')
   const { zoom, boxProps, bump, reset } = usePreviewZoom()
+  const isCsv = ext === '.csv' || ext === '.tsv'
 
   useEffect(() => {
     let alive = true
@@ -153,6 +284,23 @@ function TextPreview({ path }: { path: string }) {
       return marked.parse(res.text, { async: false, gfm: true }) as string
     return ''
   }, [res])
+
+  const csvRows = useMemo(() => {
+    if (!isCsv || res?.kind !== 'text' || !res.text) return null
+    const rows = parseDelimited(res.text, ext === '.tsv' ? '\t' : ',')
+    return rows.length ? rows : null
+  }, [isCsv, ext, res])
+
+  // .json 若是壓過的一行 → 排版一下比較好讀（解析失敗／被截斷就原樣顯示）。
+  const prettyJson = useMemo(() => {
+    if (ext !== '.json' || res?.kind !== 'text' || !res.text || res.truncated) return null
+    try {
+      const s = JSON.stringify(JSON.parse(res.text), null, 2)
+      return s !== res.text ? s : null
+    } catch {
+      return null
+    }
+  }, [ext, res])
 
   const showText =
     !!res && (res.kind === 'markdown' || res.kind === 'text')
@@ -192,8 +340,23 @@ function TextPreview({ path }: { path: string }) {
           </div>
           {res.kind === 'markdown' ? (
             <div className="doc mini" dangerouslySetInnerHTML={{ __html: md }} />
+          ) : csvRows ? (
+            <div className="preview-csv-wrap">
+              <table className="preview-csv">
+                <tbody>
+                  {csvRows.map((r, i) => (
+                    <tr key={i}>
+                      <td className="preview-csv-rn">{i + 1}</td>
+                      {r.map((c, j) =>
+                        i === 0 ? <th key={j}>{c}</th> : <td key={j}>{c}</td>,
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
-            <pre className="preview-text">{res.text}</pre>
+            <pre className="preview-text">{prettyJson ?? res.text}</pre>
           )}
           {res.truncated && (
             <p className="preview-msg">內容過長，只顯示前面一段。完整內容請「開啟檔案」。</p>

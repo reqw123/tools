@@ -74,6 +74,22 @@ export function FileBrowser({
         <span className="fb-cwd mono">{data?.path || '本機磁碟機'}</span>
       </div>
 
+      {data?.quick && data.quick.length > 0 && (
+        <div className="fb-quick">
+          {data.quick.map((qd) => (
+            <button
+              key={qd.path}
+              type="button"
+              className={`fb-quick-chip${data.path === qd.path ? ' on' : ''}`}
+              onClick={() => go(qd.path)}
+              title={qd.path}
+            >
+              {qd.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {isLoading ? (
         <p className="fb-empty mono">// 讀取中…</p>
       ) : isError ? (

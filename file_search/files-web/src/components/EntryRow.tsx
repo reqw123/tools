@@ -89,7 +89,11 @@ export function EntryRow({
     if (!entry.category) return undefined
     return { '--marker': categoryColor(entry.category, categoryColors) } as CSSProperties
   }, [entry.category, categoryColors])
-  const previewable = ['image', 'video', 'audio', 'pdf', 'text', 'code'].includes(kind)
+  // csv/tsv 的 kind 是 'sheet'（給標籤用），但它們是純文字、server 也能預覽 → 額外放行。
+  const previewable =
+    ['image', 'video', 'audio', 'pdf', 'text', 'code'].includes(kind) ||
+    entry.ext === '.csv' ||
+    entry.ext === '.tsv'
 
   return (
     <div
@@ -302,7 +306,7 @@ export function EntryRow({
           )}
 
           {previewable && preview && !missing && (
-            <FilePreview path={entry.path} kind={kind} />
+            <FilePreview path={entry.path} kind={kind} ext={entry.ext} />
           )}
         </div>
       )}

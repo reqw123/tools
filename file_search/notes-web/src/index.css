@@ -406,6 +406,13 @@ body {
   outline: none;
   cursor: pointer;
 }
+/* 排序被「只看快到期」／AI／語意覆蓋掉時整組灰掉——不可點，原因見滑鼠提示。 */
+.sort-pick.locked {
+  opacity: 0.4;
+}
+.sort-pick.locked select {
+  cursor: not-allowed;
+}
 
 .btn {
   flex: none;
@@ -1060,6 +1067,44 @@ body {
   text-wrap: balance;
 }
 
+/* 右下角「捲到最上／最下」浮動鈕——內容比一個畫面高才出現（ScrollButtons）。
+   平常半透明，hover 才明顯，不搶版面。 */
+.scroll-fab {
+  position: fixed;
+  right: clamp(0.6rem, 2vw, 1.3rem);
+  bottom: clamp(0.6rem, 2vw, 1.3rem);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border: 1px solid var(--hair);
+  box-shadow: var(--lift-2);
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.scroll-fab:hover,
+.scroll-fab:focus-within {
+  opacity: 1;
+}
+.scroll-fab button {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.scroll-fab button:hover {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.scroll-fab button + button {
+  border-top: 1px solid var(--hair);
+}
+
 /* ─── dialog ────────────────────────────────────────────────────── */
 .scrim {
   position: fixed;
@@ -1417,6 +1462,11 @@ body {
   border-color: var(--brass);
   color: var(--brass);
   background: color-mix(in srgb, var(--brass) 12%, transparent);
+}
+/* 「同分類排列方向」快捷鈕——動態排版關著時目前沒作用，淡一點（仍可點，
+   點了會切設定＋出提醒）。 */
+.btn.ghost.icon.dim {
+  opacity: 0.42;
 }
 .link {
   border: 0;
@@ -2104,7 +2154,22 @@ body {
    token 換成這個牆自己的（--brass 取代 --marker，--panel-2 取代 --raise，
    --hair 取代 --line，硬編 #c0392b 取代 --alert，跟本檔其他地方一致）。 */
 
-.fb-path { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.7rem; }
+.fb-path { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+/* 常用資料夾捷徑——下載／桌面／文件／家目錄，一鍵跳過去 */
+.fb-quick { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.6rem; }
+.fb-quick-chip {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fb-quick-chip:hover { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 12%, var(--panel-2)); }
+.fb-quick-chip.on { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 22%, var(--panel-2)); }
 .fb-cwd {
   flex: 1;
   min-width: 0;

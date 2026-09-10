@@ -176,7 +176,8 @@ export function AppearanceSettings() {
         <p className="hint">
           「<b>看全部</b>」（搜尋框空、沒點分類、非 AI／語意、沒開「只看快到期」）時
           會把同分類的便利貼排在一起；<b>有篩選時</b>（例如單選一個分類）不分分類，
-          但卡片仍照這裡選的方向排。生活牆與研究生牆都套用。
+          但卡片仍照這裡選的方向排。生活牆與研究生牆都套用。工具列上也有一顆
+          直／橫圖示鈕可以快速切換。
         </p>
         {!settings.wall.masonry && (
           <p className="hint mode-row-off">

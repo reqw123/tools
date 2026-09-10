@@ -45,6 +45,8 @@ export interface BrowseListing {
   dirs: BrowseEntry[]
   files: BrowseEntry[]
   truncated: boolean
+  /** 常用資料夾捷徑（下載／桌面／文件／家目錄）——選檔面板頂端一鍵跳。 */
+  quick: BrowseEntry[]
 }
 
 export interface AddEntryInput {

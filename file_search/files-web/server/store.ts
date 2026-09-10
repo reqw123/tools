@@ -14,6 +14,7 @@ import {
   writeFileSync,
   type Stats,
 } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, extname, isAbsolute, join } from 'node:path'
 
 export const projectRoot = join(import.meta.dirname, '..')
@@ -64,13 +65,15 @@ export interface PreviewResult {
   bytes?: number
 }
 
-// 能在網頁上直接看內容的純文字副檔名——影音、圖片、Office 一律 unsupported（那些請「開啟檔案」）。
+// 能在網頁上直接看內容的純文字副檔名——影音、圖片、Office 一律 unsupported（那些請
+// 「開啟檔案」）。前端 lib/format.ts 的 kindOf（text/code）要跟這份大致對得上，
+// 不然按了「預覽內容」才回 unsupported。
 const TEXT_EXTS = new Set([
-  '.md', '.markdown', '.txt', '.log', '.ini', '.cfg', '.conf', '.env',
-  '.json', '.yaml', '.yml', '.toml', '.csv', '.tsv', '.xml', '.srt', '.vtt',
-  '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.rb', '.go', '.rs',
-  '.java', '.kt', '.c', '.h', '.cpp', '.hpp', '.cs', '.php', '.swift',
-  '.html', '.htm', '.css', '.scss', '.sh', '.bat', '.ps1', '.sql', '.r', '.lua',
+  '.md', '.markdown', '.mdx', '.rst', '.txt', '.log', '.ini', '.cfg', '.conf', '.env', '.properties',
+  '.json', '.jsonc', '.yaml', '.yml', '.toml', '.csv', '.tsv', '.xml', '.srt', '.vtt', '.gradle',
+  '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.rb', '.go', '.rs', '.ino', '.pde',
+  '.java', '.kt', '.c', '.h', '.cpp', '.hpp', '.cs', '.php', '.swift', '.vue', '.svelte', '.astro',
+  '.html', '.htm', '.css', '.scss', '.sass', '.less', '.sh', '.bat', '.ps1', '.sql', '.r', '.lua',
 ])
 const PREVIEW_CAP = 256 * 1024 // 回傳給前端的內容上限
 const PREVIEW_MAX_FILE = 8 * 1024 * 1024 // 超過這個大小連讀都不讀
@@ -772,9 +775,37 @@ export interface BrowseListing {
   files: BrowseEntry[]
   /** 目錄項目太多、只回傳前面一段。 */
   truncated: boolean
+  /** 常用資料夾捷徑（下載／桌面／文件／家目錄，存在才列）——每次瀏覽都夾帶，
+   *  讓選檔面板隨處都能一鍵跳過去。 */
+  quick: BrowseEntry[]
 }
 
 const BROWSE_CAP = 4000
+
+// 常用資料夾捷徑——一個 session 內不會變，算一次就好。Windows 的
+// Downloads/Desktop/Documents 實體路徑一律是英文（顯示名才在地化），
+// 加 statSync 存在檢查當保險，其他平台不存在就自動不列。
+let _quickDirsCache: BrowseEntry[] | null = null
+function quickDirs(): BrowseEntry[] {
+  if (_quickDirsCache) return _quickDirsCache
+  const home = homedir()
+  const candidates: { name: string; path: string }[] = [
+    { name: '⬇ 下載', path: join(home, 'Downloads') },
+    { name: '🖥 桌面', path: join(home, 'Desktop') },
+    { name: '📄 文件', path: join(home, 'Documents') },
+    { name: '🏠 家目錄', path: home },
+  ]
+  _quickDirsCache = candidates
+    .filter((c) => {
+      try {
+        return statSync(c.path).isDirectory()
+      } catch {
+        return false
+      }
+    })
+    .map((c) => ({ name: c.name, path: c.path, isDir: true }))
+  return _quickDirsCache
+}
 
 function windowsDrives(): BrowseEntry[] {
   // 先用 `fsutil fsinfo drives`——它只列掛載點，不會去碰媒體，所以不會在空的
@@ -810,6 +841,7 @@ function roots(): BrowseListing {
     dirs: process.platform === 'win32' ? windowsDrives() : [{ name: '/', path: '/', isDir: true }],
     files: [],
     truncated: false,
+    quick: quickDirs(),
   }
 }
 
@@ -868,7 +900,7 @@ export function browseDir(reqPath: string): BrowseListing {
 
   const up = dirname(reqPath)
   const parent = up === reqPath ? (process.platform === 'win32' ? '' : null) : up
-  return { path: reqPath, parent, dirs, files, truncated }
+  return { path: reqPath, parent, dirs, files, truncated, quick: quickDirs() }
 }
 
 export function statPaths(paths: string[]): Record<string, PathStat> {

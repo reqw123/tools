@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import {
-  AlarmClock, ArrowDownUp, Bot, CopyPlus, CornerDownLeft, FileCode2, GraduationCap, HardDriveDownload,
-  HardDriveUpload, History, Home, Plus, Recycle, Search, Settings2, Sparkles, Sprout, Tags, Trash2,
+  AlarmClock, ArrowDownUp, Bot, Columns3, CopyPlus, CornerDownLeft, FileCode2, GraduationCap,
+  HardDriveDownload, HardDriveUpload, History, Home, Plus, Recycle, Rows3, Search, Settings2,
+  Sparkles, Sprout, Tags, Trash2,
 } from 'lucide-react'
 import { NOTE_SORTS, type NoteSort } from '../lib/noteSort'
 import type { SettingsTab } from './GlobalSettingsDialog'
@@ -54,11 +56,18 @@ export function Toolbar({
   onHistory,
   dueOnly,
   onToggleDueOnly,
+  sortLocked,
+  tagAxis,
+  masonryOn,
+  onToggleTagAxis,
 }: {
   query: string
   onQuery: (v: string) => void
   sort: NoteSort
   onSort: (v: NoteSort) => void
+  /** 目前的排序被別的東西覆蓋掉了（只看快到期／AI／語意）→ 覆蓋原因（滑鼠提示）。
+   *  有值時排序下拉停用。 */
+  sortLocked?: string
   tag: string | null
   onTag: (t: string | null) => void
   tags: TagCount[]
@@ -92,7 +101,29 @@ export function Toolbar({
   onHistory: () => void
   dueOnly: boolean
   onToggleDueOnly: () => void
+  /** 「同分類排列方向」——快捷切換，跟「全域設定 → 外觀」是同一個設定。 */
+  tagAxis: 'vertical' | 'horizontal'
+  /** 「牆面動態排版」是否開著——關著時 tagAxis 沒有效果，切換時給提醒。 */
+  masonryOn: boolean
+  onToggleTagAxis: () => void
 }) {
+  // 動態排版關著時按了快捷切換 → 顯示一條提醒（幾秒後自己消失）。
+  const [axisHint, setAxisHint] = useState(false)
+  useEffect(() => {
+    if (!axisHint) return
+    const t = setTimeout(() => setAxisHint(false), 6000)
+    return () => clearTimeout(t)
+  }, [axisHint])
+  const toggleTagAxis = () => {
+    onToggleTagAxis()
+    setAxisHint(!masonryOn)
+  }
+  // 「同分類集中」排序時每個分類自成一段，橫／直排完全不影響 → 快捷鈕停用。
+  const tagAxisLocked =
+    sort === 'tag-band'
+      ? '「同分類集中」排序時每個分類自成一段、彼此隔開，橫／直排不影響——換其他排序方式才有作用'
+      : undefined
+
   return (
     <div className="bar">
       <div className="bar-inner">
@@ -170,11 +201,18 @@ export function Toolbar({
             )}
           </label>
           <label
-            className="sort-pick"
-            title="牆面排序（釘選永遠在最前）。「不指定」「同分類集中」＝看全部時依分類分組；其餘（最新／標題／待辦…）一律攤平照它排。「未完成待辦最少」只列有待辦框的便利貼"
+            className={`sort-pick${sortLocked ? ' locked' : ''}`}
+            title={
+              sortLocked ??
+              '牆面排序（釘選永遠在最前）。「不指定」「同分類集中」＝看全部時依分類分組；其餘（最新／標題／待辦…）一律攤平照它排。「未完成待辦最少」只列有待辦框的便利貼'
+            }
           >
             <ArrowDownUp size={14} strokeWidth={2.2} aria-hidden />
-            <select value={sort} onChange={(e) => onSort(e.target.value as NoteSort)}>
+            <select
+              value={sort}
+              disabled={!!sortLocked}
+              onChange={(e) => onSort(e.target.value as NoteSort)}
+            >
               {NOTE_SORTS.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.label}
@@ -213,6 +251,27 @@ export function Toolbar({
             title="只看快到期／已逾期（依到期日由早到晚排序）。門檻與到期通知在「全域設定 → 提醒」"
           >
             <AlarmClock size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button
+            className={`btn ghost icon${!tagAxisLocked && !masonryOn ? ' dim' : ''}`}
+            onClick={toggleTagAxis}
+            disabled={!!tagAxisLocked}
+            title={
+              tagAxisLocked ??
+              `${
+                tagAxis === 'horizontal'
+                  ? '同分類排列：橫向（點一下改直向）'
+                  : '同分類排列：直向（點一下改橫向）'
+              }。跟「全域設定 → 外觀」同一個設定${
+                masonryOn ? '' : '——目前「牆面動態排版」關閉，切了看不出差別'
+              }`
+            }
+          >
+            {tagAxis === 'horizontal' ? (
+              <Rows3 size={15} strokeWidth={2.2} aria-hidden />
+            ) : (
+              <Columns3 size={15} strokeWidth={2.2} aria-hidden />
+            )}
           </button>
           <button
             className="btn ghost icon"
@@ -289,6 +348,16 @@ export function Toolbar({
         </div>
 
         <TagBar tags={tags} active={tag} total={total} onPick={onTag} />
+
+        {axisHint && (
+          <p className="ai-disclose mono">
+            ⚠️ 已切換「同分類排列方向」——但「牆面動態排版」關閉中，目前是等寬格線、
+            看不出橫／直差別。（設定有記住，打開動態排版就會套用）
+            <button className="link" onClick={() => onOpenSettings('appearance')}>
+              去打開
+            </button>
+          </p>
+        )}
 
         {aiMode && (
           <p className="ai-disclose mono">

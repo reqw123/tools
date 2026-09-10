@@ -10,6 +10,7 @@ import {
   writeFileSync,
   type Stats,
 } from 'node:fs'
+import { homedir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import { dropThumbs } from './note-thumb'
 
@@ -1494,9 +1495,37 @@ export interface BrowseListing {
   files: BrowseEntry[]
   /** 目錄項目太多、只回傳前面一段。 */
   truncated: boolean
+  /** 常用資料夾捷徑（下載／桌面／文件／家目錄，存在才列）——每次瀏覽都夾帶，
+   *  讓選檔面板隨處都能一鍵跳過去。 */
+  quick: BrowseEntry[]
 }
 
 const BROWSE_CAP = 4000
+
+// 常用資料夾捷徑——一個 session 內不會變，算一次就好。Windows 的
+// Downloads/Desktop/Documents 實體路徑一律是英文（顯示名才在地化），
+// 加 statSync 存在檢查當保險，其他平台不存在就自動不列。
+let _quickDirsCache: BrowseEntry[] | null = null
+function quickDirs(): BrowseEntry[] {
+  if (_quickDirsCache) return _quickDirsCache
+  const home = homedir()
+  const candidates: { name: string; path: string }[] = [
+    { name: '⬇ 下載', path: join(home, 'Downloads') },
+    { name: '🖥 桌面', path: join(home, 'Desktop') },
+    { name: '📄 文件', path: join(home, 'Documents') },
+    { name: '🏠 家目錄', path: home },
+  ]
+  _quickDirsCache = candidates
+    .filter((c) => {
+      try {
+        return statSync(c.path).isDirectory()
+      } catch {
+        return false
+      }
+    })
+    .map((c) => ({ name: c.name, path: c.path, isDir: true }))
+  return _quickDirsCache
+}
 
 function windowsDrives(): BrowseEntry[] {
   // 先用 `fsutil fsinfo drives`——它只列掛載點，不會去碰媒體，所以不會在空的
@@ -1532,6 +1561,7 @@ function roots(): BrowseListing {
     dirs: process.platform === 'win32' ? windowsDrives() : [{ name: '/', path: '/', isDir: true }],
     files: [],
     truncated: false,
+    quick: quickDirs(),
   }
 }
 
@@ -1590,5 +1620,5 @@ export function browseDir(reqPath: string): BrowseListing {
 
   const up = dirname(reqPath)
   const parent = up === reqPath ? (process.platform === 'win32' ? '' : null) : up
-  return { path: reqPath, parent, dirs, files, truncated }
+  return { path: reqPath, parent, dirs, files, truncated, quick: quickDirs() }
 }

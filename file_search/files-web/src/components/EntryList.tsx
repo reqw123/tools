@@ -134,14 +134,23 @@ export function EntryList({
 
   const buckets = useMemo<Bucket[]>(() => {
     if (group === 'none') return [{ key: '', label: '', entries }]
+    const sentinel = group === 'category' ? '未分類' : '（根目錄）'
     const map = new Map<string, Entry[]>()
     for (const e of entries) {
-      const key = group === 'category' ? e.category || '未分類' : e.dir || '（根目錄）'
+      const key = group === 'category' ? e.category || sentinel : e.dir || sentinel
       const arr = map.get(key)
       if (arr) arr.push(e)
       else map.set(key, [e])
     }
-    return [...map.entries()].map(([key, es]) => ({ key, label: key, entries: es }))
+    // 分組標題照名稱排序（跟工具列的分類／資料夾篩選下拉一致），「未分類」／
+    // 「（根目錄）」一律殿後；桶內項目維持傳進來的順序（＝目前選的排序）。
+    return [...map.entries()]
+      .map(([key, es]) => ({ key, label: key, entries: es }))
+      .sort((a, b) => {
+        if (a.key === sentinel) return 1
+        if (b.key === sentinel) return -1
+        return a.label.localeCompare(b.label, 'zh-Hant', { numeric: true })
+      })
   }, [entries, group])
 
   const rowOf = (e: Entry) => {
@@ -202,7 +211,7 @@ export function EntryList({
               <span className="bucket-label">{b.label}</span>
               <span className="bucket-count mono">{b.entries.length}</span>
             </button>
-            {!shut && <div>{b.entries.map(rowOf)}</div>}
+            {!shut && <div className="bucket-body">{b.entries.map(rowOf)}</div>}
           </section>
         )
       })}

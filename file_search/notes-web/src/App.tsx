@@ -2,7 +2,9 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { useQueryClient } from '@tanstack/react-query'
 import type { Note, NoteCollection } from './lib/api'
 import { getApiCollection, setApiCollection } from './lib/api'
-import { useAppSettings, useNotes, useReminderSettings, useTagColors } from './hooks/useNotes'
+import {
+  TAG_COLORS_KEY, useAppSettings, useNotes, usePatchAppSettings, useReminderSettings, useTagColors,
+} from './hooks/useNotes'
 import { useMinuteTick } from './hooks/useMinuteTick'
 import { useAiSearch, useAiTarget, useSemanticSearch, useSemanticStatus } from './hooks/useAi'
 import { hasDesktopWall } from './lib/desktopWall'
@@ -24,6 +26,7 @@ import { ThesisSeedDialog } from './components/ThesisSeedDialog'
 import { ImportNotesDialog } from './components/ImportNotesDialog'
 import { TrashDialog } from './components/TrashDialog'
 import { HistoryDialog } from './components/HistoryDialog'
+import { ScrollButtons } from './components/ScrollButtons'
 import { downloadStickyNotesHtml } from './lib/exportHtml'
 import { downloadNotesJson } from './lib/exportJson'
 import { orderTags, tagRecency } from './lib/tagOrder'
@@ -88,10 +91,19 @@ export function App() {
   const { data: reminderSettings } = useReminderSettings()
   const { data: tagColors } = useTagColors()
   const { data: appSettings } = useAppSettings()
+  const patchAppSettings = usePatchAppSettings()
   const tagSort = useMemo(
     () => appSettings?.tagSort ?? { mode: 'count' as const, order: [] },
     [appSettings],
   )
+  // 工具列「同分類排列方向」快捷——跟「全域設定 → 外觀」是同一個 wall.tagAxis。
+  const wallTagAxis = appSettings?.wall.tagAxis ?? 'vertical'
+  const wallMasonry = appSettings?.wall.masonry ?? true
+  const toggleTagAxis = useCallback(() => {
+    patchAppSettings.mutate({
+      wall: { tagAxis: wallTagAxis === 'horizontal' ? 'vertical' : 'horizontal' },
+    })
+  }, [patchAppSettings, wallTagAxis])
 
   // 「語意搜尋」——用本機 Ollama embedding 依相似度排序，跟 aiMode 互斥
   // （兩種都是「換一種搜尋方式」，同時開沒有意義）。
@@ -154,8 +166,13 @@ export function App() {
         next.delete(id)
         return next
       })
+      // 懸浮視窗是獨立的網頁行程、有自己的 query 快取——它在那邊改的內容／標籤
+      // 顏色／勾記／刪除，主牆這邊不會自動知道。收回時強制重抓，不然要等
+      // staleTime 過或視窗重新聚焦才同步（見 files-web 回報的「改了顏色只作用於他」）。
+      qc.invalidateQueries({ queryKey: ['notes'] })
+      qc.invalidateQueries({ queryKey: TAG_COLORS_KEY })
     })
-  }, [canFloat])
+  }, [canFloat, qc])
 
   const onDragOut = useCallback((note: Note, rect: DOMRect) => {
     window.desktopWall?.pinNote(
@@ -278,6 +295,16 @@ export function App() {
   // 「同分類集中（分類間隔開）」排序——看全部限定：同分類的便利貼排在一起，
   // 每個分類自成一「帶」、帶之間硬換行＋分隔線（Wall 的 bandByTag）。
   const tagBands = noteSort === 'tag-band' && viewingAll
+
+  // 排序下拉在這幾種狀態下完全被覆蓋（見下面 shown 的計算）——工具列把它停用
+  // ＋滑鼠提示說明目前實際照什麼排，免得使用者以為下拉壞了。
+  const sortLocked = dueOnly
+    ? '「只看快到期」開著時一律依到期日由早到晚排（釘選在最前）——關掉才能改排序'
+    : aiResult
+      ? 'AI 搜尋結果依相關程度排序——按上面「清除」才能改回一般排序'
+      : semanticActive
+        ? '語意搜尋結果依相似度排序——關掉「🌱 語意」才能改回一般排序'
+        : undefined
 
   const shown = useMemo(() => {
     // 裁切中——只看框選到的那幾則，蓋過搜尋/分類/AI 篩選（使用者已經明確
@@ -508,14 +535,13 @@ export function App() {
           if (shown.length) {
             // 匯出比照牆上目前的狀態：動態排版關掉時分類分區／直橫向無效（匯出用
             // 最單純的 column-major），開著時才把 groupByTag / tagAxis / tagBands 帶過去。
-            const masonryOn = appSettings?.wall.masonry ?? true
             void downloadStickyNotesHtml(shown, {
               tagColors,
               defaultNoteColor: appSettings?.defaultNoteColor,
               minColWidth: appSettings?.wall.minColWidth,
-              columnPerTag: groupByTag && masonryOn,
-              tagAxis: masonryOn ? (appSettings?.wall.tagAxis ?? 'vertical') : 'vertical',
-              bandByTag: tagBands && masonryOn,
+              columnPerTag: groupByTag && wallMasonry,
+              tagAxis: wallMasonry ? wallTagAxis : 'vertical',
+              bandByTag: tagBands && wallMasonry,
             })
           }
         }}
@@ -527,6 +553,10 @@ export function App() {
         onBatchDelete={() => setBatchDelete(true)}
         dueOnly={dueOnly}
         onToggleDueOnly={() => setDueOnly((v) => !v)}
+        sortLocked={sortLocked}
+        tagAxis={wallTagAxis}
+        masonryOn={wallMasonry}
+        onToggleTagAxis={toggleTagAxis}
         onGenerateNotes={() => setGenerateNotes(true)}
         onThesisSeed={() => setThesisSeed(true)}
         onTrash={() => setTrashOpen(true)}
@@ -570,9 +600,9 @@ export function App() {
           floatable={canFloat}
           onDragOut={onDragOut}
           minColWidth={appSettings?.wall.minColWidth}
-          masonry={appSettings?.wall.masonry ?? true}
+          masonry={wallMasonry}
           columnPerTag={groupByTag}
-          tagAxis={appSettings?.wall.tagAxis ?? 'vertical'}
+          tagAxis={wallTagAxis}
           bandByTag={tagBands}
           tagColors={tagColors}
         />
@@ -671,6 +701,7 @@ export function App() {
           onClose={() => setSettingsOpen(null)}
         />
       )}
+      <ScrollButtons />
     </div>
   )
 }

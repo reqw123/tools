@@ -10,8 +10,14 @@ add('doc', 'doc docx odt rtf pages')
 add('sheet', 'xls xlsx ods csv tsv numbers')
 add('slide', 'ppt pptx odp key')
 add('pdf', 'pdf')
-add('text', 'txt md markdown log ini cfg')
-add('code', 'js ts jsx tsx py rb go rs java c cpp h hpp cs php html css json yaml yml toml sh sql')
+add('text', 'txt md markdown mdx log ini cfg conf env rst srt vtt properties')
+// 純文字型的程式碼／設定——盡量涵蓋 server previewFile 的 TEXT_EXTS，兩邊要對得上。
+add(
+  'code',
+  'js mjs cjs ts tsx jsx py rb go rs java kt swift c h cpp hpp cs php ino pde ' +
+    'html htm css scss sass less json jsonc yaml yml toml xml sh bat ps1 sql r lua ' +
+    'vue svelte astro gradle',
+)
 add('archive', 'zip 7z rar tar gz bz2 xz')
 
 export function kindOf(ext: string): Kind {

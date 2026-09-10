@@ -328,6 +328,9 @@ select option {
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--marker-solid); color: #fff; font-weight: 600; }
 .seg button.on:hover { background: var(--marker-solid); }
+/* 跟目前篩選衝突、停用的分組選項——變灰、不可點（原因見 title 滑鼠提示）。 */
+.seg button:disabled { opacity: 0.35; cursor: not-allowed; }
+.seg button:disabled:hover { background: var(--raise); }
 
 .btn {
   font: inherit;
@@ -594,9 +597,100 @@ select option {
   margin: 0 auto;
   background: color-mix(in srgb, var(--ink) 6%, transparent);
 }
+.preview-img-zoomable { cursor: zoom-in; }
 .preview-audio { padding: 0.9rem 1.1rem; }
 .preview-audio audio { width: 100%; display: block; }
 .preview-pdf { width: 100%; height: 75vh; border: none; display: block; }
+
+/* 圖片放大——點一下蓋滿整個視窗（小圖也放大），Ctrl+滾輪／Ctrl +/−/0 再縮放，
+   放大到超出畫面可捲動。點任意處／Esc 收回（portal 掛在 body）。 */
+.zoom-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex; /* margin:auto 置中——內容比容器大時也能捲到邊（align-items:center 會裁掉） */
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.9);
+  cursor: zoom-out;
+}
+.zoom-img {
+  margin: auto;
+  flex: none;
+  /* 預設就吃滿視窗（object-fit: contain 會把小圖放大到框內），--img-zoom 再往上疊 */
+  width: calc(94vw * var(--img-zoom, 1));
+  height: calc(94vh * var(--img-zoom, 1));
+  object-fit: contain;
+  cursor: zoom-out;
+}
+.zoom-hud {
+  position: fixed;
+  left: 50%;
+  bottom: 1.1rem;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: default;
+}
+.zoom-hud button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.5rem;
+  padding: 0 0.35rem;
+  font: inherit;
+  font-size: 0.72rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+}
+.zoom-hud button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.2); }
+.zoom-hud button:disabled { opacity: 0.45; cursor: default; }
+.zoom-hud-hint { font-size: 0.64rem; color: rgba(255, 255, 255, 0.6); padding: 0 0.3rem; }
+
+/* CSV / TSV 預覽——直接排成表格（比一整片逗號文字好讀），首列當表頭、最左一
+   欄是列號。橫向放不下就自己捲。 */
+.preview-csv-wrap {
+  max-height: 60vh;
+  overflow: auto;
+}
+.preview-csv {
+  border-collapse: collapse;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: calc(0.78rem * var(--preview-zoom, 1));
+  color: var(--ink);
+}
+.preview-csv th,
+.preview-csv td {
+  border: 1px solid var(--line);
+  padding: 0.24rem 0.55rem;
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: top;
+}
+.preview-csv th {
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  font-weight: 600;
+  z-index: 1;
+}
+.preview-csv .preview-csv-rn {
+  position: sticky;
+  left: 0;
+  background: var(--paper);
+  color: var(--ink-faint);
+  text-align: right;
+  user-select: none;
+}
+.preview-csv tr:first-child .preview-csv-rn { top: 0; z-index: 2; }
 
 /* ─── list ─────────────────────────────────────────────────────────── */
 .list {
@@ -772,9 +866,11 @@ select option {
 /* ─── grouped ──────────────────────────────────────────────────────── */
 .list.grouped { border: none; background: none; overflow: visible; }
 .bucket {
+  /* 不用 overflow:hidden——它會讓 .bucket 變成 sticky 的捲動容器，害
+     .bucket-head 的 top offset 變成「無條件往下推」，標題上方就露出一列。
+     圓角改由標題列與最後一列各自處理。 */
   border: 1px solid var(--line);
   border-radius: 10px;
-  overflow: hidden;
   background: var(--raise);
   box-shadow: var(--shadow-1);
   margin-bottom: 0.7rem;
@@ -783,7 +879,9 @@ select option {
   font: inherit;
   width: 100%;
   position: sticky;
-  top: 5.7rem;
+  /* 卡在工具列（.bar）正下方——高度由 JS 量出來寫進 --bar-h（工具列會依寬度
+     換行、高度不固定），量不到時退回一個保守估計值。 */
+  top: var(--bar-h, 4.6rem);
   z-index: 5;
   display: flex;
   align-items: center;
@@ -791,12 +889,16 @@ select option {
   background: color-mix(in srgb, var(--marker) 8%, var(--raise));
   border: none;
   border-bottom: 1px solid var(--line);
+  border-radius: 9px 9px 0 0;
   color: var(--ink);
   padding: 0.6rem 0.85rem;
   cursor: pointer;
 }
 .bucket-head:hover { background: color-mix(in srgb, var(--marker) 14%, var(--raise)); }
-.bucket.shut .bucket-head { border-bottom: none; }
+.bucket.shut .bucket-head { border-bottom: none; border-radius: 9px; }
+/* 沒有 overflow:hidden 了——最後一列（未展開時）自己收下緣圓角，hover 底色的
+   方角才不會戳出 .bucket 的圓邊。展開中的列有自己的 .row.open 造型，不動它。 */
+.bucket-body > .row:last-child:not(.open) .row-head { border-radius: 0 0 9px 9px; }
 .bucket-head .chev { transition: transform 0.15s; flex: none; }
 .bucket:not(.shut) .bucket-head .chev { transform: rotate(90deg); }
 .bucket-dot {
@@ -851,6 +953,43 @@ select option {
   border-radius: 999px;
   box-shadow: var(--shadow-2);
   z-index: 50;
+}
+
+/* 右下角「捲到最上／最下」浮動鈕——內容比一個畫面高才出現（ScrollButtons）。 */
+.scroll-fab {
+  position: fixed;
+  right: clamp(0.6rem, 2vw, 1.3rem);
+  bottom: clamp(0.6rem, 2vw, 1.3rem);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--raise) 90%, transparent);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-2);
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.scroll-fab:hover,
+.scroll-fab:focus-within {
+  opacity: 1;
+}
+.scroll-fab button {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.scroll-fab button:hover {
+  background: color-mix(in srgb, var(--marker) 12%, transparent);
+}
+.scroll-fab button + button {
+  border-top: 1px solid var(--line);
 }
 
 /* ─── 加入 / 移除索引項目 ──────────────────────────────────────────── */
@@ -975,7 +1114,22 @@ select option {
 .modal .err { color: var(--alert); font-size: 0.82rem; margin: 0.2rem 0 0; }
 
 /* file browser */
-.fb-path { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.7rem; }
+.fb-path { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+/* 常用資料夾捷徑——下載／桌面／文件／家目錄，一鍵跳過去 */
+.fb-quick { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.6rem; }
+.fb-quick-chip {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fb-quick-chip:hover { border-color: var(--marker); background: color-mix(in srgb, var(--marker) 10%, var(--raise)); }
+.fb-quick-chip.on { border-color: var(--marker); background: var(--sel); }
 .fb-path .cwd {
   flex: 1;
   min-width: 0;

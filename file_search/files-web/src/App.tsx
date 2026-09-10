@@ -1,7 +1,9 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { Entry } from './lib/api'
 import { api } from './lib/api'
 import {
+  CATEGORY_COLORS_KEY,
   useCategoryColors,
   useDeleteEntry,
   useEditIndex,
@@ -26,6 +28,7 @@ import { AiSettingsDialog } from './components/AiSettingsDialog'
 import { ImportIndexDialog } from './components/ImportIndexDialog'
 import { CreateIndexDialog } from './components/CreateIndexDialog'
 import { DeleteIndexDialog } from './components/DeleteIndexDialog'
+import { ScrollButtons } from './components/ScrollButtons'
 import { downloadIndexMarkdown } from './lib/exportIndex'
 
 // wallpaper-app 重開時用 `?floated=<JSON 陣列>` 把「已經是懸浮視窗」的項目
@@ -47,6 +50,7 @@ function parseFloatedPaths(): Set<string> {
 const UNCATEGORIZED = '\x00uncat'
 
 export function App() {
+  const qc = useQueryClient()
   const { data: indexes, isLoading: loadingList, isError: listError } = useIndexList()
   const [picked, setPicked] = useState<string | null>(null)
 
@@ -73,15 +77,20 @@ export function App() {
 
   useEffect(() => {
     if (!canFloat) return
-    window.desktopWall?.onEntryUnpinned(({ path }) => {
+    window.desktopWall?.onEntryUnpinned(({ indexName, path }) => {
       setFloatedPaths((s) => {
         if (!s.has(path)) return s
         const next = new Set(s)
         next.delete(path)
         return next
       })
+      // 懸浮視窗是獨立的網頁行程、有自己的 query 快取——它在那邊改的分類顏色／
+      // 分類／說明／從索引移除，主牆這邊不會自動知道。收回時強制重抓相關 query，
+      // 不然要等 staleTime 過或視窗重新聚焦才會同步（回報「改了顏色只作用於他」）。
+      qc.invalidateQueries({ queryKey: CATEGORY_COLORS_KEY })
+      if (indexName) qc.invalidateQueries({ queryKey: ['index', indexName] })
     })
-  }, [canFloat])
+  }, [canFloat, qc])
 
   const onPin = useCallback(
     (e: Entry, rect: DOMRect) => {
@@ -117,6 +126,22 @@ export function App() {
 
   const deferredQuery = useDeferredValue(query)
   const entries = useMemo(() => payload?.entries ?? [], [payload])
+
+  // 分組標題（.bucket-head）要 sticky 卡在工具列（.bar）正下方——工具列會依
+  // 視窗寬度換行、高度不固定，量出來寫進 --bar-h 給 CSS 用。
+  useEffect(() => {
+    const bar = document.querySelector('.bar')
+    if (!bar) return
+    const apply = () =>
+      document.documentElement.style.setProperty(
+        '--bar-h',
+        `${Math.round(bar.getBoundingClientRect().height)}px`,
+      )
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(bar)
+    return () => ro.disconnect()
+  }, [])
 
   const pickIndex = useCallback((name: string) => {
     setPicked(name)
@@ -278,6 +303,17 @@ export function App() {
     [entries],
   )
 
+  // 分組 vs 篩選的衝突：已用「分類」／「資料夾」篩選成單一值時，再依「同一維度」
+  // 分組只會得到一組、沒有意義——工具列把那個分組選項停用（變灰＋滑鼠提示），
+  // 且當前若正好選著它就當「不分組」呈現（清掉篩選後會自動恢復原本的分組選擇）。
+  const groupBlocked = useMemo(() => {
+    const b: Partial<Record<Group, string>> = {}
+    if (category) b.category = '已用「分類」篩選成單一分類——再依分類分組只會有一組'
+    if (folder) b.folder = '已用「資料夾」篩選成單一資料夾——再依資料夾分組只會有一組'
+    return b
+  }, [category, folder])
+  const effectiveGroup: Group = groupBlocked[group] ? 'none' : group
+
   const missingCount = useMemo(
     () => shown.reduce((n, e) => n + (stats[e.path] && !stats[e.path].exists ? 1 : 0), 0),
     [shown, stats],
@@ -312,7 +348,8 @@ export function App() {
         folders={folders}
         folder={folder}
         onFolder={setFolder}
-        group={group}
+        group={effectiveGroup}
+        groupBlocked={groupBlocked}
         onGroup={setGroup}
         sort={sort}
         onSort={setSort}
@@ -359,7 +396,7 @@ export function App() {
             ) : (
               <EntryList
                 entries={shown}
-                group={group}
+                group={effectiveGroup}
                 stats={stats}
                 onVisible={request}
                 onOpen={onOpen}
@@ -481,6 +518,7 @@ export function App() {
       )}
 
       {toast && <div className="toast mono">{toast}</div>}
+      <ScrollButtons />
     </div>
   )
 }

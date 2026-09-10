@@ -36,6 +36,7 @@ export function Toolbar({
   folder,
   onFolder,
   group,
+  groupBlocked,
   onGroup,
   sort,
   onSort,
@@ -70,6 +71,8 @@ export function Toolbar({
   folder: string
   onFolder: (v: string) => void
   group: Group
+  /** 因為跟目前的篩選衝突而該停用的分組選項 → 停用原因（滑鼠提示）。 */
+  groupBlocked?: Partial<Record<Group, string>>
   onGroup: (v: Group) => void
   sort: Sort
   onSort: (v: Sort) => void
@@ -273,16 +276,21 @@ export function Toolbar({
           </label>
 
           <div className="seg" role="group" aria-label="分組">
-            {(['none', 'category', 'folder'] as const).map((g) => (
-              <button
-                key={g}
-                className={group === g ? 'on' : ''}
-                onClick={() => onGroup(g)}
-                aria-pressed={group === g}
-              >
-                {g === 'none' ? '不分組' : g === 'category' ? '分類' : '資料夾'}
-              </button>
-            ))}
+            {(['none', 'category', 'folder'] as const).map((g) => {
+              const blocked = groupBlocked?.[g]
+              return (
+                <button
+                  key={g}
+                  className={group === g ? 'on' : ''}
+                  onClick={() => onGroup(g)}
+                  aria-pressed={group === g}
+                  disabled={!!blocked}
+                  title={blocked}
+                >
+                  {g === 'none' ? '不分組' : g === 'category' ? '分類' : '資料夾'}
+                </button>
+              )
+            })}
           </div>
 
           <div className="seg" role="group" aria-label="排序">
