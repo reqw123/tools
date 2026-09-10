@@ -18,6 +18,14 @@ if (!app.requestSingleInstanceLock()) {
 // （否則是 electron 預設 AppUserModelID，通知可能不顯示或掛在別的圖示下）。
 app.setAppUserModelId('com.file_search.wallpaper');
 
+// Windows 的原生視窗遮擋偵測（CalculateNativeWinOcclusion）會在牆這個全螢幕透明視窗
+// 被別的全螢幕視窗整片蓋住時，把牆 renderer 判定為「完全被遮住」→ 合成器停止產生畫格、
+// requestAnimationFrame 幾乎停擺，牆上的動畫（時鐘、到期提醒動效…）就凍住。桌寵
+// (C:\question\desktop-pet) 是一個全螢幕透明覆蓋視窗、而且會持續把自己頂在最上層，
+// 等於長期蓋著這面牆——不關掉這個偵測，牆的 renderer 會一直被當成背景。這個偵測不看
+// 上層視窗是不是透明的。必須在 app ready 之前呼叫。
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+
 let win = null; // 桌面牆視窗
 let settingsWin = null;
 let hintWin = null; // 快捷鍵提示視窗（畫面中央淡入淡出）
@@ -1032,6 +1040,10 @@ function createWall() {
     webPreferences: {
       contextIsolation: true,
       preload: path.join(__dirname, 'wall-preload.js'),
+      // 桌寵那面全螢幕透明覆蓋視窗會長期蓋在牆上（見檔案開頭的
+      // CalculateNativeWinOcclusion 說明）——即使關了原生遮擋偵測，仍別讓 Chromium
+      // 因為「被蓋住 / 背景」而把牆 renderer 的計時器與 rAF 降頻。
+      backgroundThrottling: false,
     },
   });
   win.setAlwaysOnTop(true, 'screen-saver');
