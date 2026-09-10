@@ -7,7 +7,9 @@ import { useMinuteTick } from './hooks/useMinuteTick'
 import { useAiSearch, useAiTarget, useSemanticSearch, useSemanticStatus } from './hooks/useAi'
 import { hasDesktopWall } from './lib/desktopWall'
 import { dueStatus } from './lib/format'
-import { openTodoCount, readNoteSort, saveNoteSort, sortNotes, type NoteSort } from './lib/noteSort'
+import {
+  hasTodoItems, openTodoCount, readNoteSort, saveNoteSort, sortNotes, type NoteSort,
+} from './lib/noteSort'
 import { Toolbar } from './components/Toolbar'
 import { Wall } from './components/Wall'
 import { CropOverlay } from './components/CropOverlay'
@@ -20,7 +22,6 @@ import { BatchTagDialog } from './components/BatchTagDialog'
 import { GenerateNotesDialog } from './components/GenerateNotesDialog'
 import { ThesisSeedDialog } from './components/ThesisSeedDialog'
 import { ImportNotesDialog } from './components/ImportNotesDialog'
-import { ReminderSettingsDialog } from './components/ReminderSettingsDialog'
 import { TrashDialog } from './components/TrashDialog'
 import { HistoryDialog } from './components/HistoryDialog'
 import { downloadStickyNotesHtml } from './lib/exportHtml'
@@ -114,7 +115,6 @@ export function App() {
   const [importNotes, setImportNotes] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [reminderSettingsOpen, setReminderSettingsOpen] = useState(false)
   const [defaultTag, setDefTag] = useState(getDefaultTag)
   const applyDefaultTag = useCallback((t: string) => {
     setDefaultTag(t)
@@ -229,6 +229,11 @@ export function App() {
   const list = useMemo(() => notes ?? [], [notes])
   // note.id → 未完成待辦數（給「未完成待辦最多／最少」排序用，算一次就好）。
   const todoCounts = useMemo(() => new Map(list.map((n) => [n.id, openTodoCount(n.body)])), [list])
+  // 「真的有待辦框」的便利貼 id——「未完成待辦最少」排序只看這些。
+  const todoNoteIds = useMemo(
+    () => new Set(list.filter((n) => hasTodoItems(n.body)).map((n) => n.id)),
+    [list],
+  )
 
   // 語意搜尋：開關開著且查詢句非空時自動跑（隨 deferredQuery 去抖動後重查）。
   const semanticStatus = useSemanticStatus(semanticOn)
@@ -261,12 +266,18 @@ export function App() {
     [list, tag],
   )
 
-  // 「什麼都沒篩，就是在看全部」時：把 notes 依分類排好序（釘選在最前），
-  // 並把 groupByTag 傳給 Wall → Wall 改用「一個分類一直行、不同分類由左到右」
-  // 的排版（見 Wall 的 columnPerTag），置頂的幾個分類因此並排、都看得到。
-  // 一旦有搜尋／選了分類／AI／只看快到期就沒這個意義，維持原順序＋大致等高排版。
-  const groupByTag =
+  // 「排序 = 不指定」且「什麼都沒篩，就是在看全部」時：把 notes 依分類排好序
+  // （釘選在最前），並把 groupByTag 傳給 Wall → Wall 改用「一個分類一直行／
+  // 一橫段」的排版（見 Wall 的 columnPerTag），置頂的幾個分類因此並排、都看得到。
+  // 一旦有搜尋／選了分類／AI／只看快到期，或使用者在下拉挑了明確的排序（最新
+  // 建立…），就一律攤平照那個排——新建的便利貼才會確實排到最前面。
+  // 「看全部」＝沒有任何篩選（croppedIds / AI / 語意 / 搜尋 / 選了分類 / 只看快到期）。
+  const viewingAll =
     !croppedIds && !aiResult && !aiMode && !semanticOn && !deferredQuery.trim() && !tag && !dueOnly
+  const groupByTag = noteSort === 'auto' && viewingAll
+  // 「同分類集中（分類間隔開）」排序——看全部限定：同分類的便利貼排在一起，
+  // 每個分類自成一「帶」、帶之間硬換行＋分隔線（Wall 的 bandByTag）。
+  const tagBands = noteSort === 'tag-band' && viewingAll
 
   const shown = useMemo(() => {
     // 裁切中——只看框選到的那幾則，蓋過搜尋/分類/AI 篩選（使用者已經明確
@@ -312,15 +323,16 @@ export function App() {
         // 釘選的仍排最前面，其餘依到期日由早到晚。
         .sort((a, b) => Number(b.pinned) - Number(a.pinned) || (a.due_at < b.due_at ? -1 : 1))
     } else if (!aiResult && !(semanticActive && semanticRank)) {
+      // 「未完成待辦最少」：沒有任何待辦框的便利貼不列入（會被當成 0 排到最前，沒意義）。
+      if (noteSort === 'todo-least') base = base.filter((n) => todoNoteIds.has(n.id))
       // AI／語意搜尋有自己的「依相關度排」，不套工具列的排序；其餘一律套。
       base = sortNotes(base, noteSort, todoCounts)
     }
-    if (groupByTag) {
-      // 釘選的維持在最前面（Wall 會把它們排成頂端一列）；其餘依分類分群，
-      // 群的順序跟工具列的分類 chip 一致（＝「全域設定」的 tagSort），無分類
-      // 的殿後。群內維持 created_at 由新到舊。Wall 收到後照 data-tag 分直行。
-      // base 已經照工具列排序排好（釘選在前），這裡只再按分類分群——Array.sort
-      // 穩定，所以群內維持剛才的排序。
+    if (groupByTag || tagBands) {
+      // 依分類分群（'auto' 的分區排版、'tag-band' 的分類帶都要）：釘選的維持在
+      // 最前面（Wall 排成頂端一列）；其餘依分類分群，群序跟工具列分類 chip 一致
+      // （＝「全域設定」的 tagSort），無分類的殿後，群內維持 created_at 由新到舊。
+      // base 已排好（釘選在前），這裡 stable sort 只再按分類分群，群內順序不變。
       const rank = new Map(knownTags.map((t, i) => [t, i]))
       const tagRank = (t: string) => (t ? (rank.get(t) ?? knownTags.length) : knownTags.length + 1)
       base = [
@@ -332,7 +344,7 @@ export function App() {
     return floatedIds.size ? base.filter((n) => !floatedIds.has(n.id)) : base
     // minuteTick：每分鐘重算，讓「只看快到期」的篩選/排序隨時間翻新。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list, tag, deferredQuery, aiMode, aiResult, semanticActive, semanticRank, croppedIds, floatedIds, dueOnly, reminderSettings, minuteTick, groupByTag, knownTags, noteSort, todoCounts])
+  }, [list, tag, deferredQuery, aiMode, aiResult, semanticActive, semanticRank, croppedIds, floatedIds, dueOnly, reminderSettings, minuteTick, groupByTag, tagBands, knownTags, noteSort, todoCounts, todoNoteIds])
 
   // 詳細視窗的「上一則／下一則」——在目前這份篩選/排序出的清單（shown）裡移
   // 動，不是整份未篩選清單，這樣使用者在「只看快到期」之類的篩選底下瀏覽
@@ -393,7 +405,7 @@ export function App() {
 
   const anyDialogOpen =
     !!dialog || batchCreate || batchTag || batchDelete || generateNotes || thesisSeed || importNotes ||
-    trashOpen || historyOpen || settingsOpen !== null || reminderSettingsOpen
+    trashOpen || historyOpen || settingsOpen !== null
   // 已經在裁切中就不能再拉一次框——先恢復完整畫面才能重新選——不然兩個裁切
   // 範圍疊在一起的語意會很奇怪。
   const cropActive = canFloat && !anyDialogOpen && !croppedIds
@@ -494,13 +506,17 @@ export function App() {
         onOpenSettings={(t) => setSettingsOpen(t ?? 'ai')}
         onExport={() => {
           if (shown.length) {
-            void downloadStickyNotesHtml(
-              shown,
+            // 匯出比照牆上目前的狀態：動態排版關掉時分類分區／直橫向無效（匯出用
+            // 最單純的 column-major），開著時才把 groupByTag / tagAxis / tagBands 帶過去。
+            const masonryOn = appSettings?.wall.masonry ?? true
+            void downloadStickyNotesHtml(shown, {
               tagColors,
-              appSettings?.defaultNoteColor,
-              appSettings?.wall.minColWidth,
-              groupByTag,
-            )
+              defaultNoteColor: appSettings?.defaultNoteColor,
+              minColWidth: appSettings?.wall.minColWidth,
+              columnPerTag: groupByTag && masonryOn,
+              tagAxis: masonryOn ? (appSettings?.wall.tagAxis ?? 'vertical') : 'vertical',
+              bandByTag: tagBands && masonryOn,
+            })
           }
         }}
         exportCount={shown.length}
@@ -511,7 +527,6 @@ export function App() {
         onBatchDelete={() => setBatchDelete(true)}
         dueOnly={dueOnly}
         onToggleDueOnly={() => setDueOnly((v) => !v)}
-        onOpenReminderSettings={() => setReminderSettingsOpen(true)}
         onGenerateNotes={() => setGenerateNotes(true)}
         onThesisSeed={() => setThesisSeed(true)}
         onTrash={() => setTrashOpen(true)}
@@ -543,11 +558,13 @@ export function App() {
             ? 'AI 沒有對到任何便利貼'
             : list.length === 0
               ? '還沒有便利貼，點右上角「新增便利貼」'
-              : `沒有符合「${query}」的便利貼`}
+              : noteSort === 'todo-least' && !query.trim() && !tag
+                ? '目前這個範圍沒有含待辦框的便利貼（「未完成待辦最少」只列有待辦的）'
+                : `沒有符合「${query}」的便利貼`}
         </p>
       ) : (
         <Wall
-          key={`${deferredQuery}|${tag ?? ''}|${aiResult?.query ?? ''}|${croppedIds ? [...croppedIds].sort().join(',') : ''}`}
+          key={`${collection}|${deferredQuery}|${tag ?? ''}|${aiResult?.query ?? ''}|${croppedIds ? [...croppedIds].sort().join(',') : ''}`}
           notes={shown}
           onOpen={(n) => setDialog({ kind: 'open', note: n })}
           floatable={canFloat}
@@ -556,6 +573,8 @@ export function App() {
           masonry={appSettings?.wall.masonry ?? true}
           columnPerTag={groupByTag}
           tagAxis={appSettings?.wall.tagAxis ?? 'vertical'}
+          bandByTag={tagBands}
+          tagColors={tagColors}
         />
       )}
 
@@ -629,9 +648,6 @@ export function App() {
             setAiResult(null) // 復原可能讓便利貼重新出現，AI 搜尋命中清單就不保證對得上了
           }}
         />
-      )}
-      {reminderSettingsOpen && (
-        <ReminderSettingsDialog onClose={() => setReminderSettingsOpen(false)} />
       )}
       {historyOpen && (
         <HistoryDialog

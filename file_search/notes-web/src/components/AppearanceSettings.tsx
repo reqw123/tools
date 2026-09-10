@@ -116,7 +116,10 @@ export function AppearanceSettings() {
           onChange={(e) => patch.mutate({ wall: { masonry: e.target.checked } })}
         />
         牆面動態排版（大致等高、上下緊貼）
-        <span className="hint">關掉就用單純的等寬格線，不做緊貼排版。</span>
+        <span className="hint">
+          關掉就用單純的等寬格線，不做緊貼排版，也<b>不再依分類分行／分段</b>
+          （下面「同分類怎麼排」會停用）。
+        </span>
       </label>
 
       <label className="check-inline">
@@ -168,11 +171,19 @@ export function AppearanceSettings() {
         </label>
       )}
 
-      <fieldset className="mode-row">
-        <legend>
-          同分類的便利貼怎麼排
-          <span className="hint">只在「看全部」（沒搜尋、沒選分類）時生效；有篩選時一律大致等高。</span>
-        </legend>
+      <fieldset className="mode-row" disabled={!settings.wall.masonry}>
+        <legend>便利貼往哪個方向排</legend>
+        <p className="hint">
+          「<b>看全部</b>」（搜尋框空、沒點分類、非 AI／語意、沒開「只看快到期」）時
+          會把同分類的便利貼排在一起；<b>有篩選時</b>（例如單選一個分類）不分分類，
+          但卡片仍照這裡選的方向排。生活牆與研究生牆都套用。
+        </p>
+        {!settings.wall.masonry && (
+          <p className="hint mode-row-off">
+            ⚠️ 「牆面動態排版」關閉中——現在是等寬格線。要先把上面的動態排版
+            打開，這裡才有作用。
+          </p>
+        )}
         <label className="radio">
           <input
             type="radio"
@@ -182,7 +193,10 @@ export function AppearanceSettings() {
           />
           <span>
             直向
-            <span className="hint">一個分類一直行，分類由左到右排（原本的樣子）。</span>
+            <span className="hint">
+              看全部：一個分類佔一（直）行、分類由左到右。有篩選：整疊在第一欄由上往下，
+              多到超過一個畫面才往右擴欄。
+            </span>
           </span>
         </label>
         <label className="radio">
@@ -194,7 +208,10 @@ export function AppearanceSettings() {
           />
           <span>
             橫向
-            <span className="hint">一個分類一橫段，卡片由左到右、放不下換行，分類由上到下疊。</span>
+            <span className="hint">
+              卡片一張張補進目前最矮的欄——等高就是整齊的一列列，有高有矮也會補洞、
+              不留一塊塊空白。看全部時同分類會相鄰。
+            </span>
           </span>
         </label>
       </fieldset>

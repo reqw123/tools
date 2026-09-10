@@ -215,8 +215,9 @@ export function useSetReminderSettings() {
       api.setReminderSettings(patch),
     onSuccess: (settings) => {
       qc.setQueryData(REMINDER_SETTINGS_KEY, settings)
-      // dueSoonHours / dueAlarmsMuted 同一份 .notes_settings.json——「全域設定」
-      // 那份快取也一起更新，不然兩個對話框顯示的值會不同步。
+      // dueSoonHours / dueAlarmChannels 跟「全域設定」其餘欄位同一份
+      // .notes_settings.json——那份快取也一起帶上新值，「提醒」分頁跟讀
+      // useAppSettings 的地方才不會顯示過期的值。
       qc.setQueryData<AppSettings>(APP_SETTINGS_KEY, (old) =>
         old ? { ...old, ...settings } : old,
       )
@@ -240,9 +241,6 @@ export function mergeAppSettings(old: AppSettings | undefined, patch: AppSetting
   if (!old) return old
   return {
     ...old,
-    ...(patch.dueAlarmChannels
-      ? { dueAlarmChannels: { ...old.dueAlarmChannels, ...patch.dueAlarmChannels } }
-      : {}),
     ...(patch.defaultNoteColor ? { defaultNoteColor: patch.defaultNoteColor } : {}),
     ...(patch.tagSort ? { tagSort: { ...old.tagSort, ...patch.tagSort } } : {}),
     ...(patch.wall ? { wall: { ...old.wall, ...patch.wall } } : {}),

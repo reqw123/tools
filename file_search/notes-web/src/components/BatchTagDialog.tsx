@@ -34,6 +34,9 @@ export function BatchTagDialog({
   const [confirming, setConfirming] = useState(false)
 
   // ── 補上空白的 ──
+  // untagged / checked 都是「開對話框當下」的快照——刻意不隨背景 refetch 重算：
+  // 對話框開著時使用者正在逐則勾選，清單在腳下變動反而更糟。送出後外層會
+  // invalidate、整個對話框關掉重開才拿新資料。
   const untagged = useMemo(() => notes.filter((n) => !n.tag), [notes])
   const [checked, setChecked] = useState<Set<string>>(() => new Set(untagged.map((n) => n.id)))
   const [fillTag, setFillTag] = useState('')

@@ -243,9 +243,9 @@ export interface AppSettings {
   thesisSeedMaxFiles: number
 }
 
-/** PATCH /api/settings 的部分更新（dueSoonHours 走 /reminder-settings 舊路由）。 */
+/** PATCH /api/settings 的部分更新。到期相關（dueSoonHours / dueAlarmChannels）
+ *  不在這裡——那兩個一律走 /reminder-settings。 */
 export type AppSettingsPatch = {
-  dueAlarmChannels?: Partial<AlarmChannels>
   tagSort?: Partial<AppSettings['tagSort']>
   defaultNoteColor?: string
   wall?: Partial<AppSettings['wall']>

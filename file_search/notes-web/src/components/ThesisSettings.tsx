@@ -36,6 +36,25 @@ const PRESETS = [
   },
 ] as const
 
+type PresetId = (typeof PRESETS)[number]['id']
+
+/**
+ * 依目前 AI 目標挑一組建議 preset：
+ *  - OpenAI → 雲端那組。
+ *  - 本機 Ollama → 只有模型名稱認得出是「大 context 家族」（qwen2.5 / qwen3 /
+ *    llama3.1 / llama3.2 / mixtral / mistral-nemo / command-r / gemma2-27b、
+ *    或帶 ≥10B 參數量標記）才建議大那組；其餘一律建議保守那組——小模型／
+ *    認不出來時塞太多內容會截斷或很慢，寧可少讀，要多讀讓使用者自己點大那組。
+ */
+function suggestPreset(target: { provider?: string | null; model?: string } | undefined): PresetId {
+  if (target?.provider === 'openai') return 'cloud'
+  const m = (target?.model || '').toLowerCase()
+  if (/qwen2\.5|qwen3|llama-?3\.[12]|llama-?3-?[12]\b|mistral-?nemo|mixtral|command-?r|gemma-?2-?27b|:1[0-9]b|:[2-9][0-9]b/.test(m)) {
+    return 'local-big'
+  }
+  return 'small'
+}
+
 /**
  * 「全域設定 → 研究生」——研究生模式（切到論文專案專用便利貼）的設定：
  * 論文專案資料夾、以及「從專案生成」讀檔案內容的字數上限。
@@ -55,7 +74,8 @@ export function ThesisSettings() {
   const per = settings.thesisSeedPerFileChars
   const tot = settings.thesisSeedTotalChars
   const maxFiles = settings.thesisSeedMaxFiles
-  const suggested = aiTarget?.provider === 'openai' ? 'cloud' : 'local-big'
+  const suggested = suggestPreset(aiTarget)
+  const suggestedLabel = PRESETS.find((p) => p.id === suggested)?.label ?? ''
 
   const applyPreset = (p: (typeof PRESETS)[number]) => {
     setPerDraft(null)
@@ -118,8 +138,7 @@ export function ThesisSettings() {
           {aiTarget?.configured && (
             <>
               　目前 AI：<b>{aiTarget.label}</b>
-              （{aiTarget.model}）→ 建議「
-              {suggested === 'cloud' ? 'OpenAI GPT-4o' : '本機大上下文'}」那組。
+              （{aiTarget.model}）→ 建議「{suggestedLabel}」那組。
             </>
           )}
         </span>

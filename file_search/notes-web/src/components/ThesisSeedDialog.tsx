@@ -30,8 +30,19 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
   const ctrl = useRef<AbortController | null>(null)
 
   const defaultDir = settings?.thesisProjectDir ?? ''
-  const effectiveSource = source || defaultDir
+  // 輸入框留空＝用設定的論文專案資料夾（server 端也會這樣退回）。
+  const runSource = source.trim() || defaultDir.trim()
   const busy = seed.isPending || save.isPending
+
+  // 設定載入後把論文專案資料夾帶進輸入框一次當初始值——之後使用者可以自由
+  // 清空／改成別的路徑，不會再被蓋回去（prefilled ref 保證只填一次）。
+  const prefilled = useRef(false)
+  useEffect(() => {
+    if (!prefilled.current && defaultDir) {
+      prefilled.current = true
+      setSource((s) => s || defaultDir)
+    }
+  }, [defaultDir])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -132,8 +143,8 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
             <label className="seed-source">
               <span>來源</span>
               <input
-                value={effectiveSource}
-                placeholder="資料夾或 .zip 的完整路徑"
+                value={source}
+                placeholder={defaultDir || '資料夾或 .zip 的完整路徑'}
                 onChange={(e) => {
                   setSource(e.target.value)
                   setRunErr('')
@@ -153,8 +164,8 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
               </button>
               <button
                 className="btn primary"
-                onClick={() => run(effectiveSource)}
-                disabled={!effectiveSource.trim()}
+                onClick={() => run(runSource)}
+                disabled={!runSource}
               >
                 開始生成
               </button>
@@ -212,7 +223,7 @@ export function ThesisSeedDialog({ onClose, onDone }: { onClose: () => void; onD
         {phase === 'running' && (
           <>
             <p className="dim mono">
-              // AI 正在讀 {effectiveSource} 的文件並產出任務便利貼…可能要十幾秒
+              // AI 正在讀 {runSource} 的文件並產出任務便利貼…可能要十幾秒
               {aiTarget?.label ? `（${aiTarget.label} · ${aiTarget.model}）` : ''}
             </p>
             <div className="sheet-actions">

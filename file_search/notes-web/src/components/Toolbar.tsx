@@ -1,8 +1,9 @@
 import {
-  AlarmClock, ArrowDownUp, Bot, CopyPlus, CornerDownLeft, Download, GraduationCap, HardDriveDownload, History, Home,
-  Plus, Recycle, Search, Settings2, Sparkles, Sprout, Tags, Timer, Trash2, Upload,
+  AlarmClock, ArrowDownUp, Bot, CopyPlus, CornerDownLeft, FileCode2, GraduationCap, HardDriveDownload,
+  HardDriveUpload, History, Home, Plus, Recycle, Search, Settings2, Sparkles, Sprout, Tags, Trash2,
 } from 'lucide-react'
 import { NOTE_SORTS, type NoteSort } from '../lib/noteSort'
+import type { SettingsTab } from './GlobalSettingsDialog'
 import type { AiTarget } from '../lib/ai'
 import type { NoteCollection } from '../lib/api'
 import type { TagCount } from './TagBar'
@@ -53,7 +54,6 @@ export function Toolbar({
   onHistory,
   dueOnly,
   onToggleDueOnly,
-  onOpenReminderSettings,
 }: {
   query: string
   onQuery: (v: string) => void
@@ -79,7 +79,7 @@ export function Toolbar({
   aiSearching: boolean
   aiError: string | null
   sendCount: number
-  onOpenSettings: (tab?: 'ai' | 'tags' | 'appearance') => void
+  onOpenSettings: (tab?: SettingsTab) => void
   onExport: () => void
   exportCount: number
   onExportJson: () => void
@@ -92,7 +92,6 @@ export function Toolbar({
   onHistory: () => void
   dueOnly: boolean
   onToggleDueOnly: () => void
-  onOpenReminderSettings: () => void
 }) {
   return (
     <div className="bar">
@@ -170,7 +169,10 @@ export function Toolbar({
               </button>
             )}
           </label>
-          <label className="sort-pick" title="牆面排序（釘選永遠在最前）">
+          <label
+            className="sort-pick"
+            title="牆面排序（釘選永遠在最前）。「不指定」「同分類集中」＝看全部時依分類分組；其餘（最新／標題／待辦…）一律攤平照它排。「未完成待辦最少」只列有待辦框的便利貼"
+          >
             <ArrowDownUp size={14} strokeWidth={2.2} aria-hidden />
             <select value={sort} onChange={(e) => onSort(e.target.value as NoteSort)}>
               {NOTE_SORTS.map((s) => (
@@ -208,42 +210,43 @@ export function Toolbar({
             className={`btn ghost icon${dueOnly ? ' on' : ''}`}
             onClick={onToggleDueOnly}
             aria-pressed={dueOnly}
-            title="只看快到期／已逾期（依到期日由早到晚排序）"
+            title="只看快到期／已逾期（依到期日由早到晚排序）。門檻與到期通知在「全域設定 → 提醒」"
           >
             <AlarmClock size={15} strokeWidth={2.2} aria-hidden />
           </button>
-          <button className="btn ghost icon" onClick={() => onOpenSettings()} title="全域設定">
-            <Settings2 size={15} strokeWidth={2.2} aria-hidden />
-          </button>
           <button
             className="btn ghost icon"
-            onClick={onOpenReminderSettings}
-            title="提醒設定（幾小時內算快到期）"
+            onClick={() => onOpenSettings()}
+            title="全域設定（AI、標籤、外觀、提醒、垃圾桶、研究生）"
           >
-            <Timer size={15} strokeWidth={2.2} aria-hidden />
+            <Settings2 size={15} strokeWidth={2.2} aria-hidden />
           </button>
           <button
             className="btn ghost icon"
             onClick={onExport}
             disabled={exportCount === 0}
-            title={`匯出目前顯示的 ${exportCount} 則為 HTML（給人看）`}
+            title={`匯出成 HTML 網頁（目前顯示的 ${exportCount} 則，給人看／分享用）`}
           >
-            <Download size={15} strokeWidth={2.2} aria-hidden />
+            <FileCode2 size={15} strokeWidth={2.2} aria-hidden />
           </button>
-          <button
-            className="btn ghost icon"
-            onClick={onExportJson}
-            title="匯出便利貼資料（JSON，可搬到另一台電腦或桌面版匯入）"
-          >
-            <HardDriveDownload size={15} strokeWidth={2.2} aria-hidden />
-          </button>
-          <button
-            className="btn ghost icon"
-            onClick={onImportJson}
-            title="匯入便利貼資料（讀取先前匯出的 JSON，合併進目前清單）"
-          >
-            <Upload size={15} strokeWidth={2.2} aria-hidden />
-          </button>
+          {/* 資料備份／還原是一組——框在一起、跟旁邊鬆散的圖示鈕區隔，
+              下載／上傳箭頭方向相反，一眼看得出誰是匯出誰是匯入。 */}
+          <span className="io-group" role="group" aria-label="便利貼資料備份／還原">
+            <button
+              className="btn ghost icon"
+              onClick={onExportJson}
+              title="備份便利貼資料成 JSON 檔（可搬到另一台電腦，或用桌面版／此頁匯入）"
+            >
+              <HardDriveDownload size={15} strokeWidth={2.2} aria-hidden />
+            </button>
+            <button
+              className="btn ghost icon"
+              onClick={onImportJson}
+              title="從先前備份的 JSON 檔還原（合併進目前清單，不會覆蓋現有便利貼）"
+            >
+              <HardDriveUpload size={15} strokeWidth={2.2} aria-hidden />
+            </button>
+          </span>
           <button className="btn ghost icon" onClick={onBatchCreate} title="批次新增">
             <CopyPlus size={15} strokeWidth={2.2} aria-hidden />
           </button>

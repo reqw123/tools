@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { CSSProperties } from 'react'
-import type { Note as NoteT } from '../lib/api'
+import type { Note as NoteT, TagColors } from '../lib/api'
+import { colorForTag } from '../lib/color'
 import { Note } from './Note'
 
 // 一欄至少這麼寬才多開一欄（可被「全域設定」覆寫）；欄距。跟 index.css 的
@@ -17,6 +18,8 @@ export function Wall({
   masonry = true,
   columnPerTag = false,
   tagAxis = 'vertical',
+  bandByTag = false,
+  tagColors,
 }: {
   notes: NoteT[]
   onOpen: (n: NoteT) => void
@@ -26,11 +29,22 @@ export function Wall({
   minColWidth?: number
   /** false＝關掉 JS 動態排版，交給 index.css 的 CSS grid fallback。 */
   masonry?: boolean
-  /** true＝一個分類一（直）行、不同分類由左到右（「看全部」時用）；
-   *  false＝忽略分類、單純 column-major 大致等高（搜尋／篩選時用）。 */
+  /** 排序「同分類集中（分類間隔開）」——每個分類自成一「帶」：帶內卡片 row-major
+   *  補最矮欄，帶與帶之間硬換行、上面一條分隔標籤。columnPerTag / tagAxis 都不看。
+   *  分界從 notes 的 tag 順序推（App 已依分類排好）。 */
+  bandByTag?: boolean
+  /** band 標籤的色塊要用——沒帶就退回雜湊配色。 */
+  tagColors?: TagColors
+  /** true＝「看全部」——直向時一個分類佔一（直）行；false＝有篩選（選了分類／
+   *  搜尋／AI／只看快到期），直向時單純 column-major。橫向不看這個旗標。 */
   columnPerTag?: boolean
-  /** columnPerTag 生效時，同一分類的卡片排法：'vertical'＝一分類一直行（預設）；
-   *  'horizontal'＝一分類一橫段、卡片左到右換行、分類由上到下。 */
+  /** 卡片排的方向：
+   *  - 'horizontal'：一張一張放進目前最矮的欄（row-major masonry），等高就是
+   *    整齊的一列列，有高矮則後面的卡片自動補洞、不留一塊塊空白。columnPerTag
+   *    與否都同一套（差別只在清單有沒有先依分類排，App 那邊處理）。
+   *  - 'vertical'：column-major——看全部時一分類一直行，有篩選時一欄由上往下
+   *    填到「總高 / 欄數」才換下一欄。
+   *  'vertical' 是預設，也是從沒動過這個設定時的行為。 */
   tagAxis?: 'vertical' | 'horizontal'
 }) {
   const MIN_COL_W = minColWidth && minColWidth > 0 ? minColWidth : DEFAULT_MIN_COL_W
@@ -64,10 +78,12 @@ export function Wall({
       wall.style.height = ''
       wall.classList.remove('is-masonry', 'masonry-ready')
       readyRef.current = false
-      for (const el of cards) {
-        el.style.width = ''
-        el.style.left = ''
-        el.style.top = ''
+      for (const el of Array.from(wall.children) as HTMLElement[]) {
+        if (el.classList.contains('note') || el.classList.contains('band-label')) {
+          el.style.width = ''
+          el.style.left = ''
+          el.style.top = ''
+        }
       }
       return
     }
@@ -92,6 +108,51 @@ export function Wall({
     const colW = (inner - GAP * (numCols - 1)) / numCols
     const colH = new Array<number>(numCols).fill(0)
 
+    if (bandByTag) {
+      // 「同分類集中」：DOM 上是 label, note, note, …, label, note, …（notes 已依
+      // 分類排好）。每個 label 一整條、置頂；接著那批同分類的 note 用 row-major
+      // 補最矮欄；一批排完硬留一大段空白＋下一條 label，做出分類界線。
+      const items = (Array.from(wall.children) as HTMLElement[]).filter(
+        (el) => el.classList.contains('note') || el.classList.contains('band-label'),
+      )
+      for (const el of items) {
+        const isLabel = el.classList.contains('band-label')
+        el.style.width = isLabel ? `${inner}px` : `${colW}px`
+      }
+      const hs = items.map((el) => el.offsetHeight)
+      const BAND_GAP = GAP * 2 // 帶與帶之間的分割空白
+      let y = padT + topOffset
+      let contentBottom = y
+      let idx = 0
+      while (idx < items.length) {
+        if (items[idx].classList.contains('band-label')) {
+          items[idx].style.left = `${padL}px`
+          items[idx].style.top = `${y}px`
+          y += hs[idx] + GAP * 0.55
+          idx += 1
+          continue
+        }
+        const colBottom = new Array<number>(numCols).fill(y)
+        while (idx < items.length && items[idx].classList.contains('note')) {
+          let c = 0
+          for (let k = 1; k < numCols; k += 1) if (colBottom[k] < colBottom[c]) c = k
+          items[idx].style.left = `${padL + c * (colW + GAP)}px`
+          items[idx].style.top = `${colBottom[c]}px`
+          colBottom[c] += hs[idx] + GAP
+          idx += 1
+        }
+        contentBottom = Math.max(...colBottom) - GAP // 去掉最後一張多算的 GAP
+        y = contentBottom + BAND_GAP
+      }
+      wall.style.height = `${contentBottom + padB}px`
+      wall.classList.add('is-masonry')
+      if (!readyRef.current) {
+        requestAnimationFrame(() => wallRef.current?.classList.add('masonry-ready'))
+        readyRef.current = true
+      }
+      return
+    }
+
     // 先一次寫寬度、再一次讀高度，避免逐張 write→read 造成 layout thrash。
     for (const el of cards) el.style.width = `${colW}px`
     const heights = cards.map((el) => el.offsetHeight)
@@ -102,43 +163,19 @@ export function Wall({
       colH[c] += h + GAP
     }
 
-    if (columnPerTag && tagAxis === 'horizontal') {
-      // 一個分類一「橫段」：同 data-tag 的卡片依序 0,1,2,0,1,2… 分欄（維持
-      // 左到右的閱讀順序），但**每一欄各自記自己的底部**——所以同一段裡某張
-      // 卡片比較矮時，它下面那張會往上補、不留一大塊空白。段與段之間不互相
-      // 補位：下一個分類直接從這一段最深的欄底下開始，比較淺的欄留白沒關係。
-      let y = padT + topOffset
-      let i = 0
-      while (i < cards.length) {
-        const tag = cards[i].dataset.tag ?? ''
-        let j = i
-        while (j < cards.length && (cards[j].dataset.tag ?? '') === tag) j += 1
-        const colBottom = new Array<number>(numCols).fill(y) // 這一段裡每欄目前的底
-        for (let k = i; k < j; k += 1) {
-          const c = (k - i) % numCols
-          cards[k].style.left = `${padL + c * (colW + GAP)}px`
-          cards[k].style.top = `${colBottom[c]}px`
-          colBottom[c] += heights[k] + GAP
-        }
-        y = Math.max(...colBottom) // 下一段起點（GAP 已含在 colBottom 裡）
-        i = j
-      }
-      // 這個分支自己算高度（不用 colH），直接寫回後收尾。
-      wall.style.height = `${Math.max(padT + topOffset, y - GAP) + padB}px`
-      wall.classList.add('is-masonry')
-      if (!readyRef.current) {
-        requestAnimationFrame(() => wallRef.current?.classList.add('masonry-ready'))
-        readyRef.current = true
-      }
-      return
-    }
-
-    if (columnPerTag) {
-      // 一個分類一（直）行：把 DOM 上連續、同 data-tag 的卡片當成一整塊，
-      // 整塊塞進「當下最矮」的欄。前 numCols 個分類（欄都還空）因此自然由
-      // 左到右各佔一欄——使用者置頂的那幾個分類就能並排、各自的第一張都在
-      // 同一個畫面裡看得到，而不是全部疊在最左欄。塊與塊、卡與卡之間仍然
-      // 完全緊貼，不留空白。
+    if (tagAxis === 'horizontal') {
+      // 橫向：卡片照清單順序（「看全部」時 App 已依分類排好，所以同色會相鄰）
+      // 一張一張放進「目前最矮」的欄——等高卡片就是整齊的一列一列；有高有矮
+      // 時後面的卡片自動補進較淺的欄，不留一塊塊空白（＝回報的「沒有遞補空缺」）。
+      cards.forEach((el, i) => {
+        let c = 0
+        for (let k = 1; k < numCols; k += 1) if (colH[k] < colH[c]) c = k
+        place(el, c, heights[i])
+      })
+    } else if (columnPerTag) {
+      // 直向 × 看全部：一個分類一（直）行——把 DOM 上連續、同 data-tag 的卡片
+      // 當成一整塊，整塊塞進「當下最矮」的欄。前 numCols 個分類（欄都還空）因此
+      // 自然由左到右各佔一欄，置頂的那幾個分類第一張都在同一個畫面裡看得到。
       let i = 0
       while (i < cards.length) {
         const tag = cards[i].dataset.tag ?? ''
@@ -150,12 +187,15 @@ export function Wall({
         i = j
       }
     } else {
+      // 直向 × 有篩選（選了分類／搜尋…）：真正的 column-major——第一欄由上往下
+      // 疊，疊到夠高才換下一欄。「夠高」取「總高 / 欄數」與「約一個畫面高」的
+      // 較大者：篩出來只有幾張時就整疊在第一欄（回報的「沒套用直排、反而攤成
+      // 一橫排」就是因為門檻只用 總高/欄數、太小），多到爆才往右擴欄。
       const totalH = heights.reduce((s, h) => s + h + GAP, 0)
-      const target = totalH / numCols // 每欄的理想高度
+      const viewH = ((typeof window !== 'undefined' && window.innerHeight) || 1000) - padT - 40
+      const target = Math.max(totalH / numCols, viewH * 0.9)
       let col = 0
       cards.forEach((el, i) => {
-        // 這一欄已經裝到接近目標高度就換下一欄（最後一欄吸收餘量）。h/2 讓
-        // 換欄的決策點落在「加上這張後離目標最近」的地方。
         if (col < numCols - 1 && colH[col] > 0 && colH[col] + heights[i] / 2 > target) {
           col += 1
         }
@@ -173,7 +213,7 @@ export function Wall({
       })
       readyRef.current = true
     }
-  }, [MIN_COL_W, masonry, columnPerTag, tagAxis])
+  }, [MIN_COL_W, masonry, columnPerTag, tagAxis, bandByTag])
 
   const schedule = useCallback(() => {
     cancelAnimationFrame(rafRef.current)
@@ -239,15 +279,25 @@ export function Wall({
         </div>
       )}
       {rest.map((n, i) => (
-        <Note
-          key={n.id}
-          note={n}
-          index={pinned.length + i}
-          onOpen={onOpen}
-          floatable={floatable}
-          onDragOut={onDragOut}
-          onGeometryChange={relayoutNow}
-        />
+        <Fragment key={n.id}>
+          {bandByTag && (i === 0 || rest[i - 1].tag !== n.tag) && (
+            <div
+              className="band-label"
+              aria-hidden
+              style={{ '--band-color': colorForTag(n.tag, tagColors) } as CSSProperties}
+            >
+              {n.tag || '未分類'}
+            </div>
+          )}
+          <Note
+            note={n}
+            index={pinned.length + i}
+            onOpen={onOpen}
+            floatable={floatable}
+            onDragOut={onDragOut}
+            onGeometryChange={relayoutNow}
+          />
+        </Fragment>
       ))}
     </main>
   )

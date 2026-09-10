@@ -65,14 +65,16 @@ def test_collect_seed_docs_from_folder_prioritises_docs(tmp_path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "0_overview.md").write_text("# 總覽\n" + "貓咪行為辨識研究。" * 20, encoding="utf-8")
     (tmp_path / "docs" / "dataset.md").write_text("# 資料\n" + "500 段影片待標註。" * 20, encoding="utf-8")
-    (tmp_path / "main.py").write_text("print('code, 不該被挑')" * 5, encoding="utf-8")
+    (tmp_path / "main.py").write_text("print('低分的程式碼檔')\n" * 20, encoding="utf-8")
     (tmp_path / "node_modules").mkdir()
     (tmp_path / "node_modules" / "junk.md").write_text("套件的 readme" * 30, encoding="utf-8")
 
-    text, used = ai_bridge._collect_seed_docs(str(tmp_path))
+    # .py 現在是合法的候選副檔名（見 _SEED_PLAINTEXT_EXTS），但評分遠低於
+    # docs/ 底下、檔名帶提示字的 .md——max_files=2 時就被擠掉。
+    text, used = ai_bridge._collect_seed_docs(str(tmp_path), max_files=2)
     assert "0_overview.md" in " ".join(used)
     assert "dataset.md" in " ".join(used)
-    assert not any("main.py" in u for u in used)          # .py 不在候選副檔名
+    assert not any("main.py" in u for u in used)          # 分數低，擠不進前 2
     assert not any("node_modules" in u for u in used)     # skip dir
     assert "貓咪行為辨識研究" in text
 
@@ -84,11 +86,11 @@ def test_collect_seed_docs_from_zip(tmp_path):
     with zipfile.ZipFile(zp, "w") as z:
         z.writestr("docs/0_進度.md", "# 進度\n" + "第三章方法要補寫。" * 20)
         z.writestr("README.md", "# 專案\n" + "個體化基線 30 天。" * 20)
-        z.writestr("src/x.py", "code" * 50)
-    text, used = ai_bridge._collect_seed_docs(str(zp))
+        z.writestr("src/x.py", "code = 1\n" * 40)
+    text, used = ai_bridge._collect_seed_docs(str(zp), max_files=2)
     assert any("0_進度.md" in u for u in used)
     assert any("README.md" in u for u in used)
-    assert not any(u.endswith(".py") for u in used)
+    assert not any(u.endswith(".py") for u in used)  # .py 合法但分數低，前 2 名輪不到
     assert "第三章方法要補寫" in text
 
 

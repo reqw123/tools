@@ -72,11 +72,29 @@ main.is-masonry { display: block; position: relative; gap: 0; }
 main.is-masonry > .note { position: absolute; }
 .pinned-row { display: flex; flex-wrap: wrap; gap: 1.8rem; align-items: flex-start; grid-column: 1 / -1; }
 .pinned-row .note { flex: 1 1 230px; max-width: 340px; }
+/* 排序「同分類集中」的分類標題——小色塊＋分類名＋底下一條細線。不用整條
+   底色框住文字，改用牆色文字光暈＋色塊外圈，深色模式下也跟背景分得開。 */
+main > .band-label {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: .42rem;
+  font-family: "LXGW WenKai TC", "Kaiti TC", serif;
+  font-weight: 700; font-size: .98rem; letter-spacing: .02em; color: #2a241c;
+  padding-bottom: .32rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--band-color, #7c7059) 60%, #7c7059);
+  text-shadow: 0 0 4px #efe8dc, 0 0 4px #efe8dc;
+}
+main > .band-label::before {
+  content: ''; flex: none; width: .7rem; height: .7rem; border-radius: 3px;
+  background: var(--band-color, #7c7059);
+  box-shadow: 0 0 0 2.5px #efe8dc, inset 0 0 0 1px rgba(0,0,0,.18);
+}
+main.is-masonry > .band-label { position: absolute; }
 .note {
   break-inside: avoid;
   display: block; width: 100%;
   margin: 0; padding: 1.1rem 1.15rem 1.25rem;
   position: relative;
+  overflow-wrap: anywhere; /* 長網址／連續英數不撐破卡片 */
   background: var(--face); color: #1f2937;
   border-radius: 2px 2px 3px 3px;
   border: 0; text-align: left; font: inherit;
@@ -110,19 +128,21 @@ main.is-masonry > .note { position: absolute; }
 .note .para { margin: 0; font-size: .9rem; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
 .lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .32rem; font-size: .88rem; }
 .lines li { display: flex; gap: .5rem; align-items: baseline; line-height: 1.5; }
+.lines li > span { min-width: 0; overflow-wrap: anywhere; }
 .lines .task b { flex: none; width: 11px; height: 11px; margin-top: 2px; border: 1.5px solid rgba(31,41,55,.5); border-radius: 3px; }
 .lines .task.done b { background: rgba(31,41,55,.6); border-color: rgba(31,41,55,.6); }
 .lines .task.done span { text-decoration: line-through; opacity: .5; }
 .note .pinned { position: absolute; top: 8px; right: 10px; color: #e0a400; font-size: .95rem; }
 .note.is-pinned { box-shadow: 0 0 0 2px #e0a400 inset, 0 6px 18px rgba(0,0,0,.12); }
-.lines .fld span { flex: none; color: rgba(31,41,55,.82); }
+.lines .fld span { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; color: rgba(31,41,55,.82); }
 .lines .fld i { flex: 1; height: 0; border-bottom: 1.4px dotted rgba(31,41,55,.42); transform: translateY(-3px); }
 .foot {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: .5rem; margin-top: .95rem;
 }
-.foot .tag { font-family: "LXGW WenKai TC", serif; font-size: .84rem; color: rgba(31,41,55,.8); }
+.foot .tag { min-width: 0; overflow-wrap: anywhere; font-family: "LXGW WenKai TC", serif; font-size: .84rem; color: rgba(31,41,55,.8); }
 .foot .time {
+  flex: none;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: .66rem; letter-spacing: .05em; color: rgba(31,41,55,.5);
 }
@@ -178,6 +198,12 @@ main.is-masonry > .note { position: absolute; }
 @media (prefers-color-scheme: dark) {
   body { background: #201b14; color: #f0e7d5; }
   header .meta { color: #a1937b; }
+  main > .band-label {
+    color: #f0e7d5;
+    border-bottom-color: color-mix(in srgb, var(--band-color, #a1937b) 55%, #a1937b);
+    text-shadow: 0 0 4px #201b14, 0 0 4px #201b14;
+  }
+  main > .band-label::before { box-shadow: 0 0 0 2.5px #201b14, inset 0 0 0 1px rgba(0,0,0,.18); }
 }
 @media print {
   body { background: #fff; }
@@ -187,6 +213,9 @@ main.is-masonry > .note { position: absolute; }
   main.is-masonry { display: grid; position: static; height: auto !important; gap: 1.8rem; }
   /* !important 才蓋得過 script 寫在 .note 上的 inline left/top/width */
   main.is-masonry > .note { position: static !important; left: auto !important; top: auto !important; width: auto !important; }
+  main.is-masonry > .band-label { position: static !important; left: auto !important; top: auto !important; width: auto !important; }
+  main > .band-label { color: #2a241c; text-shadow: none; }
+  main > .band-label::before { box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
   .pinned-row { grid-column: 1 / -1; }
   main { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
   .note { box-shadow: none; border: 1px solid rgba(0,0,0,.18); }
@@ -292,6 +321,46 @@ const SCRIPT = `
     var topOffset = pinnedRow ? pinnedRow.offsetHeight + GAP : 0;
     var numCols = Math.max(1, Math.floor((inner + GAP) / (MIN_COL_W + GAP)));
     var colW = (inner - GAP * (numCols - 1)) / numCols;
+
+    if (window.__BAND_BY_TAG__) {
+      // 「同分類集中」：DOM 上是 label, note, note, …, label, note, …——每條 label
+      // 一整排、置頂；接著同分類的 note row-major 補最矮欄；一批排完硬留一大段
+      // 空白＋下一條 label，做出分類界線。跟 Wall.tsx 的 bandByTag 一致。
+      var items = [].slice.call(wall.children).filter(function (el) {
+        return el.classList.contains('note') || el.classList.contains('band-label');
+      });
+      items.forEach(function (el) {
+        el.style.width = (el.classList.contains('band-label') ? inner : colW) + 'px';
+      });
+      var ih = items.map(function (el) { return el.offsetHeight; });
+      var BAND_GAP = GAP * 2;
+      var by = padT + topOffset, contentBottom = by, bi = 0;
+      while (bi < items.length) {
+        if (items[bi].classList.contains('band-label')) {
+          items[bi].style.left = padL + 'px';
+          items[bi].style.top = by + 'px';
+          by += ih[bi] + GAP * 0.55;
+          bi++;
+          continue;
+        }
+        var cb = [];
+        for (var q = 0; q < numCols; q++) cb.push(by);
+        while (bi < items.length && items[bi].classList.contains('note')) {
+          var bc = 0;
+          for (var bk = 1; bk < numCols; bk++) if (cb[bk] < cb[bc]) bc = bk;
+          items[bi].style.left = (padL + bc * (colW + GAP)) + 'px';
+          items[bi].style.top = cb[bc] + 'px';
+          cb[bc] += ih[bi] + GAP;
+          bi++;
+        }
+        contentBottom = Math.max.apply(null, cb) - GAP;
+        by = contentBottom + BAND_GAP;
+      }
+      wall.style.height = (contentBottom + padB) + 'px';
+      wall.classList.add('is-masonry');
+      return;
+    }
+
     var colH = [];
     for (var c = 0; c < numCols; c++) colH.push(0);
     cards.forEach(function (el) { el.style.width = colW + 'px'; });
@@ -301,9 +370,17 @@ const SCRIPT = `
       el.style.top = (padT + topOffset + colH[c]) + 'px';
       colH[c] += h + GAP;
     }
-    if (window.__COLUMN_PER_TAG__) {
-      // 一個分類一直行、不同分類由左到右：連續同 data-tag 的卡片當一整塊，
-      // 整塊塞進當下最矮的欄（前 numCols 個分類因此由左到右各佔一欄）。
+    if (window.__TAG_AXIS__ === 'horizontal') {
+      // 橫向：一張一張放進目前最矮的欄（row-major masonry）——等高卡片就是整齊
+      // 一列列，有高矮則後面的卡片補進較淺的欄、不留成塊空白。跟 Wall.tsx 一致。
+      cards.forEach(function (el, ix) {
+        var c = 0;
+        for (var k = 1; k < numCols; k++) if (colH[k] < colH[c]) c = k;
+        place(el, c, hs[ix]);
+      });
+    } else if (window.__COLUMN_PER_TAG__) {
+      // 直向 × 看全部：連續同 data-tag 的卡片當一整塊，整塊塞進當下最矮的欄
+      // （前 numCols 個分類因此由左到右各佔一欄）。
       var i = 0;
       while (i < cards.length) {
         var tg = cards[i].getAttribute('data-tag') || '';
@@ -315,9 +392,12 @@ const SCRIPT = `
         i = j;
       }
     } else {
+      // 直向 × 有篩選：真 column-major，第一欄疊到「夠高」才換下一欄——「夠高」
+      // 取「總高 / 欄數」與「約一個畫面高」的較大者，篩出來只有幾張時整疊第一欄。
       var totalH = 0;
       for (var t = 0; t < hs.length; t++) totalH += hs[t] + GAP;
-      var target = totalH / numCols;
+      var viewH = (window.innerHeight || 1000) - padT - 40;
+      var target = Math.max(totalH / numCols, viewH * 0.9);
       var col = 0;
       cards.forEach(function (el, ix) {
         if (col < numCols - 1 && colH[col] > 0 && colH[col] + hs[ix] / 2 > target) col += 1;
@@ -345,15 +425,33 @@ const SCRIPT = `
 })();
 `.trim()
 
+/** 匯出 HTML 的版面／配色選項——對應牆上目前的狀態（見 App onExport）。 */
+export interface StickyHtmlOptions {
+  tagColors?: Record<string, string>
+  defaultNoteColor?: string
+  minColWidth?: number
+  /** 「看全部＋不指定」時 true——依分類分區（直向一分類一行）。 */
+  columnPerTag?: boolean
+  /** 卡片排的方向。 */
+  tagAxis?: 'vertical' | 'horizontal'
+  /** 「同分類集中（分類間隔開）」排序時 true——每個分類一「帶」＋分隔標題條。 */
+  bandByTag?: boolean
+}
+
 /** 目前這批便利貼 → 一份可離線開、可列印、可點開看大張的 HTML 文件（跟牆上同一套視覺）。
  *  有插圖的便利貼會把圖片以 data URI 內嵌進去，所以檔案可能不小——這是「可離線」的代價。 */
 export async function buildStickyNotesHtml(
   notes: Note[],
-  tagColors?: Record<string, string>,
-  defaultNoteColor?: string,
-  minColWidth?: number,
-  columnPerTag = false,
+  opts: StickyHtmlOptions = {},
 ): Promise<string> {
+  const {
+    tagColors,
+    defaultNoteColor,
+    minColWidth,
+    columnPerTag = false,
+    tagAxis = 'vertical',
+    bandByTag = false,
+  } = opts
   const minCol = minColWidth && minColWidth > 0 ? Math.round(minColWidth) : 250
   const now = new Date()
   const p = (n: number) => String(n).padStart(2, '0')
@@ -375,7 +473,21 @@ export async function buildStickyNotesHtml(
   }
   // 釘選的排成頂端一列（.pinned-row），其餘走 column-major——跟牆上一致。
   const pinnedHtml = (await Promise.all(notes.filter((n) => n.pinned).map(renderNote))).join('\n')
-  const restHtml = (await Promise.all(notes.filter((n) => !n.pinned).map(renderNote))).join('\n')
+  const restNotes = notes.filter((n) => !n.pinned)
+  const restRendered = await Promise.all(restNotes.map(renderNote))
+  // 「同分類集中」排序：非釘選的便利貼已依分類排好（App 那邊），每個分類前面
+  // 插一條 .band-label 標題條——匯出的 layout script 會照它做分類帶。
+  const restHtml = bandByTag
+    ? restNotes
+        .map((n, i) => {
+          const sep =
+            i === 0 || restNotes[i - 1].tag !== n.tag
+              ? `  <div class="band-label" style="--band-color:${colorForTag(n.tag, tagColors)}">${esc(n.tag || '未分類')}</div>\n`
+              : ''
+          return sep + restRendered[i]
+        })
+        .join('\n')
+    : restRendered.join('\n')
   const cards = `${
     pinnedHtml ? `  <div class="pinned-row">\n${pinnedHtml}\n  </div>\n` : ''
   }${restHtml}`
@@ -410,7 +522,7 @@ ${cards}
   <button type="button" class="iz-close" aria-label="關閉大圖">×</button>
   <img alt="便利貼插圖">
 </div>
-<script>window.__WALL_MIN_COL__=${minCol};window.__COLUMN_PER_TAG__=${columnPerTag ? 'true' : 'false'}</script>
+<script>window.__WALL_MIN_COL__=${minCol};window.__COLUMN_PER_TAG__=${columnPerTag ? 'true' : 'false'};window.__TAG_AXIS__=${tagAxis === 'horizontal' ? "'horizontal'" : "'vertical'"};window.__BAND_BY_TAG__=${bandByTag ? 'true' : 'false'}</script>
 <script>${SCRIPT}</script>
 </body>
 </html>
@@ -420,12 +532,9 @@ ${cards}
 /** 觸發下載。filename 例：便利貼_20260903_1530.html */
 export async function downloadStickyNotesHtml(
   notes: Note[],
-  tagColors?: Record<string, string>,
-  defaultNoteColor?: string,
-  minColWidth?: number,
-  columnPerTag = false,
+  opts: StickyHtmlOptions = {},
 ): Promise<void> {
-  const html = await buildStickyNotesHtml(notes, tagColors, defaultNoteColor, minColWidth, columnPerTag)
+  const html = await buildStickyNotesHtml(notes, opts)
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

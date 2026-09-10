@@ -297,6 +297,33 @@ body {
   justify-content: center;
   box-sizing: border-box;
 }
+
+/* 資料備份／還原（匯出 JSON ＋ 匯入 JSON）框成一組——一個外框、中間一條
+   分隔線，跟旁邊鬆散的單顆圖示鈕明顯不同，不會被誤認成「又一顆下載鈕」。
+   外框／分隔線用 --ink-soft（棕／褐灰，淺色與深色主題都看得見），不用 --hair
+   （深色主題下 --hair 幾乎跟 bar 同色，整個框會消失）。 */
+.bar-row-tools .io-group {
+  display: inline-flex;
+  align-items: stretch;
+  height: var(--tb-h);
+  border: 1px solid color-mix(in srgb, var(--ink-soft) 50%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  overflow: hidden;
+}
+.bar-row-tools .io-group .btn.icon {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.bar-row-tools .io-group .btn.icon + .btn.icon {
+  border-left: 1px solid color-mix(in srgb, var(--ink-soft) 45%, transparent);
+}
+.bar-row-tools .io-group .btn.icon:hover {
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+  filter: none;
+}
 .coll-tab {
   display: inline-flex;
   align-items: center;
@@ -525,6 +552,45 @@ body {
   }
 }
 
+/* 排序「同分類集中（分類間隔開）」的分類標題——一個小色塊、分類名，底下一條
+   細線當分隔。不用整條底色框住文字：改用牆色（--wall）的文字光暈＋色塊外圈，
+   讓字與色塊在深色模式 / 桌面牆透明背景上也跟桌布分得開。界線感主要靠上面
+   留的一大段空白（Wall.tsx 的 BAND_GAP）。 */
+.wall > .band-label {
+  grid-column: 1 / -1; /* JS 沒跑（grid fallback）時橫跨整排 */
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  font-family: 'LXGW WenKai TC', 'Kaiti TC', serif;
+  font-weight: 700;
+  font-size: 0.98rem;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  padding-bottom: 0.32rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--band-color, var(--ink-soft)) 60%, var(--ink-soft));
+  text-shadow: 0 0 4px var(--wall), 0 0 4px var(--wall);
+}
+.wall > .band-label::before {
+  content: '';
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 3px;
+  background: var(--band-color, var(--ink-soft));
+  box-shadow: 0 0 0 2.5px var(--wall), inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+.wall.is-masonry > .band-label {
+  position: absolute;
+  /* left / top / width 由 Wall.tsx 寫成 inline style */
+}
+@media (prefers-reduced-motion: no-preference) {
+  .wall.is-masonry.masonry-ready > .band-label {
+    transition:
+      left 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+      top 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
 /* 釘選便利貼——頂端一列，由左到右，一般的 flex 換行。留在正常 flow 裡
    （不絕對定位），所以它就落在 .wall 內距的最上緣；下面 column-major 的
    內容由 Wall.tsx 量到它的高度後，從它底部＋一段間距往下接。 */
@@ -550,6 +616,9 @@ body {
   position: relative;
   text-align: left;
   font: inherit;
+  /* 長網址／連續英數／貼上的長字串會撐破卡片——一律容許在任意處斷行。
+     overflow-wrap 會繼承給 h3／內文／footer 等所有文字節點。 */
+  overflow-wrap: anywhere;
   color: var(--paper-ink);
   background: var(--face);
   border: 0;
@@ -769,6 +838,12 @@ body {
   align-items: baseline;
   line-height: 1.5;
 }
+/* flex 子項預設 min-width:auto＝不肯縮到比內容窄——長待辦文字會把整列
+   （進而整張卡片）撐寬。min-width:0 讓文字乖乖換行、不外溢。 */
+.lines .task > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .lines .task .box {
   position: relative;
   flex: none;
@@ -816,7 +891,10 @@ body {
   gap: 0.4rem;
 }
 .lines .fld-label {
-  flex: none;
+  /* 標籤最長 20 字（FIELD_LINE_RE），窄卡片裡還是可能超寬——容許縮小＋斷行。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: color-mix(in srgb, var(--paper-ink) 82%, transparent);
 }
 /* 填空底線——比舊版粗、顏色加深（1.4px→2px、42%→66%）。冒號後面有沒有
@@ -846,9 +924,15 @@ body {
   margin-top: 1rem;
 }
 .tag-pill {
+  /* 分類名可長達 60 字——讓它縮小／換行，時間戳固定不動（見 .note footer .stamp）。 */
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: 'LXGW WenKai TC', serif;
   font-size: 0.86rem;
   color: color-mix(in srgb, var(--paper-ink) 80%, transparent);
+}
+.note footer .stamp {
+  flex: none;
 }
 .tag-pill::before {
   content: '# ';
@@ -960,6 +1044,20 @@ body {
 }
 .notice.err {
   color: #c0392b;
+}
+/* 桌面牆（背景透明、可能全透明只剩卡片）上，單靠 --ink-soft 疊在桌布上看不
+   清——收成一張半透明底 chip，不管桌布多花都讀得到。 */
+:root[data-surface='desktop'] .notice {
+  width: fit-content;
+  max-width: min(88vw, 40rem);
+  margin: 2.5rem auto;
+  padding: 0.9rem 1.4rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  box-shadow: var(--lift-2);
+  text-wrap: balance;
 }
 
 /* ─── dialog ────────────────────────────────────────────────────── */
@@ -1795,6 +1893,19 @@ body {
 .mode-row .radio { align-items: flex-start !important; }
 .mode-row .radio > span { display: flex; flex-direction: column; }
 .mode-row .hint { display: block; }
+/* 「牆面動態排版」關閉時 <fieldset disabled> 已停掉 radio；這裡把 legend、
+   說明文字、radio 列也壓淡（但不動下面那條琥珀色提醒——用 opacity 在
+   fieldset 上會連提醒一起吃掉、還蓋不回來，所以逐項壓）。 */
+.mode-row:disabled legend,
+.mode-row:disabled .radio,
+.mode-row:disabled .hint:not(.mode-row-off) { opacity: 0.5; }
+.mode-row .mode-row-off {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, #d9a441 18%, transparent);
+  color: color-mix(in srgb, var(--ink) 80%, #7a4d00);
+}
 
 .tag-sort-list {
   max-height: 42vh;

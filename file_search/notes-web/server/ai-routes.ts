@@ -116,40 +116,53 @@ export const aiRoutes: FastifyPluginAsync = async (app) => {
    *  沒帶就用設定的 thesisProjectDir）裡最像文件的幾個檔案，一次呼叫產出
    *  一批任務便利貼草稿（不寫入，前端審核過再走 /ai/save-notes）。
    *  前端關掉連線 / 按「中斷」→ req.raw 'close' → 殺掉那個十幾秒的子行程。 */
-  app.post<{ Body?: { source?: string } }>('/ai/thesis-seed', async (req, reply) => {
-    const s = getAppSettings()
-    const source = (req.body?.source || '').trim() || s.thesisProjectDir
-    const ctrl = new AbortController()
-    let settled = false
-    // reply.raw 'close'：連線在回應送完前被切斷（前端按「中斷」abort 掉 fetch、
-    // 或關掉分頁）就會觸發——這時 settled 還是 false → abort → runBridge 殺子行程。
-    // 正常送完回應後也會觸發，但那時 settled 已是 true，不會誤殺。
-    const onClientGone = () => {
-      if (!settled) ctrl.abort()
-    }
-    reply.raw.on('close', onClientGone)
-    try {
-      return await runBridge<{
-        drafts: { title: string; tag: string; body: string }[]
-        used_files: string[]
-        error: string | null
-        call_count: number
-      }>(
-        'thesis-seed',
-        {
-          source,
-          perFileChars: s.thesisSeedPerFileChars,
-          totalChars: s.thesisSeedTotalChars,
-          maxFiles: s.thesisSeedMaxFiles,
+  app.post<{ Body?: { source?: string } }>(
+    '/ai/thesis-seed',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          // source＝資料夾或 .zip 的完整路徑；空字串＝用設定的 thesisProjectDir。
+          properties: { source: { type: 'string', maxLength: 500 } },
         },
-        ['--notes-file', activeNotesFile()],
-        { signal: ctrl.signal },
-      )
-    } finally {
-      settled = true
-      reply.raw.off('close', onClientGone)
-    }
-  })
+      },
+    },
+    async (req, reply) => {
+      const s = getAppSettings()
+      const source = (req.body?.source || '').trim() || s.thesisProjectDir
+      const ctrl = new AbortController()
+      let settled = false
+      // reply.raw 'close'：連線在回應送完前被切斷（前端按「中斷」abort 掉 fetch、
+      // 或關掉分頁）就會觸發——這時 settled 還是 false → abort → runBridge 殺子行程。
+      // 正常送完回應後也會觸發，但那時 settled 已是 true，不會誤殺。
+      const onClientGone = () => {
+        if (!settled) ctrl.abort()
+      }
+      reply.raw.on('close', onClientGone)
+      try {
+        return await runBridge<{
+          drafts: { title: string; tag: string; body: string }[]
+          used_files: string[]
+          error: string | null
+          call_count: number
+        }>(
+          'thesis-seed',
+          {
+            source,
+            perFileChars: s.thesisSeedPerFileChars,
+            totalChars: s.thesisSeedTotalChars,
+            maxFiles: s.thesisSeedMaxFiles,
+          },
+          ['--notes-file', activeNotesFile()],
+          { signal: ctrl.signal },
+        )
+      } finally {
+        settled = true
+        reply.raw.off('close', onClientGone)
+      }
+    },
+  )
 
   /**
    * 「AI 生成便利貼」：單一檔案 → AI 生成一則便利貼草稿（標題／標籤／內容），

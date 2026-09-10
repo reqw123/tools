@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useReminderSettings, useSetReminderSettings } from '../hooks/useNotes'
-import type { AlarmChannels, ReminderSettings } from '../lib/api'
-import { scrimClose } from '../lib/scrimClose'
+import type { AlarmChannels, ReminderSettings as ReminderSettingsData } from '../lib/api'
 
 /**
- * 「快到期」門檻 ＋ 四個到期通知管道的開關。
+ * 「全域設定 → 提醒」——「快到期」門檻 ＋ 四個到期通知管道的開關。
+ * （原本是獨立的「⏰ 提醒設定」對話框，併進全域設定分頁，少一顆工具列鈕。）
  *
  * - dueSoonHours：到期前幾小時算「快到期」，卡片標黃 & GET /notes/due-soon 分
  *   「已逾期／快到期」都用這個。
@@ -12,42 +12,12 @@ import { scrimClose } from '../lib/scrimClose'
  *   6 小時彙整，各自獨立開關。關掉任何一個都**不影響**便利貼卡片的紅／黃標色
  *   （那是前端直接看 due_at + dueSoonHours 算的）。
  */
-export function ReminderSettingsDialog({ onClose }: { onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
+export function ReminderSettings({ onClose }: { onClose?: () => void }) {
   const { data: settings, isLoading } = useReminderSettings()
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    ref.current?.focus()
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  return (
-    <div className="scrim" {...scrimClose(onClose)}>
-      <div
-        className="sheet plain"
-        role="dialog"
-        aria-modal="true"
-        aria-label="提醒設定"
-        tabIndex={-1}
-        ref={ref}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button className="icon-btn" onClick={onClose} aria-label="關閉">
-          ×
-        </button>
-        <h2>⏰ 提醒設定</h2>
-        {isLoading || !settings ? (
-          <p className="dim mono">載入中…</p>
-        ) : (
-          <SettingsForm key="loaded" initial={settings} onClose={onClose} />
-        )}
-      </div>
-    </div>
-  )
+  if (isLoading || !settings) return <p className="dim mono">載入中…</p>
+  // key：settings 第一次載入後才掛載一次，直接拿它當初始值就好（同 AiSettingsPanel）。
+  return <SettingsForm key="loaded" initial={settings} onClose={onClose} />
 }
 
 const CHANNEL_GROUPS: {
@@ -70,25 +40,30 @@ const CHANNEL_GROUPS: {
   },
 ]
 
-function SettingsForm({ initial, onClose }: { initial: ReminderSettings; onClose: () => void }) {
+// 「全開／全關」按鈕要涵蓋的所有 key——從 CHANNEL_GROUPS 衍生，加管道時只改上面那份。
+const CHANNEL_KEYS = CHANNEL_GROUPS.flatMap((g) => g.items.map((it) => it.key))
+
+function SettingsForm({
+  initial,
+  onClose,
+}: {
+  initial: ReminderSettingsData
+  onClose?: () => void
+}) {
   const save = useSetReminderSettings()
-  // key="loaded" 上面保證這個元件只在 settings 真的載入後才掛載一次，
-  // 直接拿 initial 當初始值就好，不需要另外用 effect 去同步——避免「setState
-  // 寫在 effect 裡」這個常見的多餘重渲染陷阱（跟 AiSettingsDialog 同一招）。
   const [hours, setHours] = useState(initial.dueSoonHours)
   const [channels, setChannels] = useState<AlarmChannels>(initial.dueAlarmChannels)
 
   const invalid = !Number.isFinite(hours) || hours < 1 || hours > 720
-  const allOff = CHANNEL_GROUPS.every((g) => g.items.every((it) => !channels[it.key]))
+  const allOff = CHANNEL_KEYS.every((k) => !channels[k])
 
   const toggle = (key: keyof AlarmChannels) =>
     setChannels((c) => ({ ...c, [key]: !c[key] }))
   const setAll = (on: boolean) =>
-    setChannels({
-      wallpaperToast: on,
-      wallpaperBadge: on,
-      nodeRedAlarm: on,
-      nodeRedDigest: on,
+    setChannels((c) => {
+      const next = { ...c }
+      for (const k of CHANNEL_KEYS) next[k] = on
+      return next
     })
 
   return (
@@ -97,7 +72,10 @@ function SettingsForm({ initial, onClose }: { initial: ReminderSettings; onClose
       onSubmit={(e) => {
         e.preventDefault()
         if (invalid) return
-        save.mutate({ dueSoonHours: hours, dueAlarmChannels: channels }, { onSuccess: onClose })
+        save.mutate(
+          { dueSoonHours: hours, dueAlarmChannels: channels },
+          { onSuccess: () => onClose?.() },
+        )
       }}
     >
       <label>
@@ -162,9 +140,6 @@ function SettingsForm({ initial, onClose }: { initial: ReminderSettings; onClose
       <div className="sheet-actions">
         <button type="submit" className="btn" disabled={invalid || save.isPending}>
           {save.isPending ? '儲存中…' : '儲存'}
-        </button>
-        <button type="button" className="btn ghost" onClick={onClose} disabled={save.isPending}>
-          取消
         </button>
       </div>
     </form>

@@ -458,7 +458,9 @@ def _collect_seed_docs(
         skipped_big = skipped_unreadable = 0
         with zf:
             for info in zf.infolist():
-                if info.is_dir() or len(candidates) >= _THESIS_SEED_SCAN_CAP:
+                if len(candidates) >= _THESIS_SEED_SCAN_CAP:
+                    break
+                if info.is_dir():
                     continue
                 rel = info.filename
                 if not rel.lower().endswith(_SEED_EXTS):
@@ -665,8 +667,12 @@ def cmd_thesis_seed(payload, _notes_file):
     的便利貼集合，也就是研究生那份）。"""
     source = ((payload or {}).get("source") or (payload or {}).get("projectDir") or "").strip()
     p = Path(source) if source else None
+    # 累計呼叫次數一律回真實值（前端可顯示）——這支還沒送出任何 AI 請求，
+    # 所以每條 early-return 的 call_count 就是「目前為止」的計數，不是 0。
+    ai = _ai()
     if not source or not (p.is_dir() or (p.is_file() and p.suffix.lower() == ".zip")):
-        return {"drafts": [], "used_files": [], "error": f"找不到資料夾或 .zip：{source or '(未設定)'}", "call_count": 0}
+        return {"drafts": [], "used_files": [],
+                "error": f"找不到資料夾或 .zip：{source or '(未設定)'}", "call_count": ai.get_call_count()}
 
     try:
         docs, used_files = _collect_seed_docs(
@@ -676,13 +682,12 @@ def cmd_thesis_seed(payload, _notes_file):
             max_files=(payload or {}).get("maxFiles") or _THESIS_SEED_MAX_FILES,
         )
     except SeedSourceError as exc:
-        return {"drafts": [], "used_files": [], "error": str(exc), "call_count": 0}
+        return {"drafts": [], "used_files": [], "error": str(exc), "call_count": ai.get_call_count()}
     if len(docs) < 200:
         kind = ".zip" if p.is_file() else "資料夾"
         return {"drafts": [], "used_files": used_files,
-                "error": f"在這個{kind}裡找不到可讀的文件（{_SEED_EXTS_LABEL}）", "call_count": 0}
+                "error": f"在這個{kind}裡找不到可讀的文件（{_SEED_EXTS_LABEL}）", "call_count": ai.get_call_count()}
 
-    ai = _ai()
     ok, reason = ai.is_configured()
     if not ok:
         return {"drafts": [], "used_files": used_files, "error": f"{reason}，請先設定好 AI", "call_count": ai.get_call_count()}

@@ -1,26 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FileText } from 'lucide-react'
 import { useImportIndex } from '../hooks/useIndexes'
+import { validateIndexName } from '../lib/indexName'
 import { scrimClose } from '../lib/scrimClose'
-
-const INVALID_CHARS = new Set('<>:"/\\|?*')
-
-/** 跟後端 `validateIndexName()` 對齊的即時檢查——後端仍是最後一道防線
- *  （撞名這件事光看前端手上的清單，跟另一個分頁/行程同時新增時還是可能
- *  過期），但打字當下就能即時回饋，不用等送出才知道不合法。 */
-function validate(raw: string, existing: string[]): { filename: string | null; error: string | null } {
-  const name = raw.trim()
-  if (!name) return { filename: null, error: '請輸入索引集名稱' }
-  if (name === '.' || name === '..') return { filename: null, error: '不是合法的檔名' }
-  const bad = [...new Set([...name].filter((c) => INVALID_CHARS.has(c)))].sort()
-  if (bad.length) return { filename: null, error: `檔名不能包含：${bad.join(' ')}` }
-  const filename = name.toLowerCase().endsWith('.md') ? name : `${name}.md`
-  if (filename.length <= 3) return { filename: null, error: '請輸入索引集名稱' }
-  if (existing.some((n) => n.toLowerCase() === filename.toLowerCase())) {
-    return { filename: null, error: `「${filename}」已經存在，換個名稱` }
-  }
-  return { filename, error: null }
-}
 
 /**
  * 匯入索引集——把一份外部既有的 .md（例如從另一台電腦複製過來、或用「匯出
@@ -46,7 +28,10 @@ export function ImportIndexDialog({
   const [readErr, setReadErr] = useState('')
   const [name, setName] = useState('')
 
-  const { filename, error } = useMemo(() => validate(name, existingNames), [name, existingNames])
+  const { filename, error } = useMemo(
+    () => validateIndexName(name, existingNames),
+    [name, existingNames],
+  )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !importIndex.isPending && onClose()

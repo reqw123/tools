@@ -39,7 +39,8 @@ import {
 // 才讀得懂、才會照同一套「到期日當天過完才算逾期」邏輯判斷。
 const DUE_AT_PATTERN = '^$|^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$'
 
-// 四個到期通知管道開關的 body schema——/reminder-settings 跟 /settings 共用。
+// 四個到期通知管道開關的 body schema——只有 /reminder-settings 收（PATCH /settings
+// 不碰到期通知，全走 /reminder-settings 這條，避免同一份設定兩個寫入點）。
 const ALARM_CHANNELS_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -124,21 +125,22 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
     async (req) => setReminderSettings(req.body),
   )
 
-  // 全域設定（標籤排序、預設便利貼顏色、牆面版面）——dueSoonHours 也在裡面，
-  // 但保留 /reminder-settings 舊路由不動，這支給「全域設定」對話框用。
+  // 全域設定（標籤排序、預設便利貼顏色、牆面版面…）。dueSoonHours /
+  // dueAlarmChannels 雖然也存在同一份檔，但寫入一律走 /reminder-settings，
+  // 這支不收，免得同一份設定有兩個 HTTP 寫入點。
   app.get('/settings', async () => getAppSettings())
 
   app.patch<{
     Body: {
-      dueAlarmChannels?: Partial<{
-        wallpaperToast: boolean
-        wallpaperBadge: boolean
-        nodeRedAlarm: boolean
-        nodeRedDigest: boolean
-      }>
       tagSort?: { mode?: 'count' | 'manual' | 'recent'; order?: string[] }
       defaultNoteColor?: string
-      wall?: { minColWidth?: number; masonry?: boolean }
+      wall?: {
+        minColWidth?: number
+        masonry?: boolean
+        tagAxis?: 'vertical' | 'horizontal'
+        tilt?: boolean
+        tiltMax?: number
+      }
       embedModel?: string
       trashRetentionDays?: number
       trashMaxCount?: number
@@ -155,7 +157,6 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
           type: 'object',
           additionalProperties: false,
           properties: {
-            dueAlarmChannels: ALARM_CHANNELS_SCHEMA,
             tagSort: {
               type: 'object',
               additionalProperties: false,
