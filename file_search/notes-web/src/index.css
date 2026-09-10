@@ -2449,9 +2449,28 @@ select option {
   color: var(--ink);
 }
 
-/* 沒有包在 .form 裡的錯誤訊息（GenerateNotesDialog 掃描／儲存失敗）—— .form .err
-   只在表單內生效，這裡補一個獨立版本，顏色跟 .notice.err 一致。 */
+/* 沒有包在 .form 裡的錯誤訊息（GenerateNotesDialog 掃描／儲存失敗、
+   ThesisSeedDialog 生成失敗）—— .form .err 只在表單內生效，這裡補一個
+   獨立版本，顏色跟 .notice.err 一致。 */
 .err { color: #c0392b; font-size: 0.82rem; }
+
+/* 深色模式：#c0392b 這種暗紅疊在深色 panel 上對比太低（回報「看不清」）——
+   換成亮一點的紅，跟 .sheet.plain .form .err 的深色值一致。涵蓋所有沒被
+   .form 規則吃到的錯誤字。手動選深色 + 系統深色兩條路都要。 */
+:root[data-theme='dark'] .err,
+:root[data-theme='dark'] .notice.err,
+:root[data-theme='dark'] .fb-empty.err,
+:root[data-theme='dark'] .ai-summary-err {
+  color: #e58175;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .err,
+  :root:not([data-theme='light']) .notice.err,
+  :root:not([data-theme='light']) .fb-empty.err,
+  :root:not([data-theme='light']) .ai-summary-err {
+    color: #e58175;
+  }
+}
 
 /* ─── focus note：拉框裁切 + 拖出去變懸浮視窗（只有 wallpaper-app 會用到）── */
 
