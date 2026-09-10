@@ -66,12 +66,16 @@ call npm --prefix ..\files-web install >>"%SETUP_LOG%" 2>&1
 if %errorlevel% neq 0 goto installfail
 :index_ok
 
-rem ---- web dist folders: build once if either is missing ------------------
-rem      (changed the notes-web / files-web frontend? delete their
-rem       dist\ folders and run again, or just `npm run build:webs`.)
-if exist "..\notes-web\dist\" if exist "..\files-web\dist\" goto webs_built
-if "%SILENT%"=="0" echo [build] building the two web dist folders ^(first run, ~20s^) ...
-call npm run build:webs >>"%SETUP_LOG%" 2>&1
+rem ---- web dist folders: (re)build whenever the frontend source is newer
+rem      than the built dist, or a dist is missing. rebuild-if-stale.ps1
+rem      compares notes-web / files-web  src\ + index.html + vite/tsconfig
+rem      /tailwind/postcss/package.json  against their dist\index.html and
+rem      runs `npm run build` only for the one(s) that changed. Keeps the
+rem      wallpaper in sync with edits without a manual `npm run build:webs`.
+rem      (server\ / ai_bridge.py changes don't touch dist -- those just need
+rem       the tray's "clear cache & reload".)
+if "%SILENT%"=="0" echo [build] checking the two web dist folders are up to date ...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJ_ROOT%\wallpaper-app\rebuild-if-stale.ps1" -ProjectRoot "%PROJ_ROOT%" >>"%SETUP_LOG%" 2>&1
 if %errorlevel% neq 0 goto buildfail
 :webs_built
 
