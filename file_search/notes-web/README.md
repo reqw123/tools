@@ -113,6 +113,9 @@ npm run lint    # oxlint
 | DELETE | `/api/notes/:id` | 刪除 |
 | POST | `/api/notes/bulk-delete` | `{ ids: string[] }` → 一次刪除，回 `{ deleted: 數量 }` |
 | GET | `/api/tags` | `[{ tag, count }]` |
+| POST | `/api/notes/:id/image` | 換插圖。JSON `{ srcPath }`＝複製本機路徑；`multipart/form-data`（`file` 欄位）＝上傳、過 sharp（EXIF 轉正、長邊 ≤2400、去中繼資料）。共用模式下遠端只能用 multipart |
+| GET | `/api/share-info` | `{ mode: 'off'\|'lan', ai: bool }`——前端判斷要不要顯示密碼牆／隱藏功能。不需驗證 |
+| GET/POST/DELETE | `/api/session` | 區網共用模式（`SHARE_MODE=lan`）才有。POST `{ password }` → 種 `share_session` cookie；GET → `{ ok }`；DELETE → 登出 |
 | GET | `/api/notes/due-soon` | 到期提醒摘要（給 Node-RED 等排程輪詢）→ `{ generated_at, overdue: DueNote[], soon: DueNote[], alarms }`，`DueNote = { id, title, tag, due_at, collection }`，`alarms = { wallpaperToast, wallpaperBadge, nodeRedAlarm, nodeRedDigest }`（四個通知管道的開關）。預設只看 `x-note-collection` 指到的那份（沒帶＝生活）；`?scope=all` 把生活＋研究生兩份合起來。`?channel=nodeRedAlarm\|nodeRedDigest`：該管道被關掉時直接回空 overdue/soon（給 Node-RED 用，下游 `return null` 即可） |
 | GET/PATCH | `/api/reminder-settings` | `{ dueSoonHours, dueAlarmChannels }`。`dueSoonHours`＝到期前幾小時算「快到期」（卡片標色＋due-soon 共用）；`dueAlarmChannels`＝四個到期通知管道的獨立開關（桌面牆系統通知／系統匣角標／Node-RED 即時鬧鐘／Node-RED 6 小時彙整），關掉不影響卡片標色。PATCH 兩個欄位都可選填，`dueAlarmChannels` 可只帶要改的那幾個 key |
 | GET | `/api/ai/target` | 目前 AI 去向摘要（provider／model／endpoint／是否離開本機）+ 累計呼叫次數 |
@@ -149,6 +152,36 @@ API Key（`%LOCALAPPDATA%\file_search\ai_secrets.json`）都跟桌面版是同�
 「後存的蓋掉先存的」的競態——這是桌面版本來就有的限制（多開視窗也一樣）。
 單人正常使用（一次動一邊）不會遇到。
 
+## 區網共用模式（SHARE_MODE）
+
+讓**同一個區網的其他人用瀏覽器**連進來、共用這面生活便利貼牆（各自能新增／編輯／
+刪除、上傳圖片）。**雙擊 `file_search/啟動-共用便利貼牆（區網）.bat`**——會編譯前端、
+問一組共用密碼、以 `SHARE_MODE=lan` 啟動，並在 log 印出區網網址（`http://<你的IP>:8787`）
+給別人連。Windows 防火牆首次會問，選「允許存取」。
+
+一切都在**你這台**：對方讀寫的是你的 `indexes/.sticky_notes.json`、上傳的圖進你的
+`.sticky_note_images/`。設計成一個開關，離線行為完全不變：
+
+| | `SHARE_MODE` 未設（預設） | `SHARE_MODE=lan` |
+|---|---|---|
+| 行為 | 跟以前一模一樣，不掛任何東西 | 額外掛密碼牆 + 危險端點封鎖 |
+| **loopback（`127.0.0.1`）一律豁免** | — | 你自己的 wallpaper-app／本機瀏覽器不受影響、不用密碼 |
+
+`lan` 模式下，**非 loopback** 的請求：
+
+- 要先 `POST /api/session` 帶對密碼拿到 `share_session` cookie（`SHARE_TOKEN` 環境變數，
+  或 `share-config.txt` 第一行；此檔已被 `.gitignore` 排除）。沒登入 → `401 {needAuth}`，
+  前端顯示密碼牆（`components/PasswordGate.tsx` / `AppGate.tsx`）。
+- **關閉**：研究生牆（一律鎖生活牆）、`/api/files/browse`＋`/scan`（會攤開你的硬碟）、
+  換圖的 `srcPath` 分支（改走 multipart 上傳）、`PUT /api/ai/settings`＋`/ai/test`＋`/ai/models`。
+- AI 搜尋／生成／語意預設**關閉**（用你的額度／錢）——要開放設 `SHARE_AI=on`。
+
+前端靠 `GET /api/share-info`（不需驗證）決定要不要顯示密碼牆、隱藏哪些鈕；
+多人共用時便利貼清單多一個 8 秒輪詢＋聚焦重抓（`useNotes`），好看到別人的改動；
+同一則被多人同時改仍是 last-write-wins（跟桌面版多視窗一致）。
+
+網路相關的東西全集中在 `server/share.ts`（唯一一處），`index.ts` 只有 `lan` 時才 import。
+
 ## 檔案
 
 ```
@@ -156,6 +189,8 @@ server/
   index.ts       Fastify 進入點（dev 只跑 API；prod 也吐 dist/）
   store.ts       讀寫 .sticky_notes.json（原子寫入、只認 5 個欄位、編輯 bump created_at）
   notes.ts       便利貼 REST 路由
+  note-image-routes.ts  插圖：srcPath 複製（本機）＋ multipart 上傳（過 sharp）
+  share.ts       區網共用模式——密碼牆 hook、危險端點封鎖、/api/session（只有 SHARE_MODE=lan 用）
   ai-routes.ts   AI REST 路由
   ai.ts          子行程呼叫 ai_bridge.py 的小工具
   ai_bridge.py   ← file_search_app 的既有 AI 邏輯（stdin/stdout JSON）

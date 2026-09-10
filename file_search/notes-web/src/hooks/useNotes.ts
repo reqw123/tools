@@ -1,14 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type AppSettings, type AppSettingsPatch, type Note, type NoteInput } from '../lib/api'
 import { toggleBodyLine } from '../lib/format'
+import { useShareInfo } from './useShareInfo'
 
 const KEY = ['notes'] as const
 const TRASH_KEY = ['notes-trash'] as const
 
 /** 便利貼清單——單一資料來源。任何新增／編輯／刪除成功後都會讓它重抓，
- *  所以 UI（整面牆、分類 chip、統計數字）會自動跟著資料變。 */
+ *  所以 UI（整面牆、分類 chip、統計數字）會自動跟著資料變。
+ *  區網共用模式下多開一個輪詢（8s）＋視窗聚焦重抓，好看到別人的改動。 */
 export function useNotes() {
-  return useQuery({ queryKey: KEY, queryFn: api.list })
+  const share = useShareInfo()
+  const shared = share.mode === 'lan'
+  return useQuery({
+    queryKey: KEY,
+    queryFn: api.list,
+    refetchInterval: shared ? 8_000 : false,
+    refetchOnWindowFocus: shared,
+  })
 }
 
 export function useCreateNote() {
@@ -37,6 +46,18 @@ export function useSetNoteImage() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, srcPath }: { id: string; srcPath: string }) => api.setImage(id, srcPath),
+    onSuccess: (note) => {
+      qc.setQueryData<Note[]>(KEY, (old) => old?.map((n) => (n.id === note.id ? note : n)))
+      qc.invalidateQueries({ queryKey: KEY })
+    },
+  })
+}
+
+/** 從瀏覽器上傳圖片檔換圖（區網共用模式；一般模式用 useSetNoteImage 選本機路徑）。 */
+export function useUploadNoteImage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) => api.uploadImage(id, file),
     onSuccess: (note) => {
       qc.setQueryData<Note[]>(KEY, (old) => old?.map((n) => (n.id === note.id ? note : n)))
       qc.invalidateQueries({ queryKey: KEY })

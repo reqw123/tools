@@ -1,8 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import { App } from './App'
+import { AuthError } from './lib/api'
+import { AppGate } from './components/AppGate'
 import { FocusedNote } from './components/FocusedNote'
 import { applySurface } from './lib/surface'
 
@@ -16,14 +18,22 @@ applySurface()
 const focusId = new URLSearchParams(location.search).get('focus')
 if (focusId) document.documentElement.classList.add('focus-mode')
 
-const queryClient = new QueryClient({
+// 區網共用模式：任何 query／mutation 收到 AuthError（cookie 過期）就把 session
+// 標成失效，AppGate 會自動退回密碼牆。一般單機模式永遠不會走到這裡。
+const onAuthError = (err: unknown) => {
+  if (err instanceof AuthError) queryClient.setQueryData(['session'], false)
+}
+
+const queryClient: QueryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
+  queryCache: new QueryCache({ onError: onAuthError }),
+  mutationCache: new MutationCache({ onError: onAuthError }),
 })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      {focusId ? <FocusedNote id={focusId} /> : <App />}
+      <AppGate>{focusId ? <FocusedNote id={focusId} /> : <App />}</AppGate>
     </QueryClientProvider>
   </StrictMode>,
 )

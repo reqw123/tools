@@ -22,6 +22,7 @@ building, …) and their names, see `docs/PATTERNS.md`.
 | Batch-delete dialog | `file_search_app/ui/dialogs/sticky_note_bulk_delete_dialog.py` |
 | Shared AI calling layer | `file_search_app/services/ai_description_service.py` |
 | AI usage counter storage | `file_search_app/repositories/ai_usage_repository.py` |
+| Web 便利貼牆 LAN 共用模式 | `notes-web/server/share.ts`（`SHARE_MODE=lan` 才 import；密碼牆 hook + 危險端點封鎖 + `/api/session`；loopback 一律豁免）。啟動器 `啟動-共用便利貼牆（區網）.bat`，細節見 `notes-web/README.md` 的「區網共用模式」 |
 
 ## AI search — model constraint (the prompt contract)
 

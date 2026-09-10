@@ -60,6 +60,8 @@ export function Toolbar({
   tagAxis,
   masonryOn,
   onToggleTagAxis,
+  shareMode = false,
+  aiEnabled = true,
 }: {
   query: string
   onQuery: (v: string) => void
@@ -106,6 +108,10 @@ export function Toolbar({
   /** 「牆面動態排版」是否開著——關著時 tagAxis 沒有效果，切換時給提醒。 */
   masonryOn: boolean
   onToggleTagAxis: () => void
+  /** 區網共用模式——隱藏會攤開 host 硬碟的「AI 生成便利貼」（選資料夾）。 */
+  shareMode?: boolean
+  /** AI 搜尋／語意搜尋能不能用（共用模式且 SHARE_AI 關閉時為 false）。 */
+  aiEnabled?: boolean
 }) {
   // 動態排版關著時按了快捷切換 → 顯示一條提醒（幾秒後自己消失）。
   const [axisHint, setAxisHint] = useState(false)
@@ -228,22 +234,26 @@ export function Toolbar({
 
         {/* 第三排：所有工具鈕，統一尺寸的正方形圖示鈕。 */}
         <div className="bar-row bar-row-tools">
-          <button
-            className={`btn ghost icon${aiMode ? ' on' : ''}`}
-            onClick={onToggleAiMode}
-            aria-pressed={aiMode}
-            title={aiMode ? '切回一般搜尋' : 'AI 搜尋（用一般語句問問題）'}
-          >
-            <Bot size={16} strokeWidth={2.2} aria-hidden />
-          </button>
-          <button
-            className={`btn ghost icon${semanticOn ? ' on' : ''}`}
-            onClick={onToggleSemantic}
-            aria-pressed={semanticOn}
-            title={semanticOn ? '切回一般搜尋' : '語意搜尋（本機 Ollama，依意思相近排序）'}
-          >
-            <Sprout size={16} strokeWidth={2.2} aria-hidden />
-          </button>
+          {aiEnabled && (
+            <>
+              <button
+                className={`btn ghost icon${aiMode ? ' on' : ''}`}
+                onClick={onToggleAiMode}
+                aria-pressed={aiMode}
+                title={aiMode ? '切回一般搜尋' : 'AI 搜尋（用一般語句問問題）'}
+              >
+                <Bot size={16} strokeWidth={2.2} aria-hidden />
+              </button>
+              <button
+                className={`btn ghost icon${semanticOn ? ' on' : ''}`}
+                onClick={onToggleSemantic}
+                aria-pressed={semanticOn}
+                title={semanticOn ? '切回一般搜尋' : '語意搜尋（本機 Ollama，依意思相近排序）'}
+              >
+                <Sprout size={16} strokeWidth={2.2} aria-hidden />
+              </button>
+            </>
+          )}
           <button
             className={`btn ghost icon${dueOnly ? ' on' : ''}`}
             onClick={onToggleDueOnly}
@@ -309,13 +319,15 @@ export function Toolbar({
           <button className="btn ghost icon" onClick={onBatchCreate} title="批次新增">
             <CopyPlus size={15} strokeWidth={2.2} aria-hidden />
           </button>
-          <button
-            className="btn ghost icon"
-            onClick={onGenerateNotes}
-            title="AI 生成便利貼——選檔案讓 AI 分析、生成草稿"
-          >
-            <Sparkles size={15} strokeWidth={2.2} aria-hidden />
-          </button>
+          {!shareMode && (
+            <button
+              className="btn ghost icon"
+              onClick={onGenerateNotes}
+              title="AI 生成便利貼——選檔案讓 AI 分析、生成草稿"
+            >
+              <Sparkles size={15} strokeWidth={2.2} aria-hidden />
+            </button>
+          )}
           {collection === 'thesis' && (
             <button
               className="btn ghost icon"

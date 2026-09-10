@@ -15,7 +15,9 @@ import {
   useTagColors,
   useToggleNoteLine,
   useUpdateNote,
+  useUploadNoteImage,
 } from '../hooks/useNotes'
+import { useShareInfo } from '../hooks/useShareInfo'
 import { Body } from './Body'
 import { FileBrowser } from './FileBrowser'
 import { NoteForm } from './NoteForm'
@@ -42,6 +44,9 @@ export function NoteDialog({
   onNext?: () => void
 }) {
   const ref = useRef<HTMLElement>(null)
+  // 區網共用模式：不用能瀏覽 host 硬碟的 FileBrowser，改成瀏覽器原生 <input type=file> 上傳。
+  const isShare = useShareInfo().mode === 'lan'
+  const uploadFileRef = useRef<HTMLInputElement>(null)
   const [mode, setMode] = useState<Mode>(initialMode)
   const [confirmDel, setConfirmDel] = useState(false)
   const [picking, setPicking] = useState(false)
@@ -94,6 +99,7 @@ export function NoteDialog({
   const setPinned = useSetNotePinned()
   const advanceRepeat = useAdvanceRepeat()
   const setImage = useSetNoteImage()
+  const uploadImage = useUploadNoteImage()
   const removeImage = useRemoveNoteImage()
 
   const applyImage = (path: string) => {
@@ -159,6 +165,7 @@ export function NoteDialog({
     remove.isPending ||
     advanceRepeat.isPending ||
     setImage.isPending ||
+    uploadImage.isPending ||
     removeImage.isPending
   const err = (create.error || update.error || remove.error || removeImage.error)?.message
 
@@ -260,12 +267,33 @@ export function NoteDialog({
                 disabled={busy}
                 onClick={() => {
                   setImgErr('')
-                  setPickPath(null)
-                  setPicking(true)
+                  if (isShare) {
+                    uploadFileRef.current?.click()
+                  } else {
+                    setPickPath(null)
+                    setPicking(true)
+                  }
                 }}
               >
                 {note.image ? '更換圖片' : '插入圖片'}
               </button>
+              {isShare && (
+                <input
+                  ref={uploadFileRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    e.target.value = '' // 讓重選同一個檔也能再觸發
+                    if (!f || !note) return
+                    uploadImage.mutate(
+                      { id: note.id, file: f },
+                      { onError: (er) => setImgErr(er instanceof Error ? er.message : String(er)) },
+                    )
+                  }}
+                />
+              )}
               {note.image && (
                 <button
                   className="btn ghost"

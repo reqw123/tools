@@ -20,3 +20,6 @@ node_modules/
 # 手動備份殘留
 *.bak
 *.bak-*
+
+# 區網共用模式的密碼（見「啟動-共用便利貼牆（區網）.bat」）
+/share-config.txt

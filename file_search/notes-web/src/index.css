@@ -2827,3 +2827,52 @@ select option {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
 }
+
+/* ─── 區網共用模式的密碼牆（components/PasswordGate.tsx）─────────────── */
+.pw-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--wall);
+}
+.pw-card {
+  width: min(22rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.6rem 1.5rem 1.75rem;
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 12px 40px -12px var(--scrim);
+}
+.pw-card h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--ink);
+}
+.pw-card .dim {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.pw-card input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--hair);
+  border-radius: 9px;
+  background: var(--wall);
+  color: var(--ink);
+  font-size: 1rem;
+}
+.pw-card input:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+.pw-card .btn {
+  align-self: stretch;
+  justify-content: center;
+}
+.pw-card .err {
+  margin: 0;
+}

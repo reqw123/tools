@@ -6,6 +6,7 @@ import {
   TAG_COLORS_KEY, useAppSettings, useNotes, usePatchAppSettings, useReminderSettings, useTagColors,
 } from './hooks/useNotes'
 import { useMinuteTick } from './hooks/useMinuteTick'
+import { useShareInfo } from './hooks/useShareInfo'
 import { useAiSearch, useAiTarget, useSemanticSearch, useSemanticStatus } from './hooks/useAi'
 import { hasDesktopWall } from './lib/desktopWall'
 import { dueStatus } from './lib/format'
@@ -57,6 +58,9 @@ interface AiResult {
 export function App() {
   const qc = useQueryClient()
   const { data: notes, isLoading, isError, error } = useNotes()
+  // 區網共用模式：遠端一律鎖生活牆、隱藏會攤開 host 硬碟的功能、依 SHARE_AI 決定 AI 可用性。
+  const share = useShareInfo()
+  const isShare = share.mode === 'lan'
   const [query, setQuery] = useState('')
   const [tag, setTag] = useState<string | null>(null)
   const [noteSort, setNoteSort] = useState<NoteSort>(readNoteSort)
@@ -68,7 +72,16 @@ export function App() {
 
   // 「研究生模式」——整面牆換成論文專案專用的另一份便利貼（見 lib/api 的
   // x-note-collection）。只在桌面牆（wallpaper）出現；瀏覽器維持單純的生活牆。
-  const [collection, setCollection] = useState<NoteCollection>(getApiCollection)
+  // 區網共用模式下遠端一律鎖生活牆（研究生牆綁 host 的 C:\ai_project，是私人的）。
+  const [collectionState, setCollection] = useState<NoteCollection>(getApiCollection)
+  const collection: NoteCollection = isShare ? 'life' : collectionState
+  useEffect(() => {
+    if (isShare && getApiCollection() !== 'life') {
+      setApiCollection('life')
+      setCollection('life')
+      qc.removeQueries()
+    }
+  }, [isShare, qc])
   const switchCollection = useCallback(
     (c: NoteCollection) => {
       if (c === getApiCollection()) return
@@ -495,7 +508,7 @@ export function App() {
         onTag={setTag}
         tags={tags}
         total={list.length}
-        collection={collection}
+        collection={isShare ? null : collectionState}
         onSwitchCollection={switchCollection}
         onAdd={() => setDialog({ kind: 'new' })}
         aiMode={aiMode}
@@ -561,6 +574,8 @@ export function App() {
         onThesisSeed={() => setThesisSeed(true)}
         onTrash={() => setTrashOpen(true)}
         onHistory={() => setHistoryOpen(true)}
+        shareMode={isShare}
+        aiEnabled={!isShare || share.ai}
       />
 
       {aiResult && (
@@ -644,7 +659,7 @@ export function App() {
       {batchDelete && (
         <BatchDeleteDialog notes={list} onClose={() => setBatchDelete(false)} />
       )}
-      {generateNotes && (
+      {generateNotes && !isShare && (
         <GenerateNotesDialog
           knownTags={knownTags}
           onClose={() => setGenerateNotes(false)}

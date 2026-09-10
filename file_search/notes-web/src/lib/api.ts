@@ -82,9 +82,19 @@ export function setApiCollection(c: NoteCollection): void {
   }
 }
 
+/** 區網共用模式：伺服器要密碼、但這個瀏覽器還沒登入（或 cookie 過期）。
+ *  App 攔到這個就顯示 <PasswordGate>。 */
+export class AuthError extends Error {
+  constructor() {
+    super('需要密碼')
+    this.name = 'AuthError'
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
     ...init,
+    credentials: 'same-origin',
     headers: {
       ...(init?.body ? { 'content-type': 'application/json' } : {}),
       'x-note-collection': apiCollection,
@@ -94,6 +104,15 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T
   const data = (await res.json().catch(() => null)) as unknown
   if (!res.ok) {
+    if (
+      res.status === 401 &&
+      data &&
+      typeof data === 'object' &&
+      'needAuth' in data &&
+      (data as { needAuth: unknown }).needAuth
+    ) {
+      throw new AuthError()
+    }
     const msg =
       data && typeof data === 'object' && 'error' in data
         ? String((data as { error: unknown }).error)
@@ -101,6 +120,29 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(msg)
   }
   return data as T
+}
+
+/** 區網共用模式的密碼 session（cookie 由 server 設，這裡只管觸發／查詢）。 */
+export const session = {
+  check: () =>
+    fetch(BASE + '/session', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : { ok: false }))
+      .then((j: { ok?: boolean }) => !!j.ok)
+      .catch(() => false),
+  login: async (password: string): Promise<void> => {
+    const res = await fetch(BASE + '/session', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    if (!res.ok) {
+      const j = (await res.json().catch(() => null)) as { error?: string } | null
+      throw new Error(j?.error ?? '登入失敗')
+    }
+  },
+  logout: () =>
+    fetch(BASE + '/session', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {}),
 }
 
 export const api = {
@@ -119,6 +161,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ srcPath }),
     }).then((r) => r.note),
+  /** 從瀏覽器上傳圖片檔（區網共用模式用；FormData → 瀏覽器自帶 multipart boundary）。 */
+  uploadImage: async (id: string, file: File): Promise<Note> => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`${BASE}/notes/${id}/image`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'x-note-collection': apiCollection },
+      body: fd,
+    })
+    const data = (await res.json().catch(() => null)) as { note?: Note; error?: string } | null
+    if (!res.ok || !data?.note) throw new Error(data?.error ?? `HTTP ${res.status}`)
+    return data.note
+  },
   removeImage: (id: string) =>
     req<{ note: Note }>(`/notes/${id}/image`, { method: 'DELETE' }).then((r) => r.note),
   toggleLine: (id: string, srcIndex: number) =>

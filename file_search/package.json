@@ -7,6 +7,7 @@
     "dev": "concurrently -k -n s-api,s-web,i-api,i-web -c blue,cyan,green,magenta \"npm --prefix notes-web run dev:api\" \"npm --prefix notes-web run dev:web\" \"npm --prefix files-web run dev:api\" \"npm --prefix files-web run dev:web\"",
     "dev:notes": "npm --prefix notes-web run dev",
     "dev:files": "npm --prefix files-web run dev",
+    "share:notes": "npm --prefix notes-web run start",
     "build": "npm --prefix notes-web run build && npm --prefix files-web run build",
     "install:all": "npm --prefix notes-web install && npm --prefix files-web install",
     "lint": "npm --prefix notes-web run lint && npm --prefix files-web run lint"
