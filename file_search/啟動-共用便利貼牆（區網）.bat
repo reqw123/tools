@@ -20,11 +20,11 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist "notes-web\node_modules\" (
-  echo [setup] first run - installing notes-web deps ^(~30s^) ...
-  call npm --prefix notes-web install
-  if errorlevel 1 ( echo [Error] npm install failed & pause & exit /b 1 )
-)
+REM always run install: it is fast when up to date, and picks up new deps
+REM (e.g. @fastify/cookie / @fastify/multipart) after a git pull.
+echo [setup] syncing notes-web deps ...
+call npm --prefix notes-web install
+if errorlevel 1 ( echo [Error] npm install failed & pause & exit /b 1 )
 
 echo [build] building notes-web frontend ...
 call npm --prefix notes-web run build
