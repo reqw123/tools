@@ -210,6 +210,261 @@ body {
   color: var(--ink-soft);
 }
 
+/* ─── hero 雙欄——寬螢幕右邊本來就空著一大塊，塞 ActivityTicker（.hero-main
+   給題頭／簡介／統計數字一個穩定寬度，剩下的都讓給動態面板）。窄螢幕
+   flex-wrap 自然摺到面板下面，不用另外寫 media query。 ─────────────── */
+.hero {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  flex-wrap: wrap;
+}
+.hero-main {
+  flex: 1 1 26rem;
+  min-width: 0;
+}
+
+/* ─── 動態面板（ActivityTicker）——你是誰／誰在編輯／最近動態，即時推播、
+   大字體、進場動畫，讓多人共用時「發生了什麼」一眼就看到，不用點開任何
+   對話框。視覺上是一張略微發光的卡片，跟 hero 深色底拉出層次。 ─────── */
+.activity-panel {
+  flex: 1 1 22rem;
+  max-width: 30rem;
+  padding: 1.3rem 1.4rem 1.1rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--brass) 35%, var(--hair));
+  background: color-mix(in srgb, var(--brass) 6%, var(--panel) 88%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--brass) 12%, transparent) inset,
+    0 18px 40px -22px color-mix(in srgb, var(--brass) 55%, transparent);
+  animation: ap-appear 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes ap-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.ap-me {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 1rem;
+}
+.ap-me-label {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+.ap-me input {
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--brass);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  width: 12rem;
+  max-width: 50vw;
+}
+.ap-name-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--brass);
+  cursor: pointer;
+}
+.ap-name-btn:hover {
+  filter: brightness(1.2);
+}
+.ap-name-btn svg {
+  opacity: 0.6;
+}
+/* 已用 PIN 驗證過的名字——鎖住不能點改，跟可編輯的 .ap-name-btn 用同樣字重/
+   字級但換個小鎖圖示，一眼看出「這個不是隨便填的」。 */
+.ap-name-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--brass);
+}
+.ap-name-locked svg {
+  opacity: 0.75;
+}
+.ap-logout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.3rem;
+  border: 1px solid var(--hair);
+  border-radius: 5px;
+  background: none;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.ap-logout-btn:hover {
+  border-color: var(--brass);
+  color: var(--ink);
+}
+.ap-logout-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ap-editing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background: rgba(124, 58, 237, 0.14);
+  color: rgb(91, 33, 182);
+}
+:root[data-theme='dark'] .ap-editing,
+:root:not([data-theme='light']) .ap-editing {
+  color: rgb(216, 191, 255);
+}
+.ap-pulse {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgb(124, 58, 237);
+  flex: none;
+}
+.ap-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: rgb(124, 58, 237);
+  animation: ap-pulse-ring 1.6s ease-out infinite;
+}
+@keyframes ap-pulse-ring {
+  from {
+    opacity: 0.55;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.ap-feed-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 1rem 0 0.55rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid color-mix(in srgb, var(--brass) 30%, var(--hair));
+  font-size: 0.75rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+.ap-empty {
+  font-size: 0.9rem;
+}
+
+.ap-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 15.5rem;
+  overflow-y: auto;
+}
+.ap-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  padding: 0.4rem 0.15rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  border-bottom: 1px dashed color-mix(in srgb, var(--ink) 10%, transparent);
+  animation: ap-slide-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), ap-flash 1.6s ease-out;
+}
+.ap-item:last-child {
+  border-bottom: none;
+}
+@keyframes ap-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+@keyframes ap-flash {
+  from {
+    background: color-mix(in srgb, var(--brass) 30%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+.ap-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  margin-top: 0.1rem;
+}
+.ap-create .ap-icon { background: rgba(34, 197, 94, 0.18); color: #16a34a; }
+.ap-update .ap-icon { background: rgba(59, 130, 246, 0.18); color: #2563eb; }
+.ap-delete .ap-icon,
+.ap-bulk-delete .ap-icon { background: rgba(239, 68, 68, 0.18); color: #dc2626; }
+.ap-restore .ap-icon { background: rgba(20, 184, 166, 0.18); color: #0d9488; }
+.ap-connect .ap-icon { background: rgba(34, 197, 94, 0.14); color: #15803d; }
+.ap-disconnect .ap-icon { background: rgba(120, 113, 108, 0.18); color: #78716c; }
+:root[data-theme='dark'] .ap-create .ap-icon, :root:not([data-theme='light']) .ap-create .ap-icon { color: #4ade80; }
+:root[data-theme='dark'] .ap-update .ap-icon, :root:not([data-theme='light']) .ap-update .ap-icon { color: #60a5fa; }
+:root[data-theme='dark'] .ap-delete .ap-icon, :root:not([data-theme='light']) .ap-delete .ap-icon,
+:root[data-theme='dark'] .ap-bulk-delete .ap-icon, :root:not([data-theme='light']) .ap-bulk-delete .ap-icon { color: #f87171; }
+:root[data-theme='dark'] .ap-restore .ap-icon, :root:not([data-theme='light']) .ap-restore .ap-icon { color: #2dd4bf; }
+:root[data-theme='dark'] .ap-connect .ap-icon, :root:not([data-theme='light']) .ap-connect .ap-icon { color: #4ade80; }
+:root[data-theme='dark'] .ap-disconnect .ap-icon, :root:not([data-theme='light']) .ap-disconnect .ap-icon { color: #a8a29e; }
+
+.ap-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ink-soft);
+}
+.ap-text b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.ap-target {
+  color: var(--ink);
+  margin-left: 0.25rem;
+  word-break: break-word;
+}
+.ap-time {
+  flex: none;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
 /* ─── sticky control bar ────────────────────────────────────────── */
 .bar {
   position: sticky;
@@ -246,7 +501,7 @@ body {
    ③ 所有工具鈕：統一尺寸的正方形圖示鈕 */
 .collection-row {
   position: relative;
-  padding-right: 6.5rem;
+  padding-right: 12rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -259,11 +514,18 @@ body {
   gap: 0.4rem;
   flex-wrap: wrap;
 }
-.collection-row > .toggle {
+/* 主題鈕（＋公網模式的「分享」鈕）——絕對定位釘在這排最右，讓左邊的分頁／
+   研究生說明列自由換行不會推到它。 */
+.collection-row > .tb-right {
   position: absolute;
   top: 50%;
   right: 0;
   transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.collection-row > .tb-right > .toggle {
   height: auto;
   padding: 0.28rem 0.7rem;
   font-size: 0.82rem;
@@ -324,6 +586,66 @@ body {
   background: color-mix(in srgb, var(--ink) 14%, transparent);
   filter: none;
 }
+
+/* 上方面板收合（標題/簡介/統計＋集合分頁＋搜尋排序新增＋小按鈕列）——
+   grid-template-rows 0fr/1fr 是純 CSS 高度動畫，不用 JS 量高度。內層
+   .panel-collapse-inner／.hero-collapse-inner 一定要 min-height:0 讓 grid
+   真的能把它壓到 0，overflow hidden 蓋住收合過程中還沒完全消失的內容。
+   手機螢幕小，這塊面板收起來能多看到好幾張便利貼，也不會捲動便利貼時
+   不小心捲回這裡；分界列在下面（.panel-collapse-handle）負責收合/展開。
+   .hero-collapse（App.tsx 包主標題那層）跟這裡共用同一個收合狀態，兩邊
+   各自是獨立的 grid 容器、但用同一個布林值一起動，效果上就是整塊一起收。 */
+.panel-collapse,
+.hero-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.22s ease;
+}
+.panel-collapse.collapsed,
+.hero-collapse.collapsed {
+  grid-template-rows: 0fr;
+}
+.panel-collapse > .panel-collapse-inner,
+.hero-collapse > .hero-collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.panel-collapse-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.3rem 0;
+  margin-top: -0.2rem;
+  border: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--ink-soft) 45%, transparent);
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+.panel-collapse-handle:hover {
+  color: var(--ink);
+}
+
+/* host 在 /host 關掉遠端 AI 時的明講標示——取代平常藏起來的 Bot/Sprout 鈕，
+   不讓人以為是搜尋不到答案。用跟 .ap-disconnect 一致的灰階「停用」色。 */
+.ai-disabled-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  height: var(--tb-h);
+  padding: 0 0.6rem;
+  border-radius: 3px;
+  font-size: 0.78rem;
+  color: #78716c;
+  background: rgba(120, 113, 108, 0.14);
+  white-space: nowrap;
+}
+:root[data-theme='dark'] .ai-disabled-badge,
+:root:not([data-theme='light']) .ai-disabled-badge { color: #a8a29e; }
 .coll-tab {
   display: inline-flex;
   align-items: center;
@@ -1027,6 +1349,19 @@ body {
   background: rgba(31, 41, 55, 0.09);
   color: rgba(31, 41, 55, 0.82);
 }
+/* 「小明正在編輯這則」——紫色系跟到期（紅黃）、重複（灰藍）都區分開，一看
+   就知道是「有人在動」而不是時間性的提醒。只出現在牆上卡片（NoteDialog
+   放大檢視另外用 .edit-warn 呈現，不會重複）。 */
+.editing-badge {
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.18rem 0.5rem;
+  border-radius: 3px;
+  margin: 0.1rem 0 0.5rem;
+  width: fit-content;
+  background: rgba(124, 58, 237, 0.16);
+  color: rgb(91, 33, 182);
+}
 
 @media (prefers-reduced-motion: no-preference) {
   .wall.enter .note {
@@ -1103,6 +1438,214 @@ body {
 }
 .scroll-fab button + button {
   border-top: 1px solid var(--hair);
+}
+
+/* ─── 彈幕（Danmaku）────────────────────────────────────────────────
+   搬自 C:\question\multi\DanmakuSystem.js 的問答遊戲彈幕——文字從畫面右側
+   橫向捲動到左側，4 車道防重疊。z-index 特意壓在 .scrim（100）之下：對話框
+   開著時彈幕跟輸入按鈕會被蓋住、按不到，不用另外寫邏輯去藏它。
+   `--dk-color`：每則彈幕自己的作者色（`colorForAuthor()`，同一人永遠同一
+   色），字級/內距也比第一版加大不少——原本偏小、每則顏色都一樣，同時發生
+   好幾則時分不出誰是誰，這組改完應該一眼就能分開認。 */
+.danmaku-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  overflow: hidden;
+}
+.danmaku-item {
+  --dk-color: var(--brass); /* JS 沒設到（理論上不會）時的保底色 */
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.42rem 1.15rem 0.42rem 0.55rem;
+  border-radius: 999px;
+  font-size: 1.32rem;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  border: 2px solid var(--dk-color);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--dk-color) 34%, transparent) 0%,
+    rgba(6, 4, 2, 0.82) 62%
+  );
+  box-shadow:
+    0 0 22px color-mix(in srgb, var(--dk-color) 55%, transparent),
+    0 3px 10px rgba(0, 0, 0, 0.6),
+    inset 0 0 16px color-mix(in srgb, var(--dk-color) 16%, transparent);
+  text-shadow:
+    0 0 10px color-mix(in srgb, var(--dk-color) 85%, transparent),
+    0 1px 4px rgba(0, 0, 0, 0.95);
+  will-change: transform, opacity; /* 同時好幾則在跑，提示瀏覽器提前合成這層，動畫更順 */
+}
+.danmaku-item-name {
+  font-size: 0.6em;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: var(--dk-color);
+  background: color-mix(in srgb, var(--dk-color) 24%, rgba(6, 4, 2, 0.6));
+  border: 1px solid color-mix(in srgb, var(--dk-color) 55%, transparent);
+  border-radius: 7px;
+  padding: 2px 8px;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--dk-color) 70%, transparent);
+}
+.danmaku-item-msg {
+  letter-spacing: 0.01em;
+}
+/* 暖機用的隱形假彈幕（見 DanmakuLayer.tsx）——永遠在畫面外，跑一次跟真的
+   彈幕一樣的樣式／動畫就自己移除，把「這組樣式第一次被瀏覽器處理」的
+   一次性成本移到頁面剛載入的時候，不要留到使用者發第一則真的彈幕才卡。 */
+.danmaku-warmup {
+  top: -9999px;
+  left: -9999px;
+  animation: dk-slide 0.05s linear 1 both;
+}
+/* 進場那一小段（0%→8%）用 per-keyframe 的 animation-timing-function 蓋掉
+   整體的 linear，做出「彈出」的效果；8% 之後恢復 linear 等速飄過——彈幕
+   好不好讀的關鍵是速度穩定，只有一開始那一下彈跳感，中段/結尾不能亂晃。 */
+@keyframes dk-slide {
+  0% {
+    animation-timing-function: cubic-bezier(0.22, 1.4, 0.4, 1);
+    transform: translateX(0) scale(0.78);
+    opacity: 0;
+  }
+  8% {
+    transform: translateX(calc(var(--dk-travel, -100vw) * 0.08)) scale(1);
+    opacity: 1;
+  }
+  85% {
+    transform: translateX(calc(var(--dk-travel, -100vw) * 0.85)) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(var(--dk-travel, -100vw)) scale(1);
+    opacity: 0;
+  }
+}
+
+/* 懸浮輸入——預設在左下角，跟右下角 .scroll-fab 對稱、不搶位置，但可以按住
+   拖曳到畫面任何地方（見 DanmakuLayer.tsx 的 pos state，位置用 inline style
+   的 left/top 或 left/bottom 蓋掉這裡的預設值）。點開才展開輸入框，桌面／
+   手機共用同一套（手機額外把觸控目標與展開寬度加大，見下面 media）。
+   `.expand-down`：拖到螢幕上半部時，輸入框改成往下展開（見下面），不然會
+   被螢幕上緣裁掉。 */
+.danmaku-dock {
+  position: fixed;
+  left: clamp(0.6rem, 2vw, 1.3rem);
+  bottom: clamp(0.6rem, 2vw, 1.3rem);
+  z-index: 91;
+  display: flex;
+  flex-direction: column-reverse; /* 預設：輸入框往上展開，懸浮鈕在下 */
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.danmaku-dock.expand-down {
+  flex-direction: column; /* 靠螢幕上半部：輸入框往下展開，懸浮鈕在上 */
+}
+.danmaku-fab {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  color: var(--ink);
+  box-shadow: var(--lift-2);
+  cursor: grab;
+  opacity: 0.7;
+  /* 觸控拖曳時不要讓瀏覽器把手勢吃去當成滾動頁面／縮放——Pointer Events
+     才能穩定收到每一個 move，不然手機上拖幾下就被系統手勢打斷。 */
+  touch-action: none;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
+}
+.danmaku-fab:active {
+  cursor: grabbing;
+}
+.danmaku-fab:hover,
+.danmaku-dock.open .danmaku-fab {
+  opacity: 1;
+}
+.danmaku-dock.open .danmaku-fab {
+  background: color-mix(in srgb, var(--brass) 18%, var(--panel));
+  border-color: var(--brass);
+}
+.danmaku-compose {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: var(--lift-2);
+  width: min(20rem, calc(100vw - 2.4rem));
+  animation: fade 0.15s ease;
+}
+.danmaku-compose input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.92rem;
+  padding: 0.35rem 0.6rem;
+}
+.danmaku-compose input:focus {
+  outline: none;
+}
+.danmaku-send-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 999px;
+  border: 0;
+  background: var(--brass);
+  color: #fff;
+  cursor: pointer;
+}
+.danmaku-send-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.danmaku-err {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  background: rgba(192, 57, 43, 0.14);
+  color: #c0392b;
+}
+@media (max-width: 640px) {
+  /* 手機：字級比桌面版縮一點（螢幕窄，太長的彈幕會佔掉太多寬度），但**不能
+     縮回原本那麼小**——太小辨識不出來是這次要修的問題，手機更該顧到。展開
+     的輸入框改成幾乎滿版（單手打字好按），懸浮鈕觸控目標加大一點。 */
+  .danmaku-item {
+    font-size: 1.12rem;
+    padding: 0.36rem 0.9rem 0.36rem 0.5rem;
+    max-width: 82vw;
+  }
+  .danmaku-compose {
+    width: calc(100vw - 2rem);
+  }
+  .danmaku-fab {
+    width: 3rem;
+    height: 3rem;
+  }
 }
 
 /* ─── dialog ────────────────────────────────────────────────────── */
@@ -1366,7 +1909,7 @@ body {
 }
 
 /* ─── theme toggle ──────────────────────────────────────────────────
-   放在第一排（生活／研究生 那排）最右邊——定位見上面 `.collection-row > .toggle`。
+   放在第一排（生活／研究生 那排）最右邊——定位見上面 `.collection-row > .tb-right`。
    窄畫面退回一般行內、靠右。 */
 .toggle {
   flex: none;
@@ -1386,7 +1929,7 @@ body {
 .toggle:hover { border-color: var(--brass); color: var(--ink); }
 @media (max-width: 640px) {
   .collection-row { padding-right: 0; }
-  .collection-row > .toggle { position: static; transform: none; margin-left: auto; }
+  .collection-row > .tb-right { position: static; transform: none; margin-left: auto; }
   .bar-row-find .field { flex-basis: 100%; }
 }
 .toggle:focus-visible {
@@ -1579,6 +2122,33 @@ body {
 .sheet.plain .form input:focus,
 .sheet.plain .form select:focus {
   border-color: var(--brass);
+}
+
+/* ─── 分享公網連結對話框（ShareLinkButton） ─────────────────────────── */
+.qr-box {
+  width: fit-content;
+  margin: 0.9rem auto 0.2rem;
+  padding: 10px;
+  background: #fff; /* QR 一律深色格子配白底，不隨主題 */
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  line-height: 0;
+}
+.qr-box img {
+  display: block;
+  width: 200px;
+  max-width: 60vw;
+  height: auto;
+}
+.sheet.plain .sheet-actions input[readonly] {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  font-size: 0.82rem;
 }
 /* .form label 平常用 --paper-ink（設計給淺色紙面）——非紙面的 .sheet.plain
    對話框在深色模式下 panel 是深的，深字疊深底整個看不到。改吃 --ink。
@@ -1851,6 +2421,30 @@ body {
   border-radius: 4px;
   background: color-mix(in srgb, #d9a441 18%, transparent);
   color: color-mix(in srgb, var(--ink) 80%, #7a4d00);
+}
+
+/* 編輯視窗的「這則剛被別人改／刪」提示——蓋在 .sheet 的紙色底上。 */
+.edit-warn {
+  margin: 0 0 0.9rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 5px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  background: color-mix(in srgb, #d9a441 22%, transparent);
+  color: color-mix(in srgb, var(--paper-ink, #3a2f1a) 88%, #6b3d00);
+}
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-left: 0.4rem;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-btn:hover {
+  opacity: 0.75;
 }
 
 /* 分段輸入：http:// 與 :11434 唯讀（灰底），中間 host 欄是唯一要動的，加藍框提示 */
@@ -2828,6 +3422,60 @@ select option {
   outline-offset: 2px;
 }
 
+/* ─── 「看板」固定網址 /card（components/CardScreen.tsx）─────────────────
+   給投影機／展示螢幕用：深色背景置中放大一張便利貼，換內容（後端 SSE 推播）
+   時淡入＋輕微位移。`.note` 內部間距／字級都是 rem（跟便利貼牆一致），所以
+   「放大」用 transform: scale() 整塊等比例放大，不是逐一改字級——這樣排版
+   （填空欄底線、待辦框、圖片比例…）維持一致，不會走樣。 */
+.card-screen {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(2rem, 6vw, 6rem);
+  box-sizing: border-box;
+  background: radial-gradient(ellipse at center, #2a2116 0%, #14100a 100%);
+}
+.card-screen-stage {
+  width: 26rem;
+  max-width: 90vw;
+  animation: card-screen-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes card-screen-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(14px);
+  }
+}
+@media (min-width: 900px) {
+  .card-screen-stage {
+    transform: scale(1.7);
+  }
+}
+@media (min-width: 1600px) {
+  .card-screen-stage {
+    transform: scale(2.3);
+  }
+}
+.card-screen-stage .note {
+  cursor: default;
+}
+.card-screen-stage .note:hover {
+  transform: rotate(var(--rot)); /* 展示用，不要牆上那個 hover 放大微傾的效果 */
+}
+.card-screen-empty {
+  color: #cbbfa6;
+}
+.card-screen-hint {
+  font-size: 1.4rem;
+  text-align: center;
+  line-height: 1.8;
+  opacity: 0.8;
+}
+
 /* ─── 區網共用模式的密碼牆（components/PasswordGate.tsx）─────────────── */
 .pw-gate {
   min-height: 100vh;
@@ -2852,6 +3500,42 @@ select option {
   font-size: 1.5rem;
   color: var(--ink);
 }
+/* host 的登入畫面 3D logo（LoginLogo3D.tsx）——正方形視窗，置中，跟卡片一樣
+   圓角，深色底讓模型輪廓／光澤比較看得出來，不管淺色/深色主題都一致（logo
+   本身的發光/材質質感在亮底上反而不明顯）。 */
+.login-logo-3d {
+  position: relative;
+  align-self: center;
+  width: min(11rem, 60vw);
+  aspect-ratio: 1;
+  margin-bottom: 0.2rem;
+}
+.login-logo-3d-canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 38%, #1c2430 0%, #0c1017 78%);
+  box-shadow:
+    0 0 0 1px var(--hair),
+    0 10px 26px -14px rgba(0, 0, 0, 0.6);
+}
+.login-logo-3d-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.login-logo-3d-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  font-size: 0.72rem;
+  text-align: center;
+  padding: 0 0.5rem;
+  pointer-events: none;
+}
 .pw-card .dim {
   margin: 0;
   font-size: 0.9rem;
@@ -2875,4 +3559,81 @@ select option {
 }
 .pw-card .err {
   margin: 0;
+}
+.pw-card .pw-hint {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  margin-top: -0.3rem;
+}
+/* PIN 遺失無法自救的警告——比一般 .pw-hint 更顯眼一點，但不到 .err 那種
+   紅色（還沒真的出錯，是設定前的提醒）。 */
+.pw-card .pw-hint-warn {
+  padding: 0.5rem 0.65rem;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--brass) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brass) 35%, transparent);
+  color: var(--ink);
+}
+.pw-card .pw-hint-warn b {
+  color: var(--brass);
+}
+
+/* ─── `/host` 管理頁（components/HostPanel.tsx）─────────────────────── */
+.host-panel {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: clamp(2rem, 6vw, 4rem) clamp(1.25rem, 5vw, 2rem) 4rem;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+.host-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--hair);
+}
+.host-section h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+}
+.host-people {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.host-people li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.host-people-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+.host-people-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+/* 訪客紀錄——「文字紀錄視窗」，一行一筆，固定高度自己捲動，不撐開整個
+   後台頁面（訪客一多，這份清單最多到 200 行）。 */
+.host-visits-log {
+  margin: 0.8rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.65;
+  max-height: 16rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
 }

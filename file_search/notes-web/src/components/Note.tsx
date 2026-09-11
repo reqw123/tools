@@ -6,6 +6,8 @@ import { dueLabel, dueStatus, seedOf, stamp, tiltOf, todoProgress } from '../lib
 import {
   useAppSettings, useReminderSettings, useSetNotePinned, useTagColors, useToggleNoteLine,
 } from '../hooks/useNotes'
+import { usePresence } from '../hooks/useActivity'
+import { displayAuthor } from '../lib/identity'
 import { Body } from './Body'
 
 const EDGE_MARGIN = 24 // 拖到離視窗邊緣多近算「要彈出去變懸浮視窗」
@@ -50,6 +52,11 @@ export function Note({
   const style = paperVars(note.tag, rot, index, tagColors, appSettings?.defaultNoteColor)
   const { data: reminderSettings } = useReminderSettings()
   const due = dueStatus(note.due_at, reminderSettings?.dueSoonHours)
+  // 「小明、小華正在編輯這則」——支援多人同時編輯同一則，不是只顯示一個人。
+  // presence 是所有卡片共用同一份 query 快取，不會 N 張卡各打一次 API。純提示，
+  // 晚一拍看到、或對方剛好關掉視窗還顯示一下都無妨。
+  const { data: presence } = usePresence()
+  const editingBy = [...new Set((presence?.[note.id] ?? []).map(displayAuthor))]
   const toggleLine = useToggleNoteLine()
   const setPinned = useSetNotePinned()
   // 待辦清單才畫勾／叉章：全部勾完＝綠色打勾，還有沒完成的＝紅色叉。
@@ -224,6 +231,11 @@ export function Note({
         </span>
       )}
       <h3>{note.title}</h3>
+      {editingBy.length > 0 && (
+        <p className="editing-badge" title={`${editingBy.join('、')} 正在編輯這則`}>
+          ✏️ {editingBy.join('、')} 編輯中
+        </p>
+      )}
       {/* 到期／重複提示緊貼標題下方——擺在內文後面的話，長內文會把它擠到
           看不到的地方（回報過）。寧可蓋住一點內文也要讓它一直看得見。 */}
       {due && (

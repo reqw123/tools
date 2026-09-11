@@ -1,22 +1,30 @@
 import Fastify from 'fastify'
 import fastifyStatic from '@fastify/static'
 import fastifyCookie from '@fastify/cookie'
-import { existsSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import {
+  imageMimeType,
   listNotes,
+  migrateLegacyDataLayout,
   noteImagesDir,
   notesFilePath,
   projectRoot,
   pruneTrash,
   setActiveCollection,
+  thesisImagesDir,
 } from './store'
 import { notesRoutes } from './notes'
 import { noteImageRoutes } from './note-image-routes'
 import { aiRoutes } from './ai-routes'
 import { filesRoutes } from './files-routes'
+import { eventsRoutes } from './events'
+import { activityRoutes } from './activity-routes'
+import { hostRoutes } from './host-routes'
 import {
   SHARE_MODE,
+  SHARE_WALL_URL,
+  WALL_PATH,
   assertShareConfig,
   collectionForRequest,
   lanAddresses,
@@ -48,7 +56,7 @@ if (SHARE_MODE === 'lan') {
 }
 
 // 前端靠這支決定要不要顯示密碼牆、隱藏哪些功能。不需驗證。
-app.get('/api/share-info', async () => shareInfoPayload())
+app.get('/api/share-info', async (req) => shareInfoPayload(req))
 
 // 「研究生模式」——前端在每個 /api 請求帶 `x-note-collection: life|thesis`，
 // 這裡在請求一進來就設定好 store 這一輪要動哪一份便利貼（生活 or 論文專案）。
@@ -58,9 +66,27 @@ app.addHook('onRequest', async (req) => {
   setActiveCollection(collectionForRequest(req))
 })
 
+// 一次性資料搬家——研究生資料從論文專案資料夾搬進 indexes/.thesis/、共用牆
+// 的看板／身分／訪客紀錄從根目錄搬進 .share/（見 store.ts 開頭的說明）。
+// 要在任何路由掛上、任何人存取資料之前跑，只搬「新位置還沒有」的東西，
+// 已經搬過或新裝的環境呼叫了也不會做任何事。
+try {
+  migrateLegacyDataLayout()
+} catch (err) {
+  app.log.warn({ err }, '資料搬家檢查失敗（不影響啟動，舊資料還在原位置）')
+}
+
+// STICKY_NOTES_FILE 有設 = 這一輪是公用牆啟動器（改指到 public-wall-data/，
+// 見 scripts/share-serve.mjs／兩個 .bat）——跟桌面版是兩份完全獨立的資料，
+// 不要在 log 裡誤導成「共用這一份」。
+const usesCustomNotesFile = !!process.env.STICKY_NOTES_FILE
 app.log.info(`便利貼資料檔：${notesFilePath}`)
 if (existsSync(notesFilePath)) {
-  app.log.info(`目前 ${listNotes().length} 則（跟桌面版共用這一份，改動會互相看到）`)
+  app.log.info(
+    usesCustomNotesFile
+      ? `目前 ${listNotes().length} 則（這份跟桌面版／wallpaper-app 是分開的，互相看不到）`
+      : `目前 ${listNotes().length} 則（跟桌面版共用這一份，改動會互相看到）`,
+  )
   try {
     const n = pruneTrash() // 啟動時清一次垃圾桶（過期／超量的最舊那批永久刪）
     if (n > 0) app.log.info(`垃圾桶自動清理：永久刪除 ${n} 則`)
@@ -71,6 +97,9 @@ if (existsSync(notesFilePath)) {
   app.log.warn('資料檔還不存在——第一次新增便利貼時會建立')
 }
 
+await app.register(eventsRoutes, { prefix: '/api' })
+await app.register(activityRoutes, { prefix: '/api' })
+await app.register(hostRoutes, { prefix: '/api' })
 await app.register(notesRoutes, { prefix: '/api' })
 await app.register(noteImageRoutes, { prefix: '/api' })
 await app.register(aiRoutes, { prefix: '/api' })
@@ -78,11 +107,34 @@ await app.register(filesRoutes, { prefix: '/api' })
 
 // 便利貼插圖的靜態目錄——note.image 存的是檔名，前端用 /note-images/<檔名> 取。
 // decorateReply:false：下面 prod 的 dist 靜態要用 reply.sendFile，裝飾器只能加一次。
+// 這是**生活便利貼**的圖，@fastify/static 的 root 在這裡就固定死了——生活牆
+// 的圖片資料夾（indexes/ 或 public-wall-data/ 底下）本來就不會在執行期改變，
+// 綁死沒問題。
 if (!existsSync(noteImagesDir)) mkdirSync(noteImagesDir, { recursive: true })
 await app.register(fastifyStatic, {
   root: noteImagesDir,
   prefix: '/note-images/',
   decorateReply: false,
+})
+
+// **研究生便利貼**的圖——不能比照上面用 @fastify/static：論文專案資料夾
+// （`thesisImagesDir()` 依賴的 `thesisProjectDir` 設定）可以在全域設定裡
+// 隨時改，但 @fastify/static 的 root 是註冊當下就固定的，改了設定也不會
+// 跟著換路徑。改用一般路由、每次請求當場重新算 `thesisImagesDir()`，才會
+// 跟著最新設定走。前端 `noteImageUrl()` 依目前作用中的集合決定要打
+// `/note-images/` 還是這裡。
+app.get<{ Params: { filename: string } }>('/thesis-note-images/:filename', async (req, reply) => {
+  const safe = basename(req.params.filename) // 擋掉 ../ 之類的路徑穿越
+  const path = join(thesisImagesDir(), safe)
+  let st
+  try {
+    st = statSync(path)
+  } catch {
+    return reply.code(404).send({ error: '找不到圖片' })
+  }
+  if (!st.isFile()) return reply.code(404).send({ error: '找不到圖片' })
+  reply.type(imageMimeType(safe))
+  return reply.send(createReadStream(path))
 })
 
 // 正式環境：同一個 server 也負責吐 vite build 出來的前端。
@@ -101,12 +153,21 @@ app
     app.log.info(`API listening on http://localhost:${PORT}`)
     if (SHARE_MODE === 'lan') {
       // ASCII only：這段是使用者要照著唸給別人的網址，會出現在 .bat 主控台。
-      const urls = lanAddresses().map((ip) => `    http://${ip}:${PORT}`)
+      // 根路徑 `/` 什麼都不畫（見 main.tsx）——一定要帶 WALL_PATH 才進得去牆。
+      const urls = lanAddresses().map((ip) => `    http://${ip}:${PORT}${WALL_PATH}`)
       app.log.info(
         `\n  LAN share URL (give this to other people on your Wi-Fi/LAN):\n` +
           `${urls.join('\n') || '    (no LAN address found)'}\n` +
           `  If Windows Firewall asks, choose "Allow access".`,
       )
+      if (SHARE_WALL_URL) {
+        // ASCII only: this prints to the user-visible .bat console.
+        app.log.info(
+          `\n  PUBLIC share URL (ngrok - works from anywhere on the internet):\n` +
+            `    ${SHARE_WALL_URL}\n` +
+            `  First visit on each device shows an ngrok page - click "Visit Site".`,
+        )
+      }
     }
   })
   .catch((err) => {

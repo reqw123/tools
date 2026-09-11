@@ -1,4 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { logActivity } from './activity'
+import { authorFrom } from './identity'
 import {
   advanceRepeat,
   clearTagColor,
@@ -135,6 +137,14 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       tagSort?: { mode?: 'count' | 'manual' | 'recent'; order?: string[] }
       defaultNoteColor?: string
       wall?: {
+        noteSort?:
+          | 'auto'
+          | 'tag-band'
+          | 'newest'
+          | 'oldest'
+          | 'title'
+          | 'todo-most'
+          | 'todo-least'
         minColWidth?: number
         masonry?: boolean
         tagAxis?: 'vertical' | 'horizontal'
@@ -179,6 +189,10 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
               type: 'object',
               additionalProperties: false,
               properties: {
+                noteSort: {
+                  type: 'string',
+                  enum: ['auto', 'tag-band', 'newest', 'oldest', 'title', 'todo-most', 'todo-least'],
+                },
                 minColWidth: { type: 'number', minimum: 160, maximum: 520 },
                 masonry: { type: 'boolean' },
                 tagAxis: { type: 'string', enum: ['vertical', 'horizontal'] },
@@ -241,6 +255,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
         due_at: req.body.due_at,
         repeat: req.body.repeat,
       })
+      logActivity({ action: 'create', noteId: note.id, title: note.title, author: authorFrom(req) })
       return reply.code(201).send({ note })
     },
   )
@@ -257,13 +272,16 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       }
       const note = updateNote(req.params.id, req.body)
       if (!note) return reply.code(404).send({ error: 'not found' })
+      logActivity({ action: 'update', noteId: note.id, title: note.title, author: authorFrom(req) })
       return { note }
     },
   )
 
   app.delete<{ Params: { id: string } }>('/notes/:id', async (req, reply) => {
+    const title = getNote(req.params.id)?.title ?? ''
     const ok = deleteNote(req.params.id)
     if (!ok) return reply.code(404).send({ error: 'not found' })
+    logActivity({ action: 'delete', noteId: req.params.id, title, author: authorFrom(req) })
     return reply.code(204).send()
   })
 
@@ -327,6 +345,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
   app.post<{ Params: { id: string } }>('/notes/trash/:id/restore', async (req, reply) => {
     const note = restoreNote(req.params.id)
     if (!note) return reply.code(404).send({ error: 'not found' })
+    logActivity({ action: 'restore', noteId: note.id, title: note.title, author: authorFrom(req) })
     return { note }
   })
 
@@ -406,7 +425,14 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
         },
       },
     },
-    async (req) => ({ deleted: deleteNotes(req.body.ids ?? []) }),
+    async (req) => {
+      const ids = req.body.ids ?? []
+      const deleted = deleteNotes(ids)
+      if (deleted > 0) {
+        logActivity({ action: 'bulk-delete', title: `${deleted} 則`, count: deleted, author: authorFrom(req) })
+      }
+      return { deleted }
+    },
   )
 
   // ── 匯出／匯入（搬家／備份用，JSON，跟桌面版格式互通）──────────────

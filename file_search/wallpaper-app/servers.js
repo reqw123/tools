@@ -111,7 +111,10 @@ async function restartAll(onLog) {
 
 function urlFor(key, opts) {
   const q = new URLSearchParams({ surface: 'desktop', wall: String(opts.wallOpacity) });
-  return `http://127.0.0.1:${WEBS[key].port}/?${q.toString()}`;
+  // sticky（便利貼）的根路徑 `/` 現在什麼都不畫（見 notes-web/src/main.tsx）——
+  // 一定要帶 /wall 才進得去主牆。files-web（index）沒有這個限制，維持根路徑。
+  const path = key === 'sticky' ? '/wall' : '/';
+  return `http://127.0.0.1:${WEBS[key].port}${path}?${q.toString()}`;
 }
 
 function killAll() {

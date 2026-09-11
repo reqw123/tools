@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { REPEAT_LABELS, type NoteInput, type TagColors } from '../lib/api'
 import { colorForTag } from '../lib/color'
@@ -25,9 +25,12 @@ export function NoteForm({
   submitLabel: string
   submitting: boolean
   serverError?: string
-  onSubmit: (input: NoteInput) => void
+  /** 編輯時 input 只帶「跟開啟當下相比真的改過」的欄位（多人共用：別人同時改
+   *  同一則的其他欄位就不會被蓋掉，server 端 updateNote 逐欄 merge）。新增時帶滿。 */
+  onSubmit: (input: Partial<NoteInput>) => void
   onCancel: () => void
 }) {
+  const isNew = !initial
   const [title, setTitle] = useState(initial?.title ?? '')
   const [tag, setTag] = useState(initial?.tag ?? defaultTag ?? '')
   const [body, setBody] = useState(initial?.body ?? '')
@@ -35,6 +38,20 @@ export function NoteForm({
   const [dueTime, setDueTime] = useState(timeFromStoredDueAt(initial?.due_at ?? ''))
   const [repeat, setRepeat] = useState(initial?.repeat ?? '')
   const [touched, setTouched] = useState(false)
+
+  // 開啟當下的原始值——送出時比對，只送改過的欄位。跟上面各 state 的初值一致。
+  const baseline = useMemo<NoteInput>(
+    () => ({
+      title: initial?.title ?? '',
+      tag: initial?.tag ?? defaultTag ?? '',
+      body: initial?.body ?? '',
+      due_at: initial?.due_at ?? '',
+      repeat: initial?.repeat ?? '',
+    }),
+    // 只在掛載時算一次；prop 之後變了也不動（那是「別人改的」，不該當成 baseline）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   const titleError = touched && !title.trim() ? '標題不能留空' : ''
 
@@ -93,13 +110,23 @@ export function NoteForm({
         e.preventDefault()
         setTouched(true)
         if (!title.trim()) return
-        onSubmit({
+        const full: NoteInput = {
           title: title.trim(),
           tag: tag.trim(),
           body,
           due_at: toStoredDueAt(dueDate, dueTime),
           repeat: dueDate ? repeat : '', // 沒有到期日就沒有「重複」概念
-        })
+        }
+        if (isNew) {
+          onSubmit(full)
+          return
+        }
+        // 編輯：只送改過的欄位
+        const patch: Partial<NoteInput> = {}
+        for (const k of ['title', 'tag', 'body', 'due_at', 'repeat'] as const) {
+          if (full[k] !== baseline[k]) patch[k] = full[k]
+        }
+        onSubmit(patch)
       }}
     >
       <label>

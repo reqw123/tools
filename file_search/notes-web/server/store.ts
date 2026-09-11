@@ -13,10 +13,16 @@ import {
 import { homedir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import { dropThumbs } from './note-thumb'
+import { emitChange, topicForFile } from './change-bus'
 
 /**
- * 儲存層——**直接讀寫桌面版的 `indexes/.sticky_notes.json`**，網頁和 Tkinter
- * 桌面版共用同一份資料。格式跟 `sticky_note_repository.py` 一致：
+ * 儲存層——**預設直接讀寫桌面版的 `indexes/.sticky_notes.json`**，網頁和
+ * Tkinter 桌面版共用同一份資料（個人用途：`npm run dev`／wallpaper-app 的
+ * 桌面透明板都是這個預設值）。路徑可用 `STICKY_NOTES_FILE` 環境變數整個換掉
+ * ——**公用牆啟動器（`scripts/share-serve.mjs`、兩個「啟動-*便利貼牆*.bat」）
+ * 就是這樣做的**，換成 `public-wall-data/.sticky_notes.json`，讓公用牆有自己
+ * 獨立一份，跟桌面版／wallpaper-app 完全不共用、不互相覆蓋（見這些啟動器的
+ * 註解）。格式跟 `sticky_note_repository.py` 一致：
  *
  *   { "notes": [ { id, title, body, tag, image, due_at, created_at }, ... ],
  *     "trash": [ { ...同上欄位, deleted_at }, ... ],
@@ -91,9 +97,19 @@ export function getActiveCollection(): NoteCollection {
   return activeCollection
 }
 
+/** 研究生便利貼資料的家——**固定放在這個 app 自己的 `indexes/.thesis/`
+ *  底下**（生活牆是 `indexes/`、公用牆是 `public-wall-data/`，各自對應
+ *  `dirname(LIFE_FILE)`）。2026-09 改：以前跟著 `thesisProjectDir` 設定放進
+ *  論文專案資料夾（會被那個專案自己的版控一起追蹤，使用者明確要求「不要再
+ *  跟著專案資料夾」），現在固定在這裡，不隨 `thesisProjectDir` 改變而搬家；
+ *  `thesisProjectDir` 這個設定還在，但現在只給「從專案生成」讀論文文件用，
+ *  見 `AppSettings.thesisProjectDir` 的說明。首次啟動時 `migrateLegacyThesisData()`
+ *  會把舊位置（論文專案資料夾底下）已經有的資料搬過來一次。 */
+function thesisDataDir(): string {
+  return join(dirname(LIFE_FILE), '.thesis')
+}
 function thesisNotesFile(): string {
-  const dir = process.env.THESIS_NOTES_DIR || getAppSettings().thesisProjectDir || 'C:\\ai_project'
-  return join(dir, '.thesis_notes.json')
+  return join(thesisDataDir(), 'notes.json')
 }
 
 /** 目前作用中的便利貼 JSON 路徑。 */
@@ -106,15 +122,78 @@ function historyDir(): string {
   return join(dirname(f), `${basename(f, '.json')}_history`)
 }
 
+/** 標籤自訂顏色檔——生活牆固定放 `indexes/.sticky_tag_colors.json`（跟桌面版
+ *  共用，路徑不能動）；研究生牆放進上面的 `.thesis/` 底下，跟研究生便利貼
+ *  JSON 同一個家。 */
 function tagColorsFile(): string {
   return activeCollection === 'thesis'
-    ? join(dirname(activeNotesFile()), '.thesis_tag_colors.json')
+    ? join(thesisDataDir(), 'tag_colors.json')
     : join(dirname(LIFE_FILE), '.sticky_tag_colors.json')
 }
 
-/** 便利貼插圖放這裡——生活／研究生共用同一個資料夾（檔名是 uuid，不會撞），
- *  靜態路由在 index.ts 啟動時就綁死這個 root。前端用 `/note-images/<檔名>` 取。 */
+/** 生活便利貼插圖放這裡；靜態路由在 index.ts 啟動時就綁死這個 root，前端用
+ *  `/note-images/<檔名>` 取。**跟桌面版共用，路徑固定不能動**。研究生便利貼
+ *  插圖不在這裡——見下面 `thesisImagesDir()`／`activeImagesDir()`。 */
 export const noteImagesDir = join(dirname(LIFE_FILE), '.sticky_note_images')
+
+/** 研究生便利貼插圖資料夾——跟研究生便利貼 JSON 放在同一個 `.thesis/` 底下
+ *  （跟生活牆「圖片放在便利貼 JSON 同一層」同一個原則）。因為 `.thesis/` 本身
+ *  是固定路徑（見上面 `thesisDataDir()`），這裡改回常數也可以，但保留函式
+ *  形式是為了跟 `activeImagesDir()` 的呼叫慣例一致、也留一點彈性給以後真的
+ *  需要動態化的情況。沒辦法比照生活牆用 `@fastify/static` 綁死一個 root
+ *  （那支是給生活牆用的，這裡另外走 index.ts 的 `GET /thesis-note-images/:filename`
+ *  動態路由，理由見那支路由的註解）。 */
+export function thesisImagesDir(): string {
+  return join(thesisDataDir(), 'images')
+}
+
+/** 這一個 request 現在該讀寫哪個插圖資料夾——寫入／刪除／匯出匯入圖片的
+ *  路由都呼叫這個，不要直接用 `noteImagesDir`（那個永遠是生活牆那份）。 */
+export function activeImagesDir(): string {
+  return activeCollection === 'thesis' ? thesisImagesDir() : noteImagesDir
+}
+
+/**
+ * 一次性資料搬家——server 啟動時呼叫一次（見 `index.ts`），跟 `pruneTrash()`
+ * 同一種「啟動時順便做一次」的位置。只搬「新位置還沒有」的東西，不會覆蓋、
+ * 不會重複搬；找不到舊資料就安靜跳過（新裝的、或早就搬過了）。單一檔案搬
+ * 失敗（例如被別的行程鎖住）不擋 server 啟動，那份資料留在舊位置，下次啟動
+ * 再試一次，不會憑空消失。
+ *
+ * 兩批：
+ * 1. **研究生資料**：舊位置是論文專案資料夾（`thesisProjectDir` 設定／
+ *    `THESIS_NOTES_DIR` 環境變數，兩者都沒有就當 `C:\ai_project`，對齊舊版
+ *    `thesisNotesFile()` 的預設值），新位置是 `thesisDataDir()`
+ *    （`indexes/.thesis/` 或公用牆的 `public-wall-data/.thesis/`）。順便收掉
+ *    2026-09 稍早那次搬家留下的中繼位置（`.thesis_tag_colors.json` 曾經單獨
+ *    搬到 `dirname(LIFE_FILE)` 根目錄，這裡一起併進 `.thesis/`）。
+ * 2. **共用牆持久狀態**（看板／身分／訪客紀錄）：舊位置是 `dirname(LIFE_FILE)`
+ *    根目錄下的 `.sticky_wall_*.json`，新位置是同一層的 `.share/` 資料夾——
+ *    這三個檔案是純 notes-web 概念，桌面版不會讀，搬家/改名不影響共用相容性。
+ */
+export function migrateLegacyDataLayout(): void {
+  const moveIfMissing = (from: string, to: string): void => {
+    if (existsSync(to) || !existsSync(from)) return
+    try {
+      mkdirSync(dirname(to), { recursive: true })
+      renameSync(from, to)
+    } catch (err) {
+      console.error(`[migrate] 搬移「${from}」→「${to}」失敗，留在原位置：`, err)
+    }
+  }
+
+  const newThesisDir = thesisDataDir()
+  const oldProjectDir = process.env.THESIS_NOTES_DIR || getAppSettings().thesisProjectDir || 'C:\\ai_project'
+  moveIfMissing(join(oldProjectDir, '.thesis_notes.json'), join(newThesisDir, 'notes.json'))
+  moveIfMissing(join(oldProjectDir, '.thesis_notes_history'), join(newThesisDir, 'notes_history'))
+  moveIfMissing(join(oldProjectDir, '.thesis_note_images'), join(newThesisDir, 'images'))
+  moveIfMissing(join(dirname(LIFE_FILE), '.thesis_tag_colors.json'), join(newThesisDir, 'tag_colors.json'))
+
+  const shareDir = join(dirname(LIFE_FILE), '.share')
+  moveIfMissing(join(dirname(LIFE_FILE), '.sticky_wall_card.json'), join(shareDir, 'card.json'))
+  moveIfMissing(join(dirname(LIFE_FILE), '.sticky_wall_people.json'), join(shareDir, 'people.json'))
+  moveIfMissing(join(dirname(LIFE_FILE), '.sticky_wall_visits.json'), join(shareDir, 'visits.json'))
+}
 
 interface RawFile {
   notes: unknown[]
@@ -154,6 +233,8 @@ function atomicWriteFile(target: string, text: string): void {
   try {
     writeFileSync(tmp, text, 'utf-8')
     renameSync(tmp, target)
+    const topic = topicForFile(target)
+    if (topic) emitChange(topic) // SSE 即時同步：不必等 fs.watch
   } catch (err) {
     try {
       rmSync(tmp, { force: true })
@@ -326,19 +407,22 @@ function serializeTrashed(t: TrashedNote): Record<string, unknown> {
 
 /** 刪掉一張插圖檔——檔名可能已經不在了（手動刪過、或從沒存成功），忽略。
  *  只有「垃圾桶永久刪除」才會呼叫這個；一般的 deleteNote/deleteNotes 現在
- *  只是把便利貼搬進垃圾桶，圖片要留著，復原時才用得到。 */
+ *  只是把便利貼搬進垃圾桶，圖片要留著，復原時才用得到。**吃 `activeImagesDir()`
+ *  不是 `noteImagesDir`**——呼叫端都在 request 內、`activeCollection` 已經
+ *  設好，研究生便利貼的圖片要清也要清到它自己那份資料夾，不是生活牆那份。 */
 function unlinkImage(image: string): void {
   if (!image) return
   try {
-    rmSync(join(noteImagesDir, image), { force: true })
+    rmSync(join(activeImagesDir(), image), { force: true })
   } catch {
     /* 檔案系統層級的問題不該擋住便利貼本身的刪除 */
   }
-  dropThumbs(image) // 一併清掉牆用的快取縮圖（見 note-thumb.ts）
+  dropThumbs(image, activeImagesDir()) // 一併清掉牆用的快取縮圖（見 note-thumb.ts）
 }
 
 // 匯出/匯入內嵌插圖用——常見圖片副檔名 → MIME type，涵蓋範圍跟前端
-// FileBrowser/scanFolder 的圖片類別一致，不需要額外套件做完整偵測。
+// FileBrowser/scanFolder 的圖片類別一致，不需要額外套件做完整偵測。也給
+// index.ts 的 `/thesis-note-images/:filename` 動態路由決定 Content-Type 用。
 const IMAGE_MIME: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -348,13 +432,18 @@ const IMAGE_MIME: Record<string, string> = {
   '.bmp': 'image/bmp',
 }
 
+export function imageMimeType(filename: string): string {
+  return IMAGE_MIME[extname(filename).toLowerCase()] ?? 'application/octet-stream'
+}
+
 /** 讀插圖檔案、編成 `data:<mime>;base64,...`——讀不到（檔案不存在、權限
- *  問題）就回 undefined，呼叫端當作「這筆沒有可內嵌的圖」處理。 */
+ *  問題）就回 undefined，呼叫端當作「這筆沒有可內嵌的圖」處理。從
+ *  `activeImagesDir()` 讀，匯出研究生便利貼時才會抓到研究生那份圖片，不是
+ *  生活牆的。 */
 function readImageDataUri(filename: string): string | undefined {
   try {
-    const buf = readFileSync(join(noteImagesDir, filename))
-    const mime = IMAGE_MIME[extname(filename).toLowerCase()] ?? 'application/octet-stream'
-    return `data:${mime};base64,${buf.toString('base64')}`
+    const buf = readFileSync(join(activeImagesDir(), filename))
+    return `data:${imageMimeType(filename)};base64,${buf.toString('base64')}`
   } catch {
     return undefined
   }
@@ -362,15 +451,16 @@ function readImageDataUri(filename: string): string | undefined {
 
 /** `readImageDataUri()` 的反向操作——解出 base64 內容寫回插圖資料夾。目標
  *  檔名已經存在，或 data URI 格式不對／解碼失敗，都安靜跳過（筆記本身照常
- *  匯入，只是插圖沿用本機既有的，或維持沒有圖）。 */
+ *  匯入，只是插圖沿用本機既有的，或維持沒有圖）。同樣寫進 `activeImagesDir()`。 */
 function writeImageDataUri(filename: string, dataUri: string): void {
-  const target = join(noteImagesDir, filename)
+  const dir = activeImagesDir()
+  const target = join(dir, filename)
   if (existsSync(target)) return
   const comma = dataUri.indexOf(',')
   if (comma < 0) return
   try {
     const buf = Buffer.from(dataUri.slice(comma + 1), 'base64')
-    if (!existsSync(noteImagesDir)) mkdirSync(noteImagesDir, { recursive: true })
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     writeFileSync(target, buf)
   } catch {
     /* 壞掉的 base64 就不寫，筆記本身照常匯入 */
@@ -1006,7 +1096,29 @@ export interface TagSortPref {
   order: string[]
 }
 
+/** 牆面排序方式——跟前端 `lib/noteSort.ts` 的 NoteSort 一致。放進共用設定後，
+ *  多人共用時「A 換排序 → B 的牆也跟著換」。單機時行為不變（照樣記著）。 */
+export const NOTE_SORT_VALUES = new Set([
+  'auto',
+  'tag-band',
+  'newest',
+  'oldest',
+  'title',
+  'todo-most',
+  'todo-least',
+])
+export type NoteSort =
+  | 'auto'
+  | 'tag-band'
+  | 'newest'
+  | 'oldest'
+  | 'title'
+  | 'todo-most'
+  | 'todo-least'
+
 export interface WallPref {
+  /** 牆面排序下拉目前選的值（釘選永遠最前；「只看快到期」「AI/語意」時另有覆蓋）。 */
+  noteSort: NoteSort
   /** 一欄至少多寬（px）才多開一欄。 */
   minColWidth: number
   /** false＝關掉 JS 動態 masonry，用單純等寬格線。 */
@@ -1062,8 +1174,11 @@ export interface AppSettings {
   trashRetentionDays: number
   /** 垃圾桶最多留幾則，超過從最舊的清起。0＝不限筆數。 */
   trashMaxCount: number
-  /** 「研究生模式」的論文專案資料夾——研究生便利貼存在
-   *  `<thesisProjectDir>/.thesis_notes.json`，「從專案生成」也讀這裡的文件。 */
+  /** 「研究生模式」的論文專案資料夾——**只給「從專案生成」讀這裡的文件用**。
+   *  研究生便利貼資料本身 2026-09 起不再存在這裡（改成固定放在
+   *  `indexes/.thesis/`，見 `thesisNotesFile()`／`migrateLegacyThesisData()`），
+   *  這個設定純粹是「AI 生成便利貼時去哪個資料夾找論文文件」，跟資料存放
+   *  位置已經無關。 */
   thesisProjectDir: string
   /** 「從專案生成」每個檔案最多讀多少字餵給 AI（越大 = 內容越完整但越吃
    *  token / 越慢，小模型可能塞爆）。 */
@@ -1141,6 +1256,7 @@ function coerceAppSettings(data: unknown): AppSettings {
         ? o.defaultNoteColor.toLowerCase()
         : DEFAULT_NOTE_COLOR,
     wall: {
+      noteSort: NOTE_SORT_VALUES.has(w.noteSort as string) ? (w.noteSort as NoteSort) : 'auto',
       minColWidth,
       masonry: typeof w.masonry === 'boolean' ? w.masonry : true,
       tagAxis: w.tagAxis === 'horizontal' ? 'horizontal' : 'vertical',

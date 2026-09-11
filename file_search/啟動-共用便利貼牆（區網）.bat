@@ -54,12 +54,17 @@ REM Remote users cannot use AI by default (spends your quota / hits your Ollama)
 REM Change to on to allow it:
 set SHARE_AI=off
 set NODE_ENV=production
-set API_PORT=8787
+REM Different port than wallpaper-app's personal wall (8787) so both can run
+REM at once. Different data file too - this wall is SEPARATE from your
+REM desktop / wallpaper-app notes, never shared, never overwritten by either side.
+set API_PORT=8790
+if not defined STICKY_NOTES_FILE set "STICKY_NOTES_FILE=%~dp0notes-web\public-wall-data\.sticky_notes.json"
 
 echo.
 echo ============================================================
 echo   Started.
-echo     You:          http://localhost:8787   (no password)
+echo     This wall is SEPARATE from your desktop / wallpaper-app notes.
+echo     You:          http://localhost:8790/wall   (no password)
 echo     Other people: use the "LAN share URL" the server prints
 echo                   below - they must be on the same Wi-Fi/LAN.
 echo   If Windows Firewall asks, choose "Allow access".

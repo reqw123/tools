@@ -1,14 +1,9 @@
-import type { Note } from './api'
+import type { Note, NoteSort } from './api'
 import { todoProgress } from './format'
 
-export type NoteSort =
-  | 'auto'
-  | 'newest'
-  | 'oldest'
-  | 'title'
-  | 'todo-most'
-  | 'todo-least'
-  | 'tag-band'
+// NoteSort 現在是共用設定（AppSettings.wall.noteSort）的一部分，型別定義搬到
+// api.ts 當資料契約；這裡只留 UI 標籤與排序邏輯。
+export type { NoteSort }
 
 export const NOTE_SORTS: { id: NoteSort; label: string }[] = [
   // 「不指定」＝交給牆面自己安排：「看全部」時依分類分區（外觀設定的直向／
@@ -25,24 +20,26 @@ export const NOTE_SORTS: { id: NoteSort; label: string }[] = [
   { id: 'todo-least', label: '未完成待辦最少（限有待辦的）' },
 ]
 
-const KEY = 'sticky-wall-note-sort'
+// 舊版把排序存在這個 localStorage key；現在改存伺服器共用設定。App 啟動時做
+// 一次性搬移（見 App.tsx），搬完就清掉。
+const LEGACY_KEY = 'sticky-wall-note-sort'
 
-export function readNoteSort(): NoteSort {
+/** 舊 localStorage 裡的排序值（一次性搬移用）；沒有或不認得回 null。 */
+export function readLegacyNoteSort(): NoteSort | null {
   try {
-    const v = localStorage.getItem(KEY)
-    if (NOTE_SORTS.some((s) => s.id === v)) return v as NoteSort
+    const v = localStorage.getItem(LEGACY_KEY)
+    if (v && NOTE_SORTS.some((s) => s.id === v)) return v as NoteSort
   } catch {
     /* private mode */
   }
-  // 沒存過＝從來沒動過這個下拉：維持原本「看全部依分類分區」的樣子。
-  return 'auto'
+  return null
 }
 
-export function saveNoteSort(v: NoteSort): void {
+export function clearLegacyNoteSort(): void {
   try {
-    localStorage.setItem(KEY, v)
+    localStorage.removeItem(LEGACY_KEY)
   } catch {
-    /* private mode */
+    /* ignore */
   }
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   APP_SETTINGS_KEY,
   mergeAppSettings,
@@ -7,7 +7,9 @@ import {
   usePatchAppSettings,
 } from '../hooks/useNotes'
 import { useOllamaModels } from '../hooks/useAi'
-import type { AppSettings } from '../lib/api'
+import { session, type AppSettings } from '../lib/api'
+import { readAuthorName, saveAuthorName } from '../lib/identity'
+import { useShareInfo } from '../hooks/useShareInfo'
 
 const DEFAULT_NOTE_COLOR = '#e5e7eb'
 const DEFAULT_EMBED_MODEL = 'bge-m3'
@@ -18,6 +20,10 @@ export function AppearanceSettings() {
   const { data: settings } = useAppSettings()
   const patch = usePatchAppSettings()
   const qc = useQueryClient()
+  const isShare = useShareInfo().mode === 'lan'
+  const { data: sessionInfo } = useQuery({ queryKey: ['session'], queryFn: session.check, enabled: isShare })
+  const verifiedName = sessionInfo?.name ?? null
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
 
   // 顏色：拖曳中只更新本地快取做即時預覽（牆面同步變），真正送出等失焦／關閉
   // ——同 NoteForm 的標籤色票，避免對後端狂送 PATCH、狂重寫設定檔。
@@ -65,6 +71,38 @@ export function AppearanceSettings() {
 
   return (
     <div className="form appearance">
+      {isShare && (
+        <label>
+          你的名字
+          {verifiedName ? (
+            <>
+              <span className="hint">
+                已用 PIN 登入為「{verifiedName}」，鎖住改不了——右上角「分享」旁的動態面板
+                有「登出」，登出後重新走一次密碼牆才能換身分。
+              </span>
+              <input type="text" value={verifiedName} disabled />
+            </>
+          ) : (
+            <>
+              <span className="hint">
+                讓其他人看得出「誰新增/改/刪了什麼」（工具列「📋 動態」）。可留空＝匿名顯示
+                「有人」；想保護這個名字不被別人借用，下次連線時在密碼牆一起設 PIN。
+              </span>
+              <input
+                type="text"
+                maxLength={40}
+                placeholder="例如：小明"
+                value={nameDraft ?? readAuthorName()}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onBlur={() => {
+                  if (nameDraft !== null) saveAuthorName(nameDraft)
+                  setNameDraft(null)
+                }}
+              />
+            </>
+          )}
+        </label>
+      )}
       <label className="swatch-row">
         <span>
           預設便利貼顏色

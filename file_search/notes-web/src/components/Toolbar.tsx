@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
-  AlarmClock, ArrowDownUp, Bot, Columns3, CopyPlus, CornerDownLeft, FileCode2, GraduationCap,
-  HardDriveDownload, HardDriveUpload, History, Home, Plus, Recycle, Rows3, Search, Settings2,
-  Sparkles, Sprout, Tags, Trash2,
+  Activity, AlarmClock, ArrowDownUp, Bot, ChevronDown, ChevronUp, Columns3, CopyPlus,
+  CornerDownLeft, FileCode2, GraduationCap, HardDriveDownload, HardDriveUpload, History, Home,
+  Plus, Recycle, Rows3, Search, Settings2, Sparkles, Sprout, Tags, Trash2,
 } from 'lucide-react'
 import { NOTE_SORTS, type NoteSort } from '../lib/noteSort'
 import type { SettingsTab } from './GlobalSettingsDialog'
@@ -11,6 +11,7 @@ import type { NoteCollection } from '../lib/api'
 import type { TagCount } from './TagBar'
 import { TagBar } from './TagBar'
 import { ThemeToggle } from './ThemeToggle'
+import { ShareLinkButton } from './ShareLinkButton'
 
 /** 「語意」開關的即時狀態，給搜尋列底下那行揭露文字用。 */
 export type SemanticState =
@@ -54,6 +55,7 @@ export function Toolbar({
   onGenerateNotes,
   onTrash,
   onHistory,
+  onActivity,
   dueOnly,
   onToggleDueOnly,
   sortLocked,
@@ -62,6 +64,8 @@ export function Toolbar({
   onToggleTagAxis,
   shareMode = false,
   aiEnabled = true,
+  collapsed,
+  onToggleCollapsed,
 }: {
   query: string
   onQuery: (v: string) => void
@@ -101,6 +105,8 @@ export function Toolbar({
   onGenerateNotes: () => void
   onTrash: () => void
   onHistory: () => void
+  /** 「誰動了我的牆」動態列表——只有共用模式才顯示這顆鈕（見呼叫端）。 */
+  onActivity?: () => void
   dueOnly: boolean
   onToggleDueOnly: () => void
   /** 「同分類排列方向」——快捷切換，跟「全域設定 → 外觀」是同一個設定。 */
@@ -110,8 +116,12 @@ export function Toolbar({
   onToggleTagAxis: () => void
   /** 區網共用模式——隱藏會攤開 host 硬碟的「AI 生成便利貼」（選資料夾）。 */
   shareMode?: boolean
-  /** AI 搜尋／語意搜尋能不能用（共用模式且 SHARE_AI 關閉時為 false）。 */
+  /** AI 搜尋／語意搜尋能不能用（共用模式且 host 在 /host 關掉 AI 時為 false）。 */
   aiEnabled?: boolean
+  /** 上方面板（標題／簡介、集合分頁、搜尋排序新增、小按鈕列）收合中——手機
+   *  用，跟 App.tsx 的主標題共用同一個開關，見那邊的說明。 */
+  collapsed: boolean
+  onToggleCollapsed: () => void
 }) {
   // 動態排版關著時按了快捷切換 → 顯示一條提醒（幾秒後自己消失）。
   const [axisHint, setAxisHint] = useState(false)
@@ -133,6 +143,12 @@ export function Toolbar({
   return (
     <div className="bar">
       <div className="bar-inner">
+        {/* 整個上方面板（集合分頁／搜尋排序新增／小按鈕列）收合成一顆分界列
+            ——手機上這塊佔太多高度，捲動便利貼時容易不小心捲回這裡。CSS
+            grid-rows 0fr/1fr 收合，收合狀態由 App.tsx 提供，跟主標題/簡介
+            共用同一個開關，一起收合。 */}
+        <div className={`panel-collapse${collapsed ? ' collapsed' : ''}`}>
+          <div className="panel-collapse-inner">
         {/* 第一排：便利貼集合分頁（桌面牆才有）＋主題鈕（靠右） */}
         <div className="collection-row">
           {collection && (
@@ -160,7 +176,10 @@ export function Toolbar({
               )}
             </div>
           )}
-          <ThemeToggle />
+          <div className="tb-right">
+            <ShareLinkButton />
+            <ThemeToggle />
+          </div>
         </div>
 
         {/* 第二排：搜尋框（拉長填滿）→ 排序 → 新增便利貼，三者同高。 */}
@@ -234,7 +253,7 @@ export function Toolbar({
 
         {/* 第三排：所有工具鈕，統一尺寸的正方形圖示鈕。 */}
         <div className="bar-row bar-row-tools">
-          {aiEnabled && (
+          {aiEnabled ? (
             <>
               <button
                 className={`btn ghost icon${aiMode ? ' on' : ''}`}
@@ -253,6 +272,13 @@ export function Toolbar({
                 <Sprout size={16} strokeWidth={2.2} aria-hidden />
               </button>
             </>
+          ) : (
+            // 不只是把按鈕藏起來——host 在 /host 關掉遠端 AI 時，明講一句，別讓人
+            // 以為「怎麼搜尋不到答案」，見 host-routes.ts / share.ts 的 aiEnabled 開關。
+            <span className="ai-disabled-badge" title="host 在 /host 關掉了遠端 AI——AI 搜尋、AI 生成、語意搜尋都暫時用不了">
+              <Bot size={14} strokeWidth={2.2} aria-hidden />
+              AI 已停用
+            </span>
           )}
           <button
             className={`btn ghost icon${dueOnly ? ' on' : ''}`}
@@ -357,7 +383,40 @@ export function Toolbar({
           >
             <History size={15} strokeWidth={2.2} aria-hidden />
           </button>
+          {onActivity && (
+            <button
+              className="btn ghost icon"
+              onClick={onActivity}
+              title="動態——誰新增／改／刪了什麼（共用模式）"
+            >
+              <Activity size={15} strokeWidth={2.2} aria-hidden />
+            </button>
+          )}
+          </div>
+          </div>
         </div>
+
+        {/* 分界列——手機上這塊面板太高，捲動便利貼時容易不小心捲回這裡。這顆
+            負責收合/展開上面整塊（標題/簡介/統計、集合分頁、搜尋排序新增、
+            小按鈕列）。標籤列（下面）跟便利貼牆本身不受影響，永遠看得到。 */}
+        <button
+          type="button"
+          className="panel-collapse-handle"
+          onClick={onToggleCollapsed}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? (
+            <>
+              <ChevronDown size={15} strokeWidth={2.4} aria-hidden />
+              展開
+            </>
+          ) : (
+            <>
+              <ChevronUp size={15} strokeWidth={2.4} aria-hidden />
+              收合
+            </>
+          )}
+        </button>
 
         <TagBar tags={tags} active={tag} total={total} onPick={onTag} />
 

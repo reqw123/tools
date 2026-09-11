@@ -11,7 +11,7 @@ import { useAiSearch, useAiTarget, useSemanticSearch, useSemanticStatus } from '
 import { hasDesktopWall } from './lib/desktopWall'
 import { dueStatus } from './lib/format'
 import {
-  hasTodoItems, openTodoCount, readNoteSort, saveNoteSort, sortNotes, type NoteSort,
+  clearLegacyNoteSort, hasTodoItems, openTodoCount, readLegacyNoteSort, sortNotes, type NoteSort,
 } from './lib/noteSort'
 import { Toolbar } from './components/Toolbar'
 import { Wall } from './components/Wall'
@@ -27,11 +27,15 @@ import { ThesisSeedDialog } from './components/ThesisSeedDialog'
 import { ImportNotesDialog } from './components/ImportNotesDialog'
 import { TrashDialog } from './components/TrashDialog'
 import { HistoryDialog } from './components/HistoryDialog'
+import { ActivityDialog } from './components/ActivityDialog'
+import { ActivityTicker } from './components/ActivityTicker'
+import { DanmakuLayer } from './components/DanmakuLayer'
 import { ScrollButtons } from './components/ScrollButtons'
 import { downloadStickyNotesHtml } from './lib/exportHtml'
 import { downloadNotesJson } from './lib/exportJson'
 import { orderTags, tagRecency } from './lib/tagOrder'
 import { getDefaultTag, setDefaultTag } from './lib/defaultTag'
+import { getPanelCollapsed, setPanelCollapsed } from './lib/panelCollapse'
 import type { TagCount } from './components/TagBar'
 
 // wallpaper-app 重開時用 `?floated=<JSON 陣列>` 把「已經是懸浮視窗」的便利貼
@@ -58,30 +62,39 @@ interface AiResult {
 export function App() {
   const qc = useQueryClient()
   const { data: notes, isLoading, isError, error } = useNotes()
-  // 區網共用模式：遠端一律鎖生活牆、隱藏會攤開 host 硬碟的功能、依 SHARE_AI 決定 AI 可用性。
+  // 區網共用模式：遠端一律鎖生活牆、隱藏會攤開 host 硬碟的功能、AI 可用性依 host 在 /host 的即時開關。
   const share = useShareInfo()
   const isShare = share.mode === 'lan'
+  // **只限遠端**的收斂用這個，不是 isShare——loopback（host 自己的 wallpaper-app／
+  // 本機瀏覽器）不該被自己開的共用模式鎖住研究生模式／AI 生成便利貼這些功能，
+  // 跟後端 `collectionForRequest()`／`shareGuardHook` 的 loopback 豁免要一致。
+  // 之前這裡一律用 isShare，曾經害 host 自己在本機都看不到研究生模式。
+  const isRemoteShare = isShare && !share.loopback
+  // 上方面板收合（手機用）——主標題／簡介／統計＋工具列的三排全部收進一顆
+  // 分界列，手機捲動便利貼時才不會不小心捲回這一大塊。見 lib/panelCollapse.ts。
+  const [panelCollapsed, setPanelCollapsedState] = useState(getPanelCollapsed)
+  const togglePanelCollapsed = () => {
+    const next = !panelCollapsed
+    setPanelCollapsedState(next)
+    setPanelCollapsed(next)
+  }
   const [query, setQuery] = useState('')
   const [tag, setTag] = useState<string | null>(null)
-  const [noteSort, setNoteSort] = useState<NoteSort>(readNoteSort)
-  const changeNoteSort = useCallback((v: NoteSort) => {
-    setNoteSort(v)
-    saveNoteSort(v)
-  }, [])
   const [dialog, setDialog] = useState<DialogState>(null)
 
   // 「研究生模式」——整面牆換成論文專案專用的另一份便利貼（見 lib/api 的
   // x-note-collection）。只在桌面牆（wallpaper）出現；瀏覽器維持單純的生活牆。
-  // 區網共用模式下遠端一律鎖生活牆（研究生牆綁 host 的 C:\ai_project，是私人的）。
+  // 區網共用模式下**遠端**一律鎖生活牆（研究生牆綁 host 的 C:\ai_project，是私人
+  // 的）——host 自己（loopback）不受影響，見上面 isRemoteShare。
   const [collectionState, setCollection] = useState<NoteCollection>(getApiCollection)
-  const collection: NoteCollection = isShare ? 'life' : collectionState
+  const collection: NoteCollection = isRemoteShare ? 'life' : collectionState
   useEffect(() => {
-    if (isShare && getApiCollection() !== 'life') {
+    if (isRemoteShare && getApiCollection() !== 'life') {
       setApiCollection('life')
       setCollection('life')
       qc.removeQueries()
     }
-  }, [isShare, qc])
+  }, [isRemoteShare, qc])
   const switchCollection = useCallback(
     (c: NoteCollection) => {
       if (c === getApiCollection()) return
@@ -109,6 +122,22 @@ export function App() {
     () => appSettings?.tagSort ?? { mode: 'count' as const, order: [] },
     [appSettings],
   )
+  // 牆面排序——現在存在共用設定裡（多人共用時會同步），不再是本機 localStorage。
+  const noteSort: NoteSort = appSettings?.wall.noteSort ?? 'auto'
+  const changeNoteSort = useCallback(
+    (v: NoteSort) => patchAppSettings.mutate({ wall: { noteSort: v } }),
+    [patchAppSettings],
+  )
+  // 舊版把排序存在 localStorage——單機使用者升級後搬一次進共用設定，然後清掉。
+  // 共用模式不搬（某人以前單機用的偏好不該蓋掉整面牆的排序）。
+  useEffect(() => {
+    if (!appSettings || isShare) return
+    const legacy = readLegacyNoteSort()
+    if (legacy && legacy !== 'auto' && appSettings.wall.noteSort === 'auto') {
+      patchAppSettings.mutate({ wall: { noteSort: legacy } })
+    }
+    clearLegacyNoteSort()
+  }, [appSettings, isShare, patchAppSettings])
   // 工具列「同分類排列方向」快捷——跟「全域設定 → 外觀」是同一個 wall.tagAxis。
   const wallTagAxis = appSettings?.wall.tagAxis ?? 'vertical'
   const wallMasonry = appSettings?.wall.masonry ?? true
@@ -140,6 +169,7 @@ export function App() {
   const [importNotes, setImportNotes] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(false)
   const [defaultTag, setDefTag] = useState(getDefaultTag)
   const applyDefaultTag = useCallback((t: string) => {
     setDefaultTag(t)
@@ -445,7 +475,7 @@ export function App() {
 
   const anyDialogOpen =
     !!dialog || batchCreate || batchTag || batchDelete || generateNotes || thesisSeed || importNotes ||
-    trashOpen || historyOpen || settingsOpen !== null
+    trashOpen || historyOpen || activityOpen || settingsOpen !== null
   // 已經在裁切中就不能再拉一次框——先恢復完整畫面才能重新選——不然兩個裁切
   // 範圍疊在一起的語意會很奇怪。
   const cropActive = canFloat && !anyDialogOpen && !croppedIds
@@ -463,43 +493,54 @@ export function App() {
         </button>
       )}
       <CropOverlay active={cropActive} onCrop={onCrop} />
+      {/* 跟 Toolbar.tsx 的 .panel-collapse 共用同一個 panelCollapsed 開關，兩邊
+          各自是獨立的 grid 容器、一起收合／展開（見 lib/panelCollapse.ts）。 */}
+      <div className={`hero-collapse${panelCollapsed ? ' collapsed' : ''}`}>
+      <div className="hero-collapse-inner">
       <header className="hero">
-        <p className="eyebrow mono">
-          {collection === 'thesis' ? 'Thesis Wall · 研究生模式' : 'Sticky Wall · file_search_app'}
-        </p>
-        <h1 className="brush">
-          {collection === 'thesis' ? (
-            <>
-              論文專案的<em>便利貼</em>
-            </>
-          ) : (
-            <>
-              釘在牆上的<em>便利貼</em>
-            </>
-          )}
-        </h1>
-        <p className="lede">
-          {collection === 'thesis'
-            ? '「研究生模式」——這面牆只放論文專案（貓咪行為辨識系統）相關的便利貼，存在專案資料夾裡、跟生活便利貼完全分開。可用「從專案生成」讓 AI 讀專案文件產出任務便利貼。'
-            : '桌面工具「檔案快速搜尋」裡的便利貼——常用指令、清單、備忘與願望，依分類自動配色。這面牆即時反映資料庫（新增／編輯／刪除馬上出現），也能用 AI 用一般語句問問題。'}
-        </p>
-        <div className="stat-row mono">
-          <span className="stat">
-            <b>{list.length}</b>
-            <span>則便利貼</span>
-          </span>
-          <span className="stat">
-            <b>{tags.length}</b>
-            <span>種分類</span>
-          </span>
-          <span className="stat">
-            <b>{shown.length}</b>
-            <span>目前顯示</span>
-          </span>
+        <div className="hero-main">
+          <p className="eyebrow mono">
+            {collection === 'thesis' ? 'Thesis Wall · 研究生模式' : 'Sticky Wall · file_search_app'}
+          </p>
+          <h1 className="brush">
+            {collection === 'thesis' ? (
+              <>
+                論文專案的<em>便利貼</em>
+              </>
+            ) : (
+              <>
+                釘在牆上的<em>便利貼</em>
+              </>
+            )}
+          </h1>
+          <p className="lede">
+            {collection === 'thesis'
+              ? '「研究生模式」——這面牆只放論文專案（貓咪行為辨識系統）相關的便利貼，存在專案資料夾裡、跟生活便利貼完全分開。可用「從專案生成」讓 AI 讀專案文件產出任務便利貼。'
+              : '桌面工具「檔案快速搜尋」裡的便利貼——常用指令、清單、備忘與願望，依分類自動配色。這面牆即時反映資料庫（新增／編輯／刪除馬上出現），也能用 AI 用一般語句問問題。'}
+          </p>
+          <div className="stat-row mono">
+            <span className="stat">
+              <b>{list.length}</b>
+              <span>則便利貼</span>
+            </span>
+            <span className="stat">
+              <b>{tags.length}</b>
+              <span>種分類</span>
+            </span>
+            <span className="stat">
+              <b>{shown.length}</b>
+              <span>目前顯示</span>
+            </span>
+          </div>
         </div>
+        <ActivityTicker />
       </header>
+      </div>
+      </div>
 
       <Toolbar
+        collapsed={panelCollapsed}
+        onToggleCollapsed={togglePanelCollapsed}
         query={query}
         onQuery={setQuery}
         sort={noteSort}
@@ -508,7 +549,7 @@ export function App() {
         onTag={setTag}
         tags={tags}
         total={list.length}
-        collection={isShare ? null : collectionState}
+        collection={isRemoteShare ? null : collectionState}
         onSwitchCollection={switchCollection}
         onAdd={() => setDialog({ kind: 'new' })}
         aiMode={aiMode}
@@ -574,8 +615,9 @@ export function App() {
         onThesisSeed={() => setThesisSeed(true)}
         onTrash={() => setTrashOpen(true)}
         onHistory={() => setHistoryOpen(true)}
-        shareMode={isShare}
-        aiEnabled={!isShare || share.ai}
+        onActivity={isShare ? () => setActivityOpen(true) : undefined}
+        shareMode={isRemoteShare}
+        aiEnabled={!isRemoteShare || share.ai}
       />
 
       {aiResult && (
@@ -624,10 +666,20 @@ export function App() {
       )}
 
       <footer className="colophon">
-        資料檔：<b>indexes/.sticky_notes.json</b>（跟桌面版共用）。AI 搜尋走
+        {isShare ? (
+          <>
+            資料檔：這面共用牆<b>自己獨立的一份</b>，不跟桌面版／wallpaper-app 共用，
+            互相看不到彼此的便利貼。
+          </>
+        ) : (
+          <>
+            資料檔：<b>indexes/.sticky_notes.json</b>（跟桌面版共用）。
+          </>
+        )}
+        AI 搜尋走
         <b> ai_bridge.py</b> 呼叫 file_search_app 既有的
         <b> StickyNoteService / AIDescriptionService</b>——組 prompt、呼叫 Provider、解析回應，
-        設定與用量計數也跟桌面版共用。<br />
+        AI 設定與用量計數是另外一份、全域共用（含桌面版），不受上面便利貼資料分開的影響。<br />
         技術棧：Vite + React 19 + TypeScript + Tailwind 4 · Fastify · TanStack Query。
       </footer>
 
@@ -659,7 +711,7 @@ export function App() {
       {batchDelete && (
         <BatchDeleteDialog notes={list} onClose={() => setBatchDelete(false)} />
       )}
-      {generateNotes && !isShare && (
+      {generateNotes && !isRemoteShare && (
         <GenerateNotesDialog
           knownTags={knownTags}
           onClose={() => setGenerateNotes(false)}
@@ -702,6 +754,7 @@ export function App() {
           }}
         />
       )}
+      {activityOpen && <ActivityDialog onClose={() => setActivityOpen(false)} />}
       {aiResult && !answerDismissed && (
         <AiAnswerDialog
           query={aiResult.query}
@@ -717,6 +770,7 @@ export function App() {
         />
       )}
       <ScrollButtons />
+      <DanmakuLayer />
     </div>
   )
 }

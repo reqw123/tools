@@ -81,6 +81,21 @@ export function toggleBodyLine(body: string, srcIndex: number): string {
 }
 
 /** created_at（ISO 字串）→ 「2026.09.02 01:10」。 */
+/** 相對時間，給活動記錄／在場提示這種「剛剛發生的事」用（跟 stamp() 的絕對
+ *  時間戳不同用途）。超過一天就退回絕對日期，太久以前講「幾小時前」沒意義。 */
+export function timeAgo(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const sec = Math.max(0, Math.round((Date.now() - d.getTime()) / 1000))
+  if (sec < 10) return '剛剛'
+  if (sec < 60) return `${sec} 秒前`
+  const min = Math.round(sec / 60)
+  if (min < 60) return `${min} 分鐘前`
+  const hr = Math.round(min / 60)
+  if (hr < 24) return `${hr} 小時前`
+  return stamp(iso)
+}
+
 export function stamp(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''

@@ -17,6 +17,11 @@ node_modules/
 # （測試一律在 pytest tmp_path 下自建，見 tests/conftest.py），所以不進版控。
 /indexes/
 
+# 公用便利貼牆（啟動-*便利貼牆*.bat → scripts/share-serve.mjs）自己的資料——
+# 跟 /indexes/ 刻意分開，遠端的人在這面牆新增/刪除/亂改，不會碰到你自己
+# 桌面版／wallpaper-app 的便利貼。同樣是執行期自建資料，不進版控。
+/notes-web/public-wall-data/
+
 # 手動備份殘留
 *.bak
 *.bak-*

@@ -21,8 +21,11 @@ const TABS: { id: SettingsTab; label: string }[] = [
 /**
  * 「全域設定」——原本的「AI 設定」擴充成分頁對話框：AI 請求設定、標籤橫向列
  * 的排序、牆面外觀（預設便利貼顏色、欄寬、動態排版開關）、提醒（快到期門檻
- * ＋到期通知管道）、垃圾桶自動清理門檻、研究生模式。全部存在跟桌面版共用的
- * 檔案裡（AI 設定 → .ai_settings.json；其餘 → .notes_settings.json）。
+ * ＋到期通知管道）、垃圾桶自動清理門檻、研究生模式。存檔位置：AI 設定
+ * （`.ai_settings.json`）永遠全域共用（含桌面版）；其餘（`.notes_settings.json`）
+ * 跟便利貼資料本身放同一個資料夾——個人／wallpaper-app 是跟桌面版共用的
+ * `indexes/`，公用牆（`STICKY_NOTES_FILE` 被公用牆啟動器改指到
+ * `public-wall-data/`）就是各自獨立一份，不共用。
  */
 export function GlobalSettingsDialog({
   onClose,

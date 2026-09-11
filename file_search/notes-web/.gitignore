@@ -9,3 +9,9 @@ dist/
 # 編輯器 / 系統
 .DS_Store
 *.log
+
+# 登入畫面的 3D logo 素材——host 個人品牌用的模型/貼圖（例如元培大學 logo），
+# 檔案不小（原始 FBX ~30MB，離線簡化＋壓縮過降到 ~5.6MB）且是這台機器專屬的
+# 裝飾，不該進版控。見 src/components/LoginLogo3D.tsx 開頭說明；沒有這個
+# 資料夾時 /host 的「登入畫面 3D Logo」開關會直接停用，牆本身不受影響。
+/public/branding/

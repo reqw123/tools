@@ -7,10 +7,13 @@ const MAP: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"
 const esc = (s: string) => s.replace(AMP, (c) => MAP[c]!)
 
 /** 插圖抓回來轉成 data URI 內嵌——匯出的 HTML 要能離線／換機打開，不能只留
- *  `/note-images/...` 這種相對連結。抓不到（檔案沒了、server 沒開）就當沒有圖。 */
-async function imageDataUri(image: string): Promise<string | null> {
+ *  `/note-images/...`（或研究生便利貼的 `/thesis-note-images/...`）這種相對
+ *  連結。抓不到（檔案沒了、server 沒開）就當沒有圖。`url` 用 `noteImageUrl()`
+ *  組好的完整路徑傳進來，不要自己另外拼——兩個集合的插圖現在分開存放、
+ *  前綴不一樣，寫死 `/note-images/` 會讓研究生便利貼匯出時圖片抓不到。 */
+async function imageDataUri(url: string): Promise<string | null> {
   try {
-    const res = await fetch(`/note-images/${encodeURIComponent(image)}`)
+    const res = await fetch(url)
     if (!res.ok) return null
     const blob = await res.blob()
     return await new Promise<string | null>((resolve) => {
@@ -461,7 +464,8 @@ export async function buildStickyNotesHtml(
     const face = colorForTag(n.tag, tagColors, defaultNoteColor)
     const fold = darken(face, 0.2)
     const tag = n.tag ? `<span class="tag"># ${esc(n.tag)}</span>` : '<span></span>'
-    const dataUri = noteImageUrl(n) ? await imageDataUri(n.image) : null
+    const imgUrl = noteImageUrl(n)
+    const dataUri = imgUrl ? await imageDataUri(imgUrl) : null
     const img = dataUri ? `\n      <img class="note-img" src="${dataUri}" alt="">` : ''
     const star = n.pinned ? '<span class="pinned" aria-label="已釘選">★</span>' : ''
     return `    <article class="note${n.pinned ? ' is-pinned' : ''}" tabindex="0" role="button" data-tag="${esc(n.tag)}" aria-label="便利貼：${esc(n.title || '(無標題)')}" style="--face:${face};--fold:${fold}">

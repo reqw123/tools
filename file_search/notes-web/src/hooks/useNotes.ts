@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type AppSettings, type AppSettingsPatch, type Note, type NoteInput } from '../lib/api'
 import { toggleBodyLine } from '../lib/format'
+import { useLiveConnected } from '../lib/liveSync'
 import { useShareInfo } from './useShareInfo'
 
 const KEY = ['notes'] as const
@@ -8,14 +9,15 @@ const TRASH_KEY = ['notes-trash'] as const
 
 /** 便利貼清單——單一資料來源。任何新增／編輯／刪除成功後都會讓它重抓，
  *  所以 UI（整面牆、分類 chip、統計數字）會自動跟著資料變。
- *  區網共用模式下多開一個輪詢（8s）＋視窗聚焦重抓，好看到別人的改動。 */
+ *  即時同步靠 SSE（`useLiveSync`）推播；SSE 斷線時，共用模式退回 8 秒輪詢當備援。 */
 export function useNotes() {
   const share = useShareInfo()
   const shared = share.mode === 'lan'
+  const live = useLiveConnected()
   return useQuery({
     queryKey: KEY,
     queryFn: api.list,
-    refetchInterval: shared ? 8_000 : false,
+    refetchInterval: live ? false : shared ? 8_000 : false,
     refetchOnWindowFocus: shared,
   })
 }

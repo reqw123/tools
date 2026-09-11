@@ -49,6 +49,25 @@ export function colorForTag(
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`
 }
 
+// 彈幕／飄過訊息的作者色——飽和度、亮度都比 colorForTag 高一截：那組是給
+// 便利貼紙面用的柔和粉彩（淺底配深字），這組是給彈幕氣泡深色漸層底上疊字用
+// 的螢光色，要夠鮮豔、夠亮才在深色背景上看得清楚。
+const AUTHOR_SAT = 0.78
+const AUTHOR_LIGHT = 0.62
+/** 匿名（沒有名字，presence.ts 那層本來就分不出是哪個匿名的人）固定用這個
+ *  銀灰色，不強行分色。 */
+const ANON_COLOR = '#b9c2cc'
+
+/** 彈幕作者色——同一個人（同名字）永遠同一個顏色，不同人靠 hash 分散到
+ *  不同色相，一眼就能分辨「這幾則是同一個人發的」。跟 colorForTag 同一套
+ *  md5→色環角度手法，只是飽和度/亮度換一組更適合深色底發光的參數。 */
+export function colorForAuthor(author: string): string {
+  if (!author) return ANON_COLOR
+  const hue = Number(BigInt('0x' + md5(author)) % 360n) / 360
+  const [r, g, b] = hlsToRgb(hue, AUTHOR_LIGHT, AUTHOR_SAT)
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
 /** 往黑色混合 factor（0~1）——對應 ui/styles.py 的 darken()。 */
 export function darken(hex: string, factor: number): string {
   const n = parseInt(hex.slice(1), 16)

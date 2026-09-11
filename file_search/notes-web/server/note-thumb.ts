@@ -14,29 +14,36 @@ import { noteImagesDir } from './store'
  *
  * - **on-demand**，不是上傳時就產：桌面 Tkinter 版和既有的 102 張圖都不會
  *   經過上傳流程，只有請求到 `/api/note-thumb/<檔名>?w=...` 時才生。
- * - 快取檔 `.sticky_note_thumbs/<原檔名>.<寬>.webp`，跟 `.sticky_note_images`
+ * - 快取檔 `.sticky_note_thumbs/<原檔名>.<寬>.webp`，跟原圖所在的插圖資料夾
  *   同層。原圖 mtime 比快取新就重生（涵蓋「同名檔案被手動換掉」）。
  * - 原圖照留、`/note-images/<檔名>` 不動——點開的編輯視窗（`sheet-img`）還是
  *   拿原圖，要放大看細節時才需要那個解析度。
  * - `.rotate()` 套用 EXIF 方向（跟 Chromium 一致，手機直拍不會躺著）。
+ *
+ * **`imagesDir` 是呼叫端傳進來的**，不是這裡自己猜——2026-09 起生活／研究生
+ * 便利貼插圖分開存放兩個資料夾（見 `store.ts` 的 `activeImagesDir()`），縮圖
+ * 快取也要對應放在各自資料夾旁邊，不能寫死指向生活牆那份，不然研究生便利
+ * 貼的縮圖會被錯放、甚至覆蓋掉生活牆同名檔案的快取。
  */
 
 export const THUMB_WIDTHS = [400, 800] as const
 export type ThumbWidth = (typeof THUMB_WIDTHS)[number]
 
-const thumbsDir = () => join(dirname(noteImagesDir), '.sticky_note_thumbs')
+const thumbsDir = (imagesDir: string) => join(dirname(imagesDir), '.sticky_note_thumbs')
 
 export function isThumbWidth(n: number): n is ThumbWidth {
   return (THUMB_WIDTHS as readonly number[]).includes(n)
 }
 
 /**
- * 回傳 `name` 這張插圖 `w` 寬的 webp 縮圖在磁碟上的路徑，需要的話現生現快取。
- * 找不到原圖、原圖不是圖片、或縮圖失敗都回 null（呼叫端回 404）。
+ * 回傳 `name` 這張插圖（在 `imagesDir` 底下）`w` 寬的 webp 縮圖在磁碟上的
+ * 路徑，需要的話現生現快取。找不到原圖、原圖不是圖片、或縮圖失敗都回
+ * null（呼叫端回 404）。`imagesDir` 省略時退回生活牆那份（`noteImagesDir`），
+ * 給舊呼叫端／還沒特別區分集合的地方用。
  */
-export async function resolveThumb(name: string, w: ThumbWidth): Promise<string | null> {
+export async function resolveThumb(name: string, w: ThumbWidth, imagesDir: string = noteImagesDir): Promise<string | null> {
   const safe = basename(name) // 擋掉 ?name=../.. 之類的路徑穿越
-  const src = join(noteImagesDir, safe)
+  const src = join(imagesDir, safe)
   let srcStat
   try {
     srcStat = statSync(src)
@@ -45,7 +52,7 @@ export async function resolveThumb(name: string, w: ThumbWidth): Promise<string 
   }
   if (!srcStat.isFile()) return null
 
-  const dir = thumbsDir()
+  const dir = thumbsDir(imagesDir)
   const out = join(dir, `${safe}.${w}.webp`)
   try {
     if (statSync(out).mtimeMs >= srcStat.mtimeMs) return out // 快取還新，直接用
@@ -82,13 +89,14 @@ export function openThumb(path: string) {
 }
 
 /**
- * 清掉 `name` 這張插圖的所有快取縮圖——原圖被刪除或換掉時呼叫。縮圖夾裡
- * 只有小 webp 檔，找不到就算了。
+ * 清掉 `name` 這張插圖（在 `imagesDir` 底下）的所有快取縮圖——原圖被刪除或
+ * 換掉時呼叫。縮圖夾裡只有小 webp 檔，找不到就算了。`imagesDir` 省略時退回
+ * 生活牆那份，同 `resolveThumb()`。
  */
-export function dropThumbs(name: string): void {
+export function dropThumbs(name: string, imagesDir: string = noteImagesDir): void {
   if (!name) return
   const safe = basename(name)
-  const dir = thumbsDir()
+  const dir = thumbsDir(imagesDir)
   for (const w of THUMB_WIDTHS) {
     try {
       rmSync(join(dir, `${safe}.${w}.webp`), { force: true })

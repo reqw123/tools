@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { colorForTag } from '../lib/color'
 import { stamp } from '../lib/format'
 import { useEmptyTrash, usePurgeNote, useRestoreNote, useTagColors, useTrash } from '../hooks/useNotes'
+import { useActivity } from '../hooks/useActivity'
+import { displayAuthor } from '../lib/identity'
 import { scrimClose } from '../lib/scrimClose'
 
 /**
@@ -14,6 +16,16 @@ export function TrashDialog({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const { data: trash, isLoading, isError } = useTrash()
   const { data: tagColors } = useTagColors()
+  // 「由誰刪除」——找這則最近一筆 action:'delete' 的活動記錄（見 server/activity.ts；
+  // 純記憶體、server 重開或超過 300 筆就查不到了，找不到就不顯示，不是錯誤）。
+  const { data: activity } = useActivity()
+  const deletedBy = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const a of activity ?? []) {
+      if (a.action === 'delete' && a.noteId && !m.has(a.noteId)) m.set(a.noteId, a.author)
+    }
+    return m
+  }, [activity])
   const restore = useRestoreNote()
   const purge = usePurgeNote()
   const empty = useEmptyTrash()
@@ -96,6 +108,7 @@ export function TrashDialog({ onClose }: { onClose: () => void }) {
                       <span className="bd-title">{note.title || '(無標題)'}</span>
                       <span className="bd-meta">
                         {note.tag ? `# ${note.tag}　·　` : ''}刪除於 {stamp(note.deleted_at)}
+                        {deletedBy.has(note.id) && `　·　${displayAuthor(deletedBy.get(note.id)!)} 刪除`}
                       </span>
                     </div>
                     <div className="tr-actions">

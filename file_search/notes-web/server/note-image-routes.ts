@@ -3,7 +3,7 @@ import multipart from '@fastify/multipart'
 import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { extname, isAbsolute, join } from 'node:path'
 import sharp from 'sharp'
-import { getNote, noteImagesDir, setNoteImage, type Note } from './store'
+import { activeImagesDir, getNote, noteImagesDir, setNoteImage, thesisImagesDir, type Note } from './store'
 import { dropThumbs, isThumbWidth, openThumb, resolveThumb } from './note-thumb'
 
 /**
@@ -30,10 +30,12 @@ const SHARP_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp'])
 type CommitResult = { ok: true; note: Note } | { ok: false; code: number; error: string }
 
 function commitNoteImage(noteId: string, ext: string, write: (dest: string) => void): CommitResult {
-  if (!existsSync(noteImagesDir)) mkdirSync(noteImagesDir, { recursive: true })
+  // activeImagesDir()——生活/研究生各自的資料夾，不是寫死的 noteImagesDir。
+  const dir = activeImagesDir()
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   // 檔名帶時間戳：換圖 → 新檔名 → URL 跟著變 → 瀏覽器快取自然失效。
   const filename = `${noteId}-${Date.now()}${ext}`
-  const dest = join(noteImagesDir, filename)
+  const dest = join(dir, filename)
   try {
     write(dest)
   } catch (err) {
@@ -47,8 +49,8 @@ function commitNoteImage(noteId: string, ext: string, write: (dest: string) => v
     return { ok: false, code: 404, error: '便利貼在儲存前被刪除了' }
   }
   if (oldImage && oldImage !== filename) {
-    rmSync(join(noteImagesDir, oldImage), { force: true })
-    dropThumbs(oldImage)
+    rmSync(join(dir, oldImage), { force: true })
+    dropThumbs(oldImage, dir)
   }
   return { ok: true, note: updated }
 }
@@ -92,14 +94,21 @@ export const noteImageRoutes: FastifyPluginAsync = async (app) => {
   // 牆用的縮圖——見 note-thumb.ts。掛在 /api 底下（這個 plugin 的 prefix）而
   // 不是跟原圖一樣的 /note-images/，這樣 Vite dev 的 `/api` proxy 直接涵蓋，
   // 也不會跟 @fastify/static 的 /note-images/ 萬用路由撞。
-  app.get<{ Params: { name: string }; Querystring: { w?: string } }>(
+  //
+  // `collection` 查詢參數（不是走 `x-note-collection` 標頭那套）：這支路由
+  // 是給 `<img src>` 直接載入的，瀏覽器載圖片不會帶自訂標頭，`activeCollection`
+  // 在這種請求裡永遠只會是 header 不存在時的預設值（生活）——研究生便利貼
+  // 的縮圖一定要靠 URL 本身（query string）帶出「這張是研究生的」，不能倚賴
+  // 標頭，前端 `noteThumbUrl()` 組 URL 時會補上這個參數。
+  app.get<{ Params: { name: string }; Querystring: { w?: string; collection?: string } }>(
     '/note-thumb/:name',
     async (req, reply) => {
       const w = Number(req.query.w)
       if (!isThumbWidth(w)) {
         return reply.code(400).send({ error: 'w 必須是 400 或 800' })
       }
-      const path = await resolveThumb(req.params.name, w)
+      const dir = req.query.collection === 'thesis' ? thesisImagesDir() : noteImagesDir
+      const path = await resolveThumb(req.params.name, w, dir)
       if (!path) return reply.code(404).send({ error: '找不到圖片或無法縮圖' })
       // 換圖會產生新檔名 → 新 URL，所以同一個 URL 的內容不會變，可以放心長快取。
       reply.header('Cache-Control', 'public, max-age=604800')
@@ -172,8 +181,9 @@ export const noteImageRoutes: FastifyPluginAsync = async (app) => {
     const updated = setNoteImage(note.id, '')
     if (!updated) return reply.code(404).send({ error: '便利貼不存在' })
     if (oldImage) {
-      rmSync(join(noteImagesDir, oldImage), { force: true })
-      dropThumbs(oldImage)
+      const dir = activeImagesDir()
+      rmSync(join(dir, oldImage), { force: true })
+      dropThumbs(oldImage, dir)
     }
     return { note: updated }
   })

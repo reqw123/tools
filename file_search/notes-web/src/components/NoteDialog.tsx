@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { noteImageUrl, REPEAT_LABELS, type Note, type NoteInput } from '../lib/api'
+import { noteImageUrl, NotFoundError, REPEAT_LABELS, type Note, type NoteInput } from '../lib/api'
 import { paperVars } from '../lib/color'
-import { dueLabel, dueStatus, stamp } from '../lib/format'
+import { dueLabel, dueStatus, stamp, timeAgo } from '../lib/format'
 import {
   useAdvanceRepeat,
   useAppSettings,
@@ -18,12 +18,24 @@ import {
   useUploadNoteImage,
 } from '../hooks/useNotes'
 import { useShareInfo } from '../hooks/useShareInfo'
+import { useActivity, useEditingHeartbeat, usePresence } from '../hooks/useActivity'
+import { useCard, useSetCard } from '../hooks/useCard'
+import { displayAuthor } from '../lib/identity'
 import { Body } from './Body'
 import { FileBrowser } from './FileBrowser'
 import { NoteForm } from './NoteForm'
 import { scrimClose } from '../lib/scrimClose'
 
 type Mode = 'view' | 'edit' | 'new'
+
+/** ActivityEntry.action → footer 顯示用的動詞。 */
+const ACTIVITY_VERB: Record<string, string> = {
+  create: '新增',
+  update: '編輯',
+  delete: '刪除',
+  restore: '復原',
+  'bulk-delete': '批次刪除',
+}
 
 export function NoteDialog({
   note: initialNote,
@@ -89,8 +101,43 @@ export function NoteDialog({
   const note = initialNote
     ? (notes?.find((n) => n.id === initialNote.id) ?? initialNote)
     : null
+  // 清單已抓回來、裡面卻沒有這則 → 被別人（或桌面版）刪掉了。多人共用後這會發生。
+  const noteGone =
+    !!initialNote && notes !== undefined && !notes.some((n) => n.id === initialNote.id)
+
+  // 進入編輯模式當下的快照——編輯途中若 SSE 推來這則被別人改了，跟這個比對就
+  // 知道要不要提醒。只在「進出編輯／換便利貼／按重填」時重抓，note 本身之後
+  // 變動（＝別人改的）不動它。
+  const [editBase, setEditBase] = useState<Note | null>(null)
+  const [formSeq, setFormSeq] = useState(0) // 「用最新版本重填」= 把 <NoteForm> 重新掛載
+  useEffect(() => {
+    setEditBase(mode === 'edit' && note ? { ...note } : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, initialNote?.id, formSeq])
+  const staleEdit =
+    mode === 'edit' &&
+    !!editBase &&
+    !!note &&
+    (note.title !== editBase.title ||
+      note.body !== editBase.body ||
+      note.tag !== editBase.tag ||
+      note.due_at !== editBase.due_at ||
+      note.repeat !== editBase.repeat)
   const { data: reminderSettings } = useReminderSettings()
   const due = note ? dueStatus(note.due_at, reminderSettings?.dueSoonHours) : ''
+
+  // 「誰動了我的牆」——最後一筆跟這則有關的活動；「誰正在編輯」——presence 用
+  // noteId 當 key，支援同時好幾個人編輯同一則，不是只顯示一個。編輯視窗自己
+  // 開著時送心跳。
+  const { data: activity } = useActivity()
+  const lastActivity = note ? activity?.find((a) => a.noteId === note.id) : undefined
+  const { data: presence } = usePresence()
+  const editingBy = [...new Set((note ? (presence?.[note.id] ?? []) : []).map(displayAuthor))]
+  // noteGone 才確定「已經被刪了」——note 在那之前會退回顯示 initialNote 的
+  // 舊快照（見上面 note 的算法），id 還在、mode 還是 'edit'，heartbeat 若沒
+  // 擋掉 noteGone 會一直對一個不存在的 noteId 送心跳，presence.ts 裡那則幽靈
+  // 記錄就靠這個心跳續命，直到使用者自己關掉編輯視窗才會消失。
+  useEditingHeartbeat(mode === 'edit' && note && !noteGone ? note.id : undefined)
 
   const create = useCreateNote()
   const update = useUpdateNote()
@@ -101,6 +148,10 @@ export function NoteDialog({
   const setImage = useSetNoteImage()
   const uploadImage = useUploadNoteImage()
   const removeImage = useRemoveNoteImage()
+  // 「看板」（固定網址 /card）——這則是不是目前指定的內容，跟切換它。
+  const { data: card } = useCard()
+  const setCard = useSetCard()
+  const isCard = !!note && card?.noteId === note.id
 
   const applyImage = (path: string) => {
     if (!note) return
@@ -151,10 +202,29 @@ export function NoteDialog({
   const { data: appSettings } = useAppSettings()
   const style = paperVars(tag, 0, undefined, tagColors, appSettings?.defaultNoteColor)
 
-  const submit = (input: NoteInput) => {
+  const recreateFrom = (n: Note, patch: Partial<NoteInput> = {}) =>
+    create.mutate(
+      {
+        title: patch.title ?? n.title,
+        body: patch.body ?? n.body,
+        tag: patch.tag ?? n.tag,
+        due_at: patch.due_at ?? n.due_at,
+        repeat: patch.repeat ?? n.repeat,
+      },
+      { onSuccess: onClose },
+    )
+
+  const submit = (input: Partial<NoteInput>) => {
     if (mode === 'new') {
-      create.mutate(input, { onSuccess: onClose })
+      create.mutate(input as NoteInput, { onSuccess: onClose })
+    } else if (note && noteGone) {
+      // 編輯途中這則被刪了 → 把使用者打的東西另存成一則新的，不丟。
+      recreateFrom(note, input)
     } else if (note) {
+      if (Object.keys(input).length === 0) {
+        setMode('view') // 沒有任何改動：不打 API、不 bump 排序、不通知別人
+        return
+      }
       update.mutate({ id: note.id, patch: input }, { onSuccess: () => setMode('view') })
     }
   }
@@ -167,7 +237,11 @@ export function NoteDialog({
     setImage.isPending ||
     uploadImage.isPending ||
     removeImage.isPending
-  const err = (create.error || update.error || remove.error || removeImage.error)?.message
+  const rawErr = create.error || update.error || remove.error || removeImage.error
+  const err =
+    rawErr instanceof NotFoundError
+      ? '這則便利貼已經不在了（可能剛被別人或桌面版刪除）。'
+      : rawErr?.message
 
   return (
     <div className="scrim" {...scrimClose(onClose)}>
@@ -186,7 +260,24 @@ export function NoteDialog({
         </button>
         <span className="curl" aria-hidden />
 
-        {mode === 'view' && note ? (
+        {noteGone && mode !== 'edit' && note ? (
+          <>
+            <h2>{note.title}</h2>
+            <p className="dim">
+              這則便利貼已經被刪除了（可能是別人，或桌面版）。可以到工具列「🗑 垃圾桶」
+              把它復原，或直接重新建立一則一樣的。
+            </p>
+            {err && <p className="err">{err}</p>}
+            <div className="sheet-actions">
+              <button className="btn" disabled={busy} onClick={() => recreateFrom(note)}>
+                重新建立一則
+              </button>
+              <button className="btn ghost" onClick={onClose}>
+                關閉
+              </button>
+            </div>
+          </>
+        ) : mode === 'view' && note ? (
           <>
             <div className="note-nav-row">
               <button
@@ -239,7 +330,18 @@ export function NoteDialog({
             <footer>
               <span className="tag-pill">{note.tag || '未分類'}</span>
               <span className="stamp">{stamp(note.created_at)}</span>
+              {lastActivity && (
+                <span className="stamp" title={stamp(lastActivity.at)}>
+                  ·　{ACTIVITY_VERB[lastActivity.action]}：{displayAuthor(lastActivity.author)}
+                  　{timeAgo(lastActivity.at)}
+                </span>
+              )}
             </footer>
+            {editingBy.length > 0 && (
+              <p className="edit-warn">
+                ✏️ {editingBy.join('、')} 正在編輯這則——建議晚點再改，避免蓋掉對方的內容。
+              </p>
+            )}
             {(err || imgErr) && <p className="err">{err || imgErr}</p>}
             <div className="sheet-actions">
               {note.repeat && note.due_at && (
@@ -261,6 +363,15 @@ export function NoteDialog({
                 onClick={() => setPinned.mutate({ id: note.id, pinned: !note.pinned })}
               >
                 {note.pinned ? '★ 取消釘選' : '☆ 釘選'}
+              </button>
+              <button
+                className="btn ghost"
+                aria-pressed={isCard}
+                disabled={setCard.isPending}
+                title="固定網址 /card 顯示的內容——換一則會讓所有開著 /card 的展示螢幕跟著換"
+                onClick={() => setCard.mutate(isCard ? null : note.id)}
+              >
+                {isCard ? '📺 移除看板' : '📺 設為看板'}
               </button>
               <button
                 className="btn ghost"
@@ -329,11 +440,29 @@ export function NoteDialog({
         ) : (
           <>
             <h2>{mode === 'new' ? '新增便利貼' : '編輯便利貼'}</h2>
+            {mode === 'edit' && noteGone && (
+              <p className="edit-warn">
+                這則便利貼剛被刪除了——按「儲存」會另存成一則新的便利貼，你打的內容不會不見。
+              </p>
+            )}
+            {mode === 'edit' && !noteGone && staleEdit && (
+              <p className="edit-warn">
+                這則剛被別人（或桌面版）改過。你只會送出自己動到的欄位，但若改到同一欄會蓋掉對方的。
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => setFormSeq((n) => n + 1)}
+                >
+                  用最新版本重填
+                </button>
+              </p>
+            )}
             <NoteForm
+              key={`${initialNote?.id ?? 'new'}-${formSeq}`}
               initial={mode === 'new' ? undefined : (note ?? undefined)}
               defaultTag={mode === 'new' ? defaultTag : undefined}
               knownTags={knownTags}
-              submitLabel={mode === 'new' ? '新增' : '儲存'}
+              submitLabel={mode === 'new' ? '新增' : noteGone ? '另存為新便利貼' : '儲存'}
               submitting={busy}
               serverError={err}
               onSubmit={submit}

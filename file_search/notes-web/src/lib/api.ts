@@ -1,3 +1,5 @@
+import { authorHeaderValue, getClientId } from './identity'
+
 export interface Note {
   id: string
   title: string
@@ -31,18 +33,29 @@ export interface TrashedNote extends Note {
   deleted_at: string
 }
 
-/** note.image → 原圖 URL（點開的編輯視窗 `sheet-img` 用這個）；沒有圖回 null。 */
+/** note.image → 原圖 URL（點開的編輯視窗 `sheet-img` 用這個）；沒有圖回 null。
+ *  **生活／研究生便利貼的圖現在分開存放**（見 server/store.ts 的
+ *  `activeImagesDir()`），路徑前綴跟著目前作用中的集合走——這支路由是給
+ *  `<img src>` 直接載入的，瀏覽器載圖片不會帶 `x-note-collection` 標頭，
+ *  一定要靠 URL 本身（不同前綴）分辨，不能倚賴標頭。 */
 export function noteImageUrl(note: Pick<Note, 'image'>): string | null {
-  return note.image ? `/note-images/${encodeURIComponent(note.image)}` : null
+  if (!note.image) return null
+  const prefix = getApiCollection() === 'thesis' ? '/thesis-note-images' : '/note-images'
+  return `${prefix}/${encodeURIComponent(note.image)}`
 }
 
 /**
  * 牆上的卡片 / 懸浮視窗用的縮圖 URL——server 現生現快取的 webp（見
  * `server/note-thumb.ts`）。`w` 只有 400 / 800 兩檔，搭 `srcSet` 讓瀏覽器
  * 依實際顯示寬與 DPR 自己挑。牆上一張圖顯示寬 ~220px，800 就夠 2x。
+ * 研究生便利貼的圖片額外帶 `&collection=thesis`——同上，`<img src>` 不會帶
+ * 標頭，這支路由（`/api/note-thumb/...`）改成看這個查詢參數決定要去哪個
+ * 資料夾找原圖。
  */
 export function noteThumbUrl(note: Pick<Note, 'image'>, w: 400 | 800): string | null {
-  return note.image ? `/api/note-thumb/${encodeURIComponent(note.image)}?w=${w}` : null
+  if (!note.image) return null
+  const collectionParam = getApiCollection() === 'thesis' ? '&collection=thesis' : ''
+  return `/api/note-thumb/${encodeURIComponent(note.image)}?w=${w}${collectionParam}`
 }
 
 export interface NoteInput {
@@ -91,6 +104,15 @@ export class AuthError extends Error {
   }
 }
 
+/** 這則便利貼在伺服器上已經不存在了（多半是別人／桌面版剛刪掉）。
+ *  多人共用後這變常見，UI 要把它當成一種正常狀態、不是錯誤畫面。 */
+export class NotFoundError extends Error {
+  constructor() {
+    super('這則便利貼已經不在了')
+    this.name = 'NotFoundError'
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
     ...init,
@@ -98,6 +120,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     headers: {
       ...(init?.body ? { 'content-type': 'application/json' } : {}),
       'x-note-collection': apiCollection,
+      'x-note-author': authorHeaderValue(),
       ...init?.headers,
     },
   })
@@ -113,6 +136,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     ) {
       throw new AuthError()
     }
+    if (res.status === 404) throw new NotFoundError()
     const msg =
       data && typeof data === 'object' && 'error' in data
         ? String((data as { error: unknown }).error)
@@ -122,24 +146,33 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T
 }
 
+/** GET /session 的回應——`name` 有值＝這個名字通過了 PIN 驗證（見 server/people.ts），
+ *  之後的請求不管前端標頭填什麼，activity/presence 一律認這個名字。 */
+export interface SessionInfo {
+  ok: boolean
+  name: string | null
+}
+const SESSION_OFFLINE: SessionInfo = { ok: false, name: null }
+
 /** 區網共用模式的密碼 session（cookie 由 server 設，這裡只管觸發／查詢）。 */
 export const session = {
-  check: () =>
+  check: (): Promise<SessionInfo> =>
     fetch(BASE + '/session', { credentials: 'same-origin' })
-      .then((r) => (r.ok ? r.json() : { ok: false }))
-      .then((j: { ok?: boolean }) => !!j.ok)
-      .catch(() => false),
-  login: async (password: string): Promise<void> => {
+      .then((r) => (r.ok ? r.json() : SESSION_OFFLINE))
+      .then((j: Partial<SessionInfo>) => ({ ok: !!j.ok, name: j.name ?? null }))
+      .catch(() => SESSION_OFFLINE),
+  /** name 留空＝匿名。name 是已被 PIN 保護的名字時，pin 要對，不然整個登入失敗
+   *  （密碼雖然對，也不會放行）——回傳伺服器確認過的名字（沒設身分就是 null）。 */
+  login: async (password: string, name?: string, pin?: string): Promise<{ name: string | null }> => {
     const res = await fetch(BASE + '/session', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, name, pin }),
     })
-    if (!res.ok) {
-      const j = (await res.json().catch(() => null)) as { error?: string } | null
-      throw new Error(j?.error ?? '登入失敗')
-    }
+    const j = (await res.json().catch(() => null)) as { error?: string; name?: string | null } | null
+    if (!res.ok) throw new Error(j?.error ?? '登入失敗')
+    return { name: j?.name ?? null }
   },
   logout: () =>
     fetch(BASE + '/session', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {}),
@@ -168,7 +201,7 @@ export const api = {
     const res = await fetch(`${BASE}/notes/${id}/image`, {
       method: 'POST',
       credentials: 'same-origin',
-      headers: { 'x-note-collection': apiCollection },
+      headers: { 'x-note-collection': apiCollection, 'x-note-author': authorHeaderValue() },
       body: fd,
     })
     const data = (await res.json().catch(() => null)) as { note?: Note; error?: string } | null
@@ -235,6 +268,66 @@ export const api = {
   getSettings: () => req<AppSettings>('/settings'),
   patchSettings: (patch: AppSettingsPatch) =>
     req<AppSettings>('/settings', { method: 'PATCH', body: JSON.stringify(patch) }),
+  getActivity: (limit?: number) =>
+    req<{ entries: ActivityEntry[] }>(`/activity${limit ? `?limit=${limit}` : ''}`).then(
+      (r) => r.entries,
+    ),
+  /** noteId → 正在編輯的人名清單（可能不只一個；''＝匿名，可能重複）。 */
+  getPresence: () => req<Record<string, string[]>>('/presence'),
+  /** 編輯視窗開著時的心跳；`editing:false`＝關掉視窗，主動說「編完了」。帶上
+   *  `clientId`（見 lib/identity.ts）讓匿名使用者在同一來源 IP 下也能分開算。 */
+  setEditingPresence: (noteId: string, editing: boolean) =>
+    req<void>('/presence', {
+      method: 'POST',
+      body: JSON.stringify({ noteId, editing, clientId: getClientId() }),
+    }),
+  /** 「看板」（固定網址 `/card`）目前指定哪一則。 */
+  getCard: () => req<CardState>('/card'),
+  /** noteId＝null 清空看板。 */
+  setCard: (noteId: string | null) =>
+    req<CardState>('/card', { method: 'POST', body: JSON.stringify({ noteId }) }),
+  /** 發一則彈幕——不寫檔，靠 SSE 的具名事件即時推給所有人（見 lib/liveSync.ts）。 */
+  sendDanmaku: (text: string) => req<void>('/danmaku', { method: 'POST', body: JSON.stringify({ text }) }),
+}
+
+/** `/host`（host.html 管理面板，見 HostPanel.tsx）用的端點——一律只有主機本機
+ *  （loopback）打得通，遠端一律 403，不管有沒有共用密碼、開放模式開著沒有。 */
+export interface HostState {
+  openAccess: boolean
+  aiEnabled: boolean
+  /** 登入畫面要不要載入 host 的 3D logo（見 server/share.ts、LoginLogo3D.tsx）。 */
+  loginLogo3d: boolean
+  people: { name: string; createdAt: string }[]
+}
+/** 一筆造訪紀錄——見 server/visits.ts。author=''＝匿名。 */
+export interface VisitEntry {
+  author: string
+  at: string
+}
+export const host = {
+  getState: () => req<HostState>('/host/state'),
+  setOpenAccess: (open: boolean) =>
+    req<{ openAccess: boolean }>('/host/open-access', {
+      method: 'POST',
+      body: JSON.stringify({ open }),
+    }),
+  setAiEnabled: (enabled: boolean) =>
+    req<{ aiEnabled: boolean }>('/host/ai', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
+  setLoginLogo3d: (enabled: boolean) =>
+    req<{ loginLogo3d: boolean }>('/host/login-logo', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
+  releasePerson: (name: string) =>
+    req<void>(`/host/people/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  /** 訪客紀錄（持久化）——`/host` 的「訪客紀錄」文字視窗用。新到舊。 */
+  getVisits: (limit?: number) =>
+    req<{ entries: VisitEntry[] }>(`/host/visits${limit ? `?limit=${limit}` : ''}`).then(
+      (r) => r.entries,
+    ),
 }
 
 /** 「快到期」門檻——卡片標色跟 /notes/due-soon（給 Node-RED 用）共用同一份，
@@ -259,6 +352,17 @@ export interface ReminderSettings {
 
 export type TagSortMode = 'count' | 'manual' | 'recent'
 
+/** 牆面排序方式。放在共用設定（AppSettings.wall）裡——多人共用時會跟著同步。
+ *  UI 標籤在 `lib/noteSort.ts` 的 NOTE_SORTS。 */
+export type NoteSort =
+  | 'auto'
+  | 'tag-band'
+  | 'newest'
+  | 'oldest'
+  | 'title'
+  | 'todo-most'
+  | 'todo-least'
+
 /** 「全域設定」——存在跟 dueSoonHours 同一份 .notes_settings.json。 */
 export interface AppSettings {
   dueSoonHours: number
@@ -272,6 +376,8 @@ export interface AppSettings {
   /** 無分類 / 分類沒有自訂顏色時的便利貼紙色（#rrggbb）。 */
   defaultNoteColor: string
   wall: {
+    /** 牆面排序下拉目前選的值（多人共用時會同步）。 */
+    noteSort: NoteSort
     /** 一欄至少多寬（px）才多開一欄。 */
     minColWidth: number
     /** false＝關掉 JS 動態排版，用單純等寬格線。 */
@@ -325,4 +431,22 @@ export interface Snapshot {
   taken_at: string
   note_count: number
   trash_count: number
+}
+
+/** 「誰動了我的牆」的一筆記錄——純記憶體，server 重開就清空（見 server/activity.ts）。 */
+export interface ActivityEntry {
+  at: string
+  /** ''＝匿名（沒填名字），畫面上用 identity.ts 的 displayAuthor() 轉成「有人」。 */
+  author: string
+  action: 'create' | 'update' | 'delete' | 'restore' | 'bulk-delete' | 'connect' | 'disconnect'
+  noteId?: string
+  title: string
+  count?: number
+}
+
+/** 「看板」（固定網址 `/card`，見 CardScreen.tsx）目前指定的內容——後端持久存檔，
+ *  不是純記憶體，展示螢幕重開一次 server 也不會變空的。 */
+export interface CardState {
+  noteId: string | null
+  setAt: string
 }
