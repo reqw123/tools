@@ -170,12 +170,18 @@ export const hostRoutes: FastifyPluginAsync = async (app) => {
     return { entries: listVisits(Number.isFinite(limit) && limit > 0 ? limit : undefined) }
   })
 
+  /** Discord embed 一個 field 的 value 上限是 1024 字——留點餘裕給 Node-RED
+   *  自己加的「還有更多」提示，這裡先夾住，不要整包塞爆送不出去。 */
+  const DISCORD_FIELD_LIMIT = 900
+
   /**
    * 給 Node-RED 用的「指派給誰的便利貼快到期／已逾期了，且那個人有設自己的
    * Discord webhook」清單——把 `dueSummaryAll()` 的到期資料跟 people.ts 的
    * webhook 設定 join 起來，Node-RED 收到清單後自己決定要不要發、要不要
    * dedupe（跟現有「便利貼到期提醒」分頁同一套 flow-context 記帳模式，這裡
    * 不重複做，保持這支端點單純、無狀態）。沒設 webhook 的人不會出現在這裡。
+   * `noteBody` 是完整內文（夾到 `DISCORD_FIELD_LIMIT` 字，Discord embed field
+   * 的長度上限），讓 Discord 通知能看到便利貼實際內容，不是只有標題。
    */
   app.get('/host/due-webhooks', async () => {
     const { overdue, soon } = dueSummaryAll()
@@ -183,6 +189,8 @@ export const hostRoutes: FastifyPluginAsync = async (app) => {
       kind: 'overdue' | 'soon'
       noteId: string
       noteTitle: string
+      noteBody: string
+      noteBodyTruncated: boolean
       dueAt: string
       collection: string
       assignee: string
@@ -196,10 +204,13 @@ export const hostRoutes: FastifyPluginAsync = async (app) => {
         if (!n.assignee) continue
         const webhook = getPersonDiscordWebhook(n.assignee)
         if (!webhook) continue
+        const truncated = n.body.length > DISCORD_FIELD_LIMIT
         items.push({
           kind,
           noteId: n.id,
           noteTitle: n.title,
+          noteBody: truncated ? n.body.slice(0, DISCORD_FIELD_LIMIT) : n.body,
+          noteBodyTruncated: truncated,
           dueAt: n.due_at,
           collection: n.collection,
           assignee: n.assignee,

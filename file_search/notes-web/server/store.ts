@@ -1019,6 +1019,9 @@ export interface DueNote {
   /** 指派給誰——''＝未指派。給 due-notify.ts 決定要不要發站內通知用；舊呼叫端
    *  一樣忽略這個多出來的欄位。 */
   assignee: string
+  /** 便利貼的完整內文——給 `/host/due-webhooks` 的 Discord 通知用（使用者要求
+   *  看到完整內容，不是只有標題）。舊呼叫端一樣忽略這個多出來的欄位。 */
+  body: string
 }
 
 export interface DueSummary {
@@ -1038,6 +1041,7 @@ function toDueNote(n: Note): DueNote {
     due_at: n.due_at,
     collection: getActiveCollection(),
     assignee: n.assignee,
+    body: n.body,
   }
 }
 
