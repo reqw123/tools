@@ -5,6 +5,7 @@ import { extname, isAbsolute, join } from 'node:path'
 import sharp from 'sharp'
 import { activeImagesDir, getNote, noteImagesDir, setNoteImage, thesisImagesDir, type Note } from './store'
 import { dropThumbs, isThumbWidth, openThumb, resolveThumb } from './note-thumb'
+import { isLoopback } from './share'
 
 /**
  * 便利貼插圖。兩條進來的路：
@@ -100,12 +101,20 @@ export const noteImageRoutes: FastifyPluginAsync = async (app) => {
   // 在這種請求裡永遠只會是 header 不存在時的預設值（生活）——研究生便利貼
   // 的縮圖一定要靠 URL 本身（query string）帶出「這張是研究生的」，不能倚賴
   // 標頭，前端 `noteThumbUrl()` 組 URL 時會補上這個參數。
+  //
+  // **研究生集合一律只認 loopback**——跟 collectionForRequest() 的「遠端一律
+  // 鎖生活牆」是同一條規則。這支路由本來只靠共用密碼牆擋住未登入的人（見
+  // share.ts shareGuardHook 的說明），但已登入的遠端訪客不該因為猜得到／
+  // 拿得到某個縮圖檔名，就繞過「研究生牆是 host 私人的」這個邊界。
   app.get<{ Params: { name: string }; Querystring: { w?: string; collection?: string } }>(
     '/note-thumb/:name',
     async (req, reply) => {
       const w = Number(req.query.w)
       if (!isThumbWidth(w)) {
         return reply.code(400).send({ error: 'w 必須是 400 或 800' })
+      }
+      if (req.query.collection === 'thesis' && !isLoopback(req)) {
+        return reply.code(404).send({ error: '找不到圖片或無法縮圖' })
       }
       const dir = req.query.collection === 'thesis' ? thesisImagesDir() : noteImagesDir
       const path = await resolveThumb(req.params.name, w, dir)

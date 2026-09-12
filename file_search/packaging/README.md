@@ -1,7 +1,7 @@
 # 打包成 .exe
 
-`file_search.py` / `run_file_search.bat` 的原始碼執行方式**完全不受影響**，這個
-資料夾只是多提供一種「發佈成免安裝 exe」的方式。
+`python file_search.py` 的原始碼執行方式**完全不受影響**，這個資料夾只是多
+提供一種「發佈成免安裝 exe」的方式。
 
 ## 怎麼打包
 

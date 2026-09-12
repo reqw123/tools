@@ -8,17 +8,15 @@ rem 一起打包的選用套件都只裝在這裡，完全不動系統的 anacon
 rem 產出：dist\FileSearch\FileSearch.exe（onedir，整個 FileSearch 資料夾一起帶走）。
 rem
 rem 語音轉錄（faster-whisper）刻意不打包，體積太大；打包版會自動把該功能標為
-rem 不可用，需要時改用原始碼版 (python file_search.py / run_file_search.bat)。
+rem 不可用，需要時改用原始碼版 (python file_search.py)。
 
 set "PROJECT_ROOT=%~dp0.."
 set "VENV=%~dp0.build-venv"
 set "SPEC=%~dp0file_search.spec"
 
-rem 找 Python：優先用環境變數 PY，其次 run_file_search.bat 裡那顆已知可用的，
-rem 最後退回 PATH 上的 python。需要 Python 3.9+ 且含 tkinter。
+rem 找 Python：優先用環境變數 PY，沒設就退回 PATH 上的 python。需要 Python
+rem 3.9+ 且含 tkinter；想指定其他路徑就先 set PY=D:\path\to\python.exe 再跑。
 if defined PY goto :have_py
-set "PY=C:\Users\lynnc\anaconda3\python.exe"
-if exist "%PY%" goto :have_py
 set "PY=python"
 :have_py
 

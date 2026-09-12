@@ -179,11 +179,20 @@ const loginFails = new Map<string, { n: number; since: number }>()
 startSweeper(loginFails, (v) => v.since, LOGIN_WINDOW_MS)
 
 /** 匿名使用者用來區分「不同人」的 key（presence.ts 需要——具名使用者直接用
- *  名字當 key 就夠了，匿名的話光憑空字串分不出是誰，退而求其次用來源 IP）。 */
+ *  名字當 key 就夠了，匿名的話光憑空字串分不出是誰，退而求其次用來源 IP）。
+ *
+ * **取最後一段，不是第一段**——`X-Forwarded-For` 是每經過一手代理就往後
+ * `append` 一個值，最前面那段是使用者自己（原始請求）填的，任何人都能在
+ * 自己的請求裡預先塞一個假的 `X-Forwarded-For: 1.2.3.4` 當第一段；這個 app
+ * 的架構只有 ngrok 這一層可信代理（見檔頭說明），ngrok 轉發時附加的才是真正
+ * 連進來的來源 IP，一定是這個標頭的最後一段。踩過的坑：原本取第一段，等於
+ * 攻擊者每個請求換一個假 IP 就能繞過登入限速／寫入限速（這兩個都是拿
+ * `clientIp()` 當 key 計數）。 */
 export function clientIp(req: FastifyRequest): string {
-  const xff = String(req.headers['x-forwarded-for'] ?? '')
-    .split(',')[0]
-    ?.trim()
+  const raw = req.headers['x-forwarded-for']
+  const first = Array.isArray(raw) ? raw[0] : raw
+  const parts = (first ?? '').split(',')
+  const xff = parts[parts.length - 1]?.trim()
   return xff || req.socket.remoteAddress || 'unknown'
 }
 function loginBlocked(ip: string): boolean {

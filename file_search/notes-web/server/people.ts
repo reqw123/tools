@@ -16,7 +16,7 @@
  *   標頭）——這樣「已經登入的人」沒辦法臨時把標頭改成別人的名字來冒充。
  */
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { notesFilePath } from './store'
 import { atomicWriteFile } from './atomic-write'
@@ -48,11 +48,27 @@ interface PersonRecord {
 }
 type PeopleFile = Record<string, PersonRecord>
 
+// 2026-09 加：這份檔案原本每次呼叫都 readFileSync——大部分呼叫端（PIN 驗證、
+// isProtectedName、authorFrom 的冒用檢查）本來就零星呼叫，但這次加的角色
+// 分級（shareGuardHook）讓它變成**每一個非 GET 的遠端請求都會讀一次**，密
+// 集很多。快取檔案內容、用 mtime 判斷有沒有變動，沒變就跳過那次磁碟讀取
+// （`statSync` 比 `readFileSync` 便宜很多）；**每次呼叫還是重新 `JSON.parse`
+// 一份新物件**（不是回傳快取物件的參照）——呼叫端一直都是「讀出來直接改、
+// 改完寫回去」的寫法（例如 `setPersonRole` 的 `people[n].role = role`），共用
+// 同一個物件參照會讓不同呼叫端之間互相污染還沒寫檔的暫時修改，這裡刻意不
+// 那樣做，行為跟改之前完全一樣，只是少了重複的磁碟 I/O。
+let cache: { mtimeMs: number; raw: string } | null = null
+
 function readPeople(): PeopleFile {
   try {
-    const data = JSON.parse(readFileSync(PEOPLE_FILE, 'utf-8')) as unknown
+    const mtimeMs = statSync(PEOPLE_FILE).mtimeMs
+    if (!cache || cache.mtimeMs !== mtimeMs) {
+      cache = { mtimeMs, raw: readFileSync(PEOPLE_FILE, 'utf-8') }
+    }
+    const data = JSON.parse(cache.raw) as unknown
     return data && typeof data === 'object' ? (data as PeopleFile) : {}
   } catch {
+    cache = null
     return {}
   }
 }

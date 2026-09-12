@@ -29,6 +29,7 @@ import {
   WALL_PATH,
   assertShareConfig,
   collectionForRequest,
+  isLoopback,
   lanAddresses,
   shareAuthHook,
   shareGuardHook,
@@ -132,6 +133,10 @@ await app.register(fastifyStatic, {
 // 跟著最新設定走。前端 `noteImageUrl()` 依目前作用中的集合決定要打
 // `/note-images/` 還是這裡。
 app.get<{ Params: { filename: string } }>('/thesis-note-images/:filename', async (req, reply) => {
+  // 研究生集合一律只認 loopback（跟 collectionForRequest() 的「遠端一律鎖
+  // 生活牆」同一條規則）——密碼牆只擋住未登入的人，已登入的遠端訪客不該
+  // 因為猜得到／拿得到某個圖檔名，就繞過「研究生牆是 host 私人的」邊界。
+  if (!isLoopback(req)) return reply.code(404).send({ error: '找不到圖片' })
   const safe = basename(req.params.filename) // 擋掉 ../ 之類的路徑穿越
   const path = join(thesisImagesDir(), safe)
   let st
