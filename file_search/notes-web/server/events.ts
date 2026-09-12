@@ -109,7 +109,7 @@ function startWatching(): void {
 export const eventsRoutes: FastifyPluginAsync = async (app) => {
   startWatching()
 
-  app.get('/events', (req, reply) => {
+  app.get<{ Querystring: { deviceId?: string } }>('/events', (req, reply) => {
     reply.hijack() // 這條由我們自己寫 raw response、長連線不結束
     const res = reply.raw
     res.writeHead(200, {
@@ -124,8 +124,10 @@ export const eventsRoutes: FastifyPluginAsync = async (app) => {
 
     // 這條 SSE 本身就是「這個人現在開著牆」的訊號——借來記連線／斷線，見
     // connections.ts（同一人開好幾個分頁只算一次連線；換頁那種瞬斷瞬連有寬限）。
+    // deviceId 見前端 useLiveSync.ts／lib/identity.ts 的 getDeviceId()——分辨同
+    // 一公網 IP 後面的不同匿名訪客，不然公網分享模式下訪客人數統計會偏低。
     const author = authorFrom(req)
-    const key = identityKey(author, clientIp(req))
+    const key = identityKey(author, clientIp(req), req.query.deviceId)
     connectionOpened(key, author)
 
     // 25 秒一次 keep-alive 註解行——擋掉 proxy / 瀏覽器的閒置逾時。

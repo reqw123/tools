@@ -15,6 +15,7 @@ export type ActivityAction =
   | 'delete'
   | 'restore'
   | 'bulk-delete'
+  | 'assigned'
   | 'connect'
   | 'disconnect'
 
@@ -27,6 +28,8 @@ export interface ActivityEntry {
   title: string
   /** bulk-delete 時＝刪了幾則；其餘不帶。 */
   count?: number
+  /** 'assigned' 專用——指派給誰。 */
+  target?: string
 }
 
 const MAX_ENTRIES = 300

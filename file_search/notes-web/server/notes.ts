@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { logActivity } from './activity'
 import { authorFrom } from './identity'
+import { notify } from './notifications'
 import {
   advanceRepeat,
   clearTagColor,
@@ -23,6 +24,7 @@ import {
   patchAppSettings,
   pruneTrash,
   purgeNote,
+  REACTION_EMOJIS,
   restoreNote,
   restoreSnapshot,
   setNotePinned,
@@ -30,6 +32,7 @@ import {
   setTagColor,
   tagCounts,
   toggleNoteLine,
+  toggleNoteReaction,
   updateNote,
   updateNotesTag,
 } from './store'
@@ -63,6 +66,7 @@ const noteBody = {
     tag: { type: 'string', maxLength: 60 },
     due_at: { type: 'string', pattern: DUE_AT_PATTERN },
     repeat: { type: 'string', enum: ['', 'daily', 'weekly', 'monthly', 'weekday'] },
+    assignee: { type: 'string', maxLength: 40 },
   },
 } as const
 
@@ -241,28 +245,56 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.post<{
-    Body: { title?: string; body?: string; tag?: string; due_at?: string; repeat?: string }
+    Body: {
+      title?: string
+      body?: string
+      tag?: string
+      due_at?: string
+      repeat?: string
+      assignee?: string
+    }
   }>(
     '/notes',
     { schema: { body: { ...noteBody, required: ['title'] } } },
     async (req, reply) => {
       const title = (req.body.title ?? '').trim()
       if (!title) return reply.code(422).send({ error: '標題不能留空' })
+      const author = authorFrom(req)
       const note = createNote({
         title,
         body: req.body.body,
         tag: req.body.tag,
         due_at: req.body.due_at,
         repeat: req.body.repeat,
+        assignee: req.body.assignee,
       })
-      logActivity({ action: 'create', noteId: note.id, title: note.title, author: authorFrom(req) })
+      logActivity({ action: 'create', noteId: note.id, title: note.title, author })
+      if (note.assignee) {
+        logActivity({
+          action: 'assigned',
+          noteId: note.id,
+          title: note.title,
+          author,
+          target: note.assignee,
+        })
+        if (note.assignee !== author) {
+          notify(note.assignee, 'assigned', { noteId: note.id, noteTitle: note.title, by: author })
+        }
+      }
       return reply.code(201).send({ note })
     },
   )
 
   app.patch<{
     Params: { id: string }
-    Body: { title?: string; body?: string; tag?: string; due_at?: string; repeat?: string }
+    Body: {
+      title?: string
+      body?: string
+      tag?: string
+      due_at?: string
+      repeat?: string
+      assignee?: string
+    }
   }>(
     '/notes/:id',
     { schema: { body: noteBody } },
@@ -270,9 +302,23 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       if (req.body.title !== undefined && !req.body.title.trim()) {
         return reply.code(422).send({ error: '標題不能留空' })
       }
+      const before = getNote(req.params.id)
       const note = updateNote(req.params.id, req.body)
       if (!note) return reply.code(404).send({ error: 'not found' })
-      logActivity({ action: 'update', noteId: note.id, title: note.title, author: authorFrom(req) })
+      const author = authorFrom(req)
+      logActivity({ action: 'update', noteId: note.id, title: note.title, author })
+      if (note.assignee && note.assignee !== before?.assignee) {
+        logActivity({
+          action: 'assigned',
+          noteId: note.id,
+          title: note.title,
+          author,
+          target: note.assignee,
+        })
+        if (note.assignee !== author) {
+          notify(note.assignee, 'assigned', { noteId: note.id, noteTitle: note.title, by: author })
+        }
+      }
       return { note }
     },
   )
@@ -300,6 +346,32 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
     },
     async (req, reply) => {
       const note = setNotePinned(req.params.id, req.body.pinned ?? false)
+      if (!note) return reply.code(404).send({ error: 'not found' })
+      return { note }
+    },
+  )
+
+  // 表情反應（固定 REACTION_EMOJIS 這幾種）——切換自己的反應，有就取消、沒有
+  // 就加上。獨立端點，不算「編輯」，不更新 created_at（見 store.ts
+  // toggleNoteReaction）；不寫 activity log，太吵，跟 presence heartbeat 同一
+  // 類低調的提示性互動。
+  app.post<{ Params: { id: string }; Body: { emoji?: string } }>(
+    '/notes/:id/react',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['emoji'],
+          properties: { emoji: { type: 'string', maxLength: 8 } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const emoji = req.body.emoji ?? ''
+      if (!(REACTION_EMOJIS as readonly string[]).includes(emoji)) {
+        return reply.code(400).send({ error: '不認得的表情' })
+      }
+      const note = toggleNoteReaction(req.params.id, emoji, authorFrom(req))
       if (!note) return reply.code(404).send({ error: 'not found' })
       return { note }
     },

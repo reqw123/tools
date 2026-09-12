@@ -16,7 +16,14 @@ export interface Note {
   /** 重複到期：'' | 'daily' | 'weekly' | 'monthly' | 'weekday'。只在 due_at 有值時
    *  有意義；按「這次完成」→ advanceRepeat 把 due_at 滾到下一次、內文 [x] 清回 [ ]。 */
   repeat: string
+  /** 指派給誰——純文字名字，''＝未指派。 */
+  assignee: string
+  /** 表情反應——emoji → 反應過的人（author 名字）陣列。 */
+  reactions: Record<string, string[]>
 }
+
+/** 固定的表情反應清單（跟後端 REACTION_EMOJIS 一致，不做自由 emoji picker）。 */
+export const REACTION_EMOJIS = ['👍', '❤️', '😂', '🎉'] as const
 
 /** 重複規則 → 顯示字。'' 代表不重複。 */
 export const REPEAT_LABELS: Record<string, string> = {
@@ -64,6 +71,7 @@ export interface NoteInput {
   tag: string
   due_at: string
   repeat: string
+  assignee: string
 }
 
 const BASE = '/api'
@@ -146,20 +154,31 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T
 }
 
+/** 權限分級——'viewer' 只能讀不能寫（見 server/share.ts 的 shareGuardHook）。
+ *  匿名／沒被 host 特別設過的人一律是 'editor'，維持現況。 */
+export type PersonRole = 'editor' | 'viewer'
+
 /** GET /session 的回應——`name` 有值＝這個名字通過了 PIN 驗證（見 server/people.ts），
  *  之後的請求不管前端標頭填什麼，activity/presence 一律認這個名字。 */
 export interface SessionInfo {
   ok: boolean
   name: string | null
+  role: PersonRole
 }
-const SESSION_OFFLINE: SessionInfo = { ok: false, name: null }
+const SESSION_OFFLINE: SessionInfo = { ok: false, name: null, role: 'editor' }
 
 /** 區網共用模式的密碼 session（cookie 由 server 設，這裡只管觸發／查詢）。 */
 export const session = {
   check: (): Promise<SessionInfo> =>
     fetch(BASE + '/session', { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : SESSION_OFFLINE))
-      .then((j: Partial<SessionInfo>) => ({ ok: !!j.ok, name: j.name ?? null }))
+      .then(
+        (j: Partial<SessionInfo>): SessionInfo => ({
+          ok: !!j.ok,
+          name: j.name ?? null,
+          role: j.role === 'viewer' ? 'viewer' : 'editor',
+        }),
+      )
       .catch(() => SESSION_OFFLINE),
   /** name 留空＝匿名。name 是已被 PIN 保護的名字時，pin 要對，不然整個登入失敗
    *  （密碼雖然對，也不會放行）——回傳伺服器確認過的名字（沒設身分就是 null）。 */
@@ -222,6 +241,12 @@ export const api = {
     }).then((r) => r.note),
   advanceRepeat: (id: string) =>
     req<{ note: Note }>(`/notes/${id}/advance-repeat`, { method: 'POST' }).then((r) => r.note),
+  /** 切換自己對這則便利貼的表情反應——有就取消、沒有就加上。 */
+  react: (id: string, emoji: string) =>
+    req<{ note: Note }>(`/notes/${id}/react`, {
+      method: 'POST',
+      body: JSON.stringify({ emoji }),
+    }).then((r) => r.note),
   bulkCreate: (input: { tag: string; count: number; titlePrefix?: string }) =>
     req<{ created: Note[] }>('/notes/bulk', {
       method: 'POST',
@@ -288,6 +313,27 @@ export const api = {
     req<CardState>('/card', { method: 'POST', body: JSON.stringify({ noteId }) }),
   /** 發一則彈幕——不寫檔，靠 SSE 的具名事件即時推給所有人（見 lib/liveSync.ts）。 */
   sendDanmaku: (text: string) => req<void>('/danmaku', { method: 'POST', body: JSON.stringify({ text }) }),
+  /** 已註冊的名字清單——指派便利貼的下拉建議用，不用 host 權限就能讀。 */
+  listPeopleNames: () => req<{ names: string[] }>('/people').then((r) => r.names),
+}
+
+/** 一則站內通知——目前只有「便利貼指派給你了」這種，持久化存檔（見
+ *  server/notifications.ts），server 重開不會不見。 */
+export interface Notification {
+  id: string
+  to: string
+  kind: 'assigned'
+  noteId: string
+  noteTitle: string
+  by: string
+  at: string
+  read: boolean
+}
+export const notifications = {
+  list: () => req<{ notifications: Notification[] }>('/notifications').then((r) => r.notifications),
+  markRead: (id: string) => req<void>(`/notifications/${id}/read`, { method: 'POST' }),
+  markAllRead: () =>
+    req<{ updated: number }>('/notifications/read-all', { method: 'POST' }).then((r) => r.updated),
 }
 
 /** `/host`（host.html 管理面板，見 HostPanel.tsx）用的端點——一律只有主機本機
@@ -297,7 +343,7 @@ export interface HostState {
   aiEnabled: boolean
   /** 登入畫面要不要載入 host 的 3D logo（見 server/share.ts、LoginLogo3D.tsx）。 */
   loginLogo3d: boolean
-  people: { name: string; createdAt: string }[]
+  people: { name: string; createdAt: string; role: PersonRole }[]
 }
 /** 一筆造訪紀錄——見 server/visits.ts。author=''＝匿名。 */
 export interface VisitEntry {
@@ -323,6 +369,11 @@ export const host = {
     }),
   releasePerson: (name: string) =>
     req<void>(`/host/people/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  setPersonRole: (name: string, role: PersonRole) =>
+    req<{ people: HostState['people'] }>(`/host/people/${encodeURIComponent(name)}/role`, {
+      method: 'POST',
+      body: JSON.stringify({ role }),
+    }),
   /** 訪客紀錄（持久化）——`/host` 的「訪客紀錄」文字視窗用。新到舊。 */
   getVisits: (limit?: number) =>
     req<{ entries: VisitEntry[] }>(`/host/visits${limit ? `?limit=${limit}` : ''}`).then(
@@ -438,10 +489,20 @@ export interface ActivityEntry {
   at: string
   /** ''＝匿名（沒填名字），畫面上用 identity.ts 的 displayAuthor() 轉成「有人」。 */
   author: string
-  action: 'create' | 'update' | 'delete' | 'restore' | 'bulk-delete' | 'connect' | 'disconnect'
+  action:
+    | 'create'
+    | 'update'
+    | 'delete'
+    | 'restore'
+    | 'bulk-delete'
+    | 'assigned'
+    | 'connect'
+    | 'disconnect'
   noteId?: string
   title: string
   count?: number
+  /** 'assigned' 專用——指派給誰。 */
+  target?: string
 }
 
 /** 「看板」（固定網址 `/card`，見 CardScreen.tsx）目前指定的內容——後端持久存檔，

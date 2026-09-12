@@ -16,7 +16,15 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { networkInterfaces } from 'node:os'
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify'
 import { emitChange } from './change-bus'
-import { IDENTITY_COOKIE, claimOrVerify, identityToken, verifyIdentityToken } from './people'
+import {
+  IDENTITY_COOKIE,
+  claimOrVerify,
+  getPersonRole,
+  identityToken,
+  verifyIdentityToken,
+} from './people'
+import { authorFrom } from './identity'
+import { startSweeper } from './sweep'
 
 export type ShareMode = 'off' | 'lan'
 
@@ -168,6 +176,7 @@ function remoteAiSearchAllowed(): boolean {
 const LOGIN_WINDOW_MS = 15 * 60_000
 const LOGIN_MAX_FAILS = 10
 const loginFails = new Map<string, { n: number; since: number }>()
+startSweeper(loginFails, (v) => v.since, LOGIN_WINDOW_MS)
 
 /** 匿名使用者用來區分「不同人」的 key（presence.ts 需要——具名使用者直接用
  *  名字當 key 就夠了，匿名的話光憑空字串分不出是誰，退而求其次用來源 IP）。 */
@@ -203,6 +212,7 @@ function noteLoginFail(ip: string): void {
 const WRITE_WINDOW_MS = 60_000
 const WRITE_MAX = 120
 const writeCounts = new Map<string, { n: number; since: number }>()
+startSweeper(writeCounts, (v) => v.since, WRITE_WINDOW_MS)
 
 function writeRateLimited(ip: string): boolean {
   const rec = writeCounts.get(ip)
@@ -282,6 +292,12 @@ export async function shareGuardHook(req: FastifyRequest, reply: FastifyReply): 
   if (method !== 'GET' && path !== '/api/session' && writeRateLimited(clientIp(req))) {
     return void reply.code(429).send({ error: '寫入太頻繁，請稍等一下再試' })
   }
+  // 權限分級——host 在 /host 把某個已註冊名字設成唯讀（viewer）就擋掉所有
+  // 非 GET 請求；匿名／沒被特別設過的人一律當 editor（見 people.ts 的
+  // getPersonRole）。/api/session 要放行，不然連自己的角色/登入狀態都查不到。
+  if (method !== 'GET' && path !== '/api/session' && getPersonRole(authorFrom(req)) === 'viewer') {
+    return void reply.code(403).send({ error: '唯讀身分，不能編輯' })
+  }
   // 遠端 AI 每日額度——只限真的花 host 錢／額度的 /ai/search。
   if (path === '/api/ai/search' && shareAiEnabled && !remoteAiSearchAllowed()) {
     return void reply.code(429).send({ error: '今天的共用 AI 額度用完了，明天再試（host 設定的每日上限）' })
@@ -320,11 +336,12 @@ export const shareSessionRoutes: FastifyPluginAsync = async (app) => {
   // shareAuthHook 同一條規則）——身分驗證跟「要不要共用密碼」分開判斷。
   app.get('/session', async (req) => {
     if (isLoopback(req)) {
-      return { ok: true, name: verifyIdentityToken(req.cookies?.[IDENTITY_COOKIE]) || null }
+      const name = verifyIdentityToken(req.cookies?.[IDENTITY_COOKIE])
+      return { ok: true, name: name || null, role: getPersonRole(name) }
     }
     const name = verifyIdentityToken(req.cookies?.[IDENTITY_COOKIE])
     const ok = openAccess ? !!name : cookieValid(req.cookies?.[COOKIE_NAME])
-    return { ok, name: name || null }
+    return { ok, name: name || null, role: getPersonRole(name) }
   })
 
   app.post<{ Body: { password?: string; name?: string; pin?: string } }>(

@@ -15,7 +15,7 @@ import {
   setOpenAccess,
   setShareAiEnabled,
 } from './share'
-import { listPeople, releasePerson } from './people'
+import { listPeople, releasePerson, setPersonRole } from './people'
 import { listVisits } from './visits'
 
 export const hostRoutes: FastifyPluginAsync = async (app) => {
@@ -88,10 +88,42 @@ export const hostRoutes: FastifyPluginAsync = async (app) => {
   )
 
   app.delete<{ Params: { name: string } }>('/host/people/:name', async (req, reply) => {
-    const ok = releasePerson(decodeURIComponent(req.params.name))
+    let name: string
+    try {
+      name = decodeURIComponent(req.params.name)
+    } catch {
+      return reply.code(400).send({ error: '名字格式不正確' })
+    }
+    const ok = releasePerson(name)
     if (!ok) return reply.code(404).send({ error: '找不到這個名字' })
     return reply.code(204).send()
   })
+
+  /** 把某個已註冊名字設成 editor（可編輯）或 viewer（唯讀）——見 people.ts
+   *  的 setPersonRole()／share.ts 的 shareGuardHook 怎麼用這個角色擋寫入。 */
+  app.post<{ Params: { name: string }; Body: { role?: 'editor' | 'viewer' } }>(
+    '/host/people/:name/role',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['role'],
+          properties: { role: { type: 'string', enum: ['editor', 'viewer'] } },
+        },
+      },
+    },
+    async (req, reply) => {
+      let name: string
+      try {
+        name = decodeURIComponent(req.params.name)
+      } catch {
+        return reply.code(400).send({ error: '名字格式不正確' })
+      }
+      const ok = setPersonRole(name, req.body.role!)
+      if (!ok) return reply.code(404).send({ error: '找不到這個名字' })
+      return { people: listPeople() }
+    },
+  )
 
   /** 「訪客紀錄」文字視窗——誰、什麼時候造訪過（見 visits.ts）。同一支也給
    *  Node-RED 輪詢轉發 Discord 用：Node-RED 本身就跑在這台機器上，天生

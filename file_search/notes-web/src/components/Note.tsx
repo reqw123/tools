@@ -236,6 +236,11 @@ export function Note({
           ✏️ {editingBy.join('、')} 編輯中
         </p>
       )}
+      {note.assignee && (
+        <p className="assignee-badge" title={`指派給：${note.assignee}`}>
+          👤 指派給 {note.assignee}
+        </p>
+      )}
       {/* 到期／重複提示緊貼標題下方——擺在內文後面的話，長內文會把它擠到
           看不到的地方（回報過）。寧可蓋住一點內文也要讓它一直看得見。 */}
       {due && (

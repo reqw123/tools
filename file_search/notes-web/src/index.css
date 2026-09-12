@@ -1349,6 +1349,33 @@ body {
   background: rgba(31, 41, 55, 0.09);
   color: rgba(31, 41, 55, 0.82);
 }
+
+/* 表情反應——固定 4 種（見 lib/api.ts 的 REACTION_EMOJIS）。按下切換自己的
+   反應；aria-pressed 決定有沒有反應過的視覺狀態（淡底＋邊框 vs 純透明）。 */
+.reaction-row {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0.3rem 0 0.6rem;
+}
+.reaction-btn {
+  font-size: 0.86rem;
+  line-height: 1;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(31, 41, 55, 0.15);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.reaction-btn[aria-pressed='true'] {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+.reaction-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 /* 「小明正在編輯這則」——紫色系跟到期（紅黃）、重複（灰藍）都區分開，一看
    就知道是「有人在動」而不是時間性的提醒。只出現在牆上卡片（NoteDialog
    放大檢視另外用 .edit-warn 呈現，不會重複）。 */
@@ -1361,6 +1388,18 @@ body {
   width: fit-content;
   background: rgba(124, 58, 237, 0.16);
   color: rgb(91, 33, 182);
+}
+/* 「指派給 xxx」——牆上卡片跟放大檢視都要顯眼（使用者反映指派後看不出來），
+   跟到期（紅黃）、重複（灰藍）、編輯中（紫）都區分開，用青綠色系。 */
+.assignee-badge {
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.18rem 0.5rem;
+  border-radius: 3px;
+  margin: 0.1rem 0 0.5rem;
+  width: fit-content;
+  background: rgba(13, 148, 136, 0.16);
+  color: rgb(15, 118, 110);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -2010,6 +2049,27 @@ body {
    點了會切設定＋出提醒）。 */
 .btn.ghost.icon.dim {
   opacity: 0.42;
+}
+/* 通知鈴鐺——未讀數疊在右上角的小紅點，數字本身用 tabular-nums 避免位數
+   變動時左右跳動。 */
+.notif-btn {
+  position: relative;
+}
+.notif-badge {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.3rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.1rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .link {
   border: 0;
@@ -3619,7 +3679,16 @@ select option {
 }
 .host-people-actions {
   display: flex;
+  align-items: center;
   gap: 0.4rem;
+}
+.host-people-role {
+  font-size: 0.82rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--hair);
+  background: var(--panel);
+  color: var(--ink);
 }
 /* 訪客紀錄——「文字紀錄視窗」，一行一筆，固定高度自己捲動，不撐開整個
    後台頁面（訪客一多，這份清單最多到 200 行）。 */

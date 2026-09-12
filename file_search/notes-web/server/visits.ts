@@ -8,9 +8,10 @@
  *
  * 跟 people.ts／card.ts 同一套原子寫入 pattern（tmp + rename）。
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { notesFilePath } from './store'
+import { atomicWriteFile } from './atomic-write'
 
 // 2026-09 搬進 .share/（純 notes-web 概念、桌面版不讀——見 store.ts 的
 // migrateLegacyDataLayout() 負責把舊位置的檔案一次性搬過來）。
@@ -39,22 +40,8 @@ function readVisits(): VisitEntry[] {
   }
 }
 
-let tmpSeq = 0
 function writeVisits(list: VisitEntry[]): void {
-  const dir = dirname(VISITS_FILE)
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  const tmp = `${VISITS_FILE}.${process.pid}.${Date.now()}.${tmpSeq++}.tmp`
-  try {
-    writeFileSync(tmp, JSON.stringify(list, null, 1), 'utf-8')
-    renameSync(tmp, VISITS_FILE)
-  } catch (err) {
-    try {
-      rmSync(tmp, { force: true })
-    } catch {
-      /* 暫存檔清不掉就算了，不掩蓋原本的寫入錯誤 */
-    }
-    throw err
-  }
+  atomicWriteFile(VISITS_FILE, JSON.stringify(list, null, 1))
 }
 
 /** 記一筆造訪——connections.ts 判定「真的是新連線」（不是換頁／重整那種瞬斷

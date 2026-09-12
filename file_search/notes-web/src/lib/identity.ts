@@ -71,3 +71,28 @@ export function getClientId(): string {
     return '' // private mode 等存不進去——退回沒有 clientId，server 端退回舊的 IP-only key
   }
 }
+
+const DEVICE_ID_KEY = 'sticky-wall-device-id'
+
+/**
+ * 這個瀏覽器的隨機識別碼——只給「連線／斷線統計」用（見 `useLiveSync.ts` 開
+ * SSE 時帶的 query string／`server/connections.ts`）。**故意跟上面的
+ * `getClientId()` 分開存、分開用**：`getClientId()` 存在 `sessionStorage`（每個
+ * 分頁各自一份），連線統計要的卻是相反的效果——同一個人開好幾個分頁要合併
+ * 算成一次連線（`connections.ts` 的既有設計），只有「同一 IP 下的不同匿名
+ * 使用者」才需要分開算。所以這裡改存 `localStorage`（同一瀏覽器的所有分頁共
+ * 用一份、重整不會變），匿名使用者才能在「多分頁算一次連線」和「同 IP 不同人
+ * 分開算」之間兩全；具名的人不受影響，一律用名字合併。
+ */
+export function getDeviceId(): string {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY)
+    if (!id) {
+      id = crypto.randomUUID()
+      localStorage.setItem(DEVICE_ID_KEY, id)
+    }
+    return id
+  } catch {
+    return '' // private mode 等存不進去——退回沒有 deviceId，server 端退回舊的 IP-only key
+  }
+}

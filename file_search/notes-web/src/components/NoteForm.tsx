@@ -4,7 +4,7 @@ import { REPEAT_LABELS, type NoteInput, type TagColors } from '../lib/api'
 import { colorForTag } from '../lib/color'
 import { fromStoredDueAt, timeFromStoredDueAt, toStoredDueAt } from '../lib/format'
 import {
-  TAG_COLORS_KEY, useClearTagColor, useSetTagColor, useTagColors,
+  TAG_COLORS_KEY, useClearTagColor, usePeopleNames, useSetTagColor, useTagColors,
 } from '../hooks/useNotes'
 import { TagInput } from './TagInput'
 
@@ -37,7 +37,9 @@ export function NoteForm({
   const [dueDate, setDueDate] = useState(fromStoredDueAt(initial?.due_at ?? ''))
   const [dueTime, setDueTime] = useState(timeFromStoredDueAt(initial?.due_at ?? ''))
   const [repeat, setRepeat] = useState(initial?.repeat ?? '')
+  const [assignee, setAssignee] = useState(initial?.assignee ?? '')
   const [touched, setTouched] = useState(false)
+  const { data: peopleNames } = usePeopleNames()
 
   // 開啟當下的原始值——送出時比對，只送改過的欄位。跟上面各 state 的初值一致。
   const baseline = useMemo<NoteInput>(
@@ -47,6 +49,7 @@ export function NoteForm({
       body: initial?.body ?? '',
       due_at: initial?.due_at ?? '',
       repeat: initial?.repeat ?? '',
+      assignee: initial?.assignee ?? '',
     }),
     // 只在掛載時算一次；prop 之後變了也不動（那是「別人改的」，不該當成 baseline）
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,6 +119,7 @@ export function NoteForm({
           body,
           due_at: toStoredDueAt(dueDate, dueTime),
           repeat: dueDate ? repeat : '', // 沒有到期日就沒有「重複」概念
+          assignee: assignee.trim(),
         }
         if (isNew) {
           onSubmit(full)
@@ -123,7 +127,7 @@ export function NoteForm({
         }
         // 編輯：只送改過的欄位
         const patch: Partial<NoteInput> = {}
-        for (const k of ['title', 'tag', 'body', 'due_at', 'repeat'] as const) {
+        for (const k of ['title', 'tag', 'body', 'due_at', 'repeat', 'assignee'] as const) {
           if (full[k] !== baseline[k]) patch[k] = full[k]
         }
         onSubmit(patch)
@@ -178,6 +182,17 @@ export function NoteForm({
             </button>
           )}
         </div>
+      </label>
+
+      <label>
+        指派給（可留空；自由輸入，不限已註冊的名字）
+        <TagInput
+          value={assignee}
+          onChange={setAssignee}
+          knownTags={peopleNames ?? []}
+          maxLength={40}
+          placeholder="例如：小明"
+        />
       </label>
 
       <label>

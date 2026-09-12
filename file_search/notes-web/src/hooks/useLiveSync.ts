@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { emitDanmakuEvent, setLiveConnected, type DanmakuMessage } from '../lib/liveSync'
+import { getDeviceId } from '../lib/identity'
 
 /** SSE topic → 要重抓的 query keys。 */
 const TOPIC_KEYS: Record<string, string[][]> = {
@@ -10,6 +11,7 @@ const TOPIC_KEYS: Record<string, string[][]> = {
   activity: [['activity']],
   presence: [['presence']],
   card: [['card']],
+  notifications: [['notifications']],
 }
 const ALL_KEYS = Object.values(TOPIC_KEYS).flat()
 
@@ -37,7 +39,9 @@ export function useLiveSync(): void {
 
     const open = () => {
       if (closed) return
-      es = new EventSource('/api/events')
+      // deviceId：EventSource 不能帶自訂標頭，匿名連線統計靠這個 query string
+      // 分辨「同一瀏覽器多分頁」跟「同 IP 下的不同人」——見 lib/identity.ts。
+      es = new EventSource(`/api/events?deviceId=${encodeURIComponent(getDeviceId())}`)
 
       es.onopen = () => {
         setLiveConnected(true)

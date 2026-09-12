@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type AppSettings, type AppSettingsPatch, type Note, type NoteInput } from '../lib/api'
 import { toggleBodyLine } from '../lib/format'
 import { useLiveConnected } from '../lib/liveSync'
+import { readAuthorName } from '../lib/identity'
 import { useShareInfo } from './useShareInfo'
 
 const KEY = ['notes'] as const
@@ -130,6 +131,47 @@ export function useAdvanceRepeat() {
       qc.setQueryData<Note[]>(KEY, (old) => old?.map((n) => (n.id === note.id ? note : n)))
       qc.invalidateQueries({ queryKey: KEY })
     },
+  })
+}
+
+/** 切換自己對一則便利貼的表情反應。樂觀更新：本地先切換自己的名字在不在
+ *  `reactions[emoji]` 裡，失敗再還原。反應不算「編輯」，不動 created_at。 */
+export function useReactToNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, emoji }: { id: string; emoji: string }) => api.react(id, emoji),
+    onMutate: async ({ id, emoji }) => {
+      await qc.cancelQueries({ queryKey: KEY })
+      const prev = qc.getQueryData<Note[]>(KEY)
+      const me = readAuthorName()
+      qc.setQueryData<Note[]>(KEY, (old) =>
+        old?.map((n) => {
+          if (n.id !== id) return n
+          const current = n.reactions[emoji] ?? []
+          const has = current.includes(me)
+          const nextList = has ? current.filter((a) => a !== me) : [...current, me]
+          const reactions = { ...n.reactions }
+          if (nextList.length) reactions[emoji] = nextList
+          else delete reactions[emoji]
+          return { ...n, reactions }
+        }),
+      )
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(KEY, ctx.prev)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: KEY }),
+  })
+}
+
+/** 已註冊的名字清單——指派便利貼的下拉建議用。變動不頻繁，不用跟著 SSE 即時
+ *  同步，稍微久一點的 staleTime 就夠。 */
+export function usePeopleNames() {
+  return useQuery({
+    queryKey: ['people-names'],
+    queryFn: api.listPeopleNames,
+    staleTime: 60_000,
   })
 }
 

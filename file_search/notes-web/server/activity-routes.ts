@@ -9,6 +9,8 @@ import { currentEditors, heartbeat, stopEditing } from './presence'
 import { getCard, setCard } from './card'
 import { broadcastDanmaku } from './events'
 import { clientIp } from './share'
+import { startSweeper } from './sweep'
+import { listPersonNames } from './people'
 
 const DANMAKU_MAX_CHARS = 60
 // 彈幕會即時推給「所有」開著牆的人，比一般寫入更容易造成干擾——除了共用的
@@ -17,6 +19,7 @@ const DANMAKU_MAX_CHARS = 60
 // 上面那層全域限速管）。
 const DANMAKU_COOLDOWN_MS = 800
 const lastDanmakuAt = new Map<string, number>()
+startSweeper(lastDanmakuAt, (v) => v, DANMAKU_COOLDOWN_MS, 5 * 60_000)
 
 export const activityRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: { limit?: string } }>('/activity', async (req) => {
@@ -53,6 +56,10 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(204).send()
     },
   )
+
+  // 指派便利貼的下拉建議清單用——這些名字本來就會出現在動態記錄／在場提示，
+  // 不用 host 權限就能讀。
+  app.get('/people', async () => ({ names: listPersonNames() }))
 
   app.get('/card', async () => getCard())
 

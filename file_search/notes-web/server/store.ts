@@ -11,9 +11,11 @@ import {
   type Stats,
 } from 'node:fs'
 import { homedir } from 'node:os'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import { dropThumbs } from './note-thumb'
 import { emitChange, topicForFile } from './change-bus'
+import { atomicWriteFile as writeFileAtomically } from './atomic-write'
 
 /**
  * 儲存層——**預設直接讀寫桌面版的 `indexes/.sticky_notes.json`**，網頁和
@@ -57,11 +59,21 @@ export interface Note {
    *  只在 due_at 有值時有意義。使用者按「這次完成」→ advanceRepeat 把 due_at
    *  依這個往前滾、內文 [x] 清回 [ ]。跟桌面版共用同一個欄位。 */
   repeat: string
+  /** 指派給誰——純文字名字，''＝未指派。不強制要求是已註冊/有 PIN 的名字，
+   *  跟這個 app 本來就寬鬆的身分模式一致（見 identity.ts）。 */
+  assignee: string
+  /** 表情反應——emoji → 反應過的人（author 名字）陣列。匿名者（author===''）
+   *  共用同一個 key，跟 activity.ts 對匿名的處理一致，是既有限制不是新問題。 */
+  reactions: Record<string, string[]>
 }
 
 /** 認得的重複規則——存/讀時都過濾成這幾個。跟桌面版 models.py 的
  *  REPEAT_VALUES 一致。 */
 export const REPEAT_VALUES = new Set(['daily', 'weekly', 'monthly', 'weekday'])
+
+/** 認得的表情反應——固定這幾種，不做自由 emoji picker。 */
+export const REACTION_EMOJIS = ['👍', '❤️', '😂', '🎉'] as const
+export type ReactionEmoji = (typeof REACTION_EMOJIS)[number]
 
 /** 垃圾桶裡的便利貼——刪除（單筆或批次）不是真的消失，先搬到這裡，可以
  *  復原或永久刪除（見「垃圾桶」那一節）。deleted_at 是進垃圾桶的時間。 */
@@ -87,14 +99,24 @@ const LIFE_FILE =
   process.env.STICKY_NOTES_FILE ??
   join(projectRoot, '..', 'indexes', '.sticky_notes.json')
 
-let activeCollection: NoteCollection = 'life'
+// 2026-09 改用 AsyncLocalStorage，不再是單純的模組變數——後者曾經是安全的
+// （store 全是同步 IO，一個 request 的 handler 中途不會被別的 request 插隊），
+// 但 note-image-routes.ts 的上傳流程後來加了真正的 await（讀 multipart、sharp
+// 處理），這段期間另一個 request 的 onRequest hook 就可能把全域變數切到別的
+// collection，害上傳中的請求讀寫到錯的資料夾（真的踩過：兩人一個生活牆一個
+// 研究生牆同時操作，圖片存錯集合）。AsyncLocalStorage 讓每個 request 自己
+// 的整條 async 呼叫鏈（包含 await 之後）看到的都是自己進來時設定的值，不會
+// 被併發的其他 request 互相干擾；`enterWith()`／`getStore()` 維持跟原本
+// `setActiveCollection()`/`getActiveCollection()` 一樣的呼叫方式，`card.ts`／
+// `dueSummaryAll()` 那種「同步切過去、算完馬上切回來」的用法不用改。
+const collectionStorage = new AsyncLocalStorage<NoteCollection>()
 
 /** 這一個 request 要動哪一份便利貼——index.ts 的 onRequest hook 依標頭設定。 */
 export function setActiveCollection(c: NoteCollection): void {
-  activeCollection = c === 'thesis' ? 'thesis' : 'life'
+  collectionStorage.enterWith(c === 'thesis' ? 'thesis' : 'life')
 }
 export function getActiveCollection(): NoteCollection {
-  return activeCollection
+  return collectionStorage.getStore() ?? 'life'
 }
 
 /** 研究生便利貼資料的家——**固定放在這個 app 自己的 `indexes/.thesis/`
@@ -114,7 +136,7 @@ function thesisNotesFile(): string {
 
 /** 目前作用中的便利貼 JSON 路徑。 */
 export function activeNotesFile(): string {
-  return activeCollection === 'thesis' ? thesisNotesFile() : LIFE_FILE
+  return getActiveCollection() === 'thesis' ? thesisNotesFile() : LIFE_FILE
 }
 
 function historyDir(): string {
@@ -126,7 +148,7 @@ function historyDir(): string {
  *  共用，路徑不能動）；研究生牆放進上面的 `.thesis/` 底下，跟研究生便利貼
  *  JSON 同一個家。 */
 function tagColorsFile(): string {
-  return activeCollection === 'thesis'
+  return getActiveCollection() === 'thesis'
     ? join(thesisDataDir(), 'tag_colors.json')
     : join(dirname(LIFE_FILE), '.sticky_tag_colors.json')
 }
@@ -150,7 +172,7 @@ export function thesisImagesDir(): string {
 /** 這一個 request 現在該讀寫哪個插圖資料夾——寫入／刪除／匯出匯入圖片的
  *  路由都呼叫這個，不要直接用 `noteImagesDir`（那個永遠是生活牆那份）。 */
 export function activeImagesDir(): string {
-  return activeCollection === 'thesis' ? thesisImagesDir() : noteImagesDir
+  return getActiveCollection() === 'thesis' ? thesisImagesDir() : noteImagesDir
 }
 
 /**
@@ -218,31 +240,17 @@ function readRaw(): RawFile {
   return { notes: [], trash: [], panel: { visible: true } }
 }
 
-let tmpSeq = 0
-
 /**
- * 原子寫入：先寫到暫存檔、成功後才 rename 換掉目標檔案——寫到一半崩潰／
- * 斷電不會留下半截 JSON（讀取端會 catch 成空值 → 設定或資料整份遺失）。
- * 對應桌面版 `repositories/atomic_io.py`；`.sticky_notes.json`、
- * `.sticky_tag_colors.json`、`.notes_settings.json` 全部走這條路。
+ * 原子寫入（實作見 `atomic-write.ts`）＋這裡專屬的一步：寫完立刻用
+ * `topicForFile()` 查對應 topic、`emitChange()` 廣播——SSE 即時同步不必等
+ * `fs.watch`。`.sticky_notes.json`、`.sticky_tag_colors.json`、
+ * `.notes_settings.json` 全部走這條路；`card.ts`／`people.ts`／`visits.ts`
+ * 不需要這層廣播，直接用 `atomic-write.ts` 的原始版本。
  */
 function atomicWriteFile(target: string, text: string): void {
-  const dir = dirname(target)
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  const tmp = `${target}.${process.pid}.${Date.now()}.${tmpSeq++}.tmp`
-  try {
-    writeFileSync(tmp, text, 'utf-8')
-    renameSync(tmp, target)
-    const topic = topicForFile(target)
-    if (topic) emitChange(topic) // SSE 即時同步：不必等 fs.watch
-  } catch (err) {
-    try {
-      rmSync(tmp, { force: true })
-    } catch {
-      /* 暫存檔清不掉就算了，不掩蓋原本的寫入錯誤 */
-    }
-    throw err
-  }
+  writeFileAtomically(target, text)
+  const topic = topicForFile(target)
+  if (topic) emitChange(topic) // SSE 即時同步：不必等 fs.watch
 }
 
 function writeRaw(raw: RawFile): void {
@@ -370,6 +378,19 @@ export function restoreSnapshot(id: string): boolean {
   return true
 }
 
+function parseReactions(x: unknown): Record<string, string[]> {
+  if (!x || typeof x !== 'object') return {}
+  const out: Record<string, string[]> = {}
+  for (const emoji of REACTION_EMOJIS) {
+    const arr = (x as Record<string, unknown>)[emoji]
+    if (Array.isArray(arr)) {
+      const names = arr.filter((v): v is string => typeof v === 'string')
+      if (names.length) out[emoji] = names
+    }
+  }
+  return out
+}
+
 function parseNote(x: unknown): Note | null {
   if (!x || typeof x !== 'object') return null
   const o = x as Record<string, unknown>
@@ -384,6 +405,8 @@ function parseNote(x: unknown): Note | null {
     pinned: o.pinned === true,
     repeat: typeof o.repeat === 'string' && REPEAT_VALUES.has(o.repeat) ? o.repeat : '',
     created_at: typeof o.created_at === 'string' && o.created_at ? o.created_at : localIso(),
+    assignee: typeof o.assignee === 'string' ? o.assignee : '',
+    reactions: parseReactions(o.reactions),
   }
 }
 
@@ -391,6 +414,7 @@ function serialize(n: Note): Record<string, unknown> {
   return {
     id: n.id, title: n.title, body: n.body, tag: n.tag, image: n.image,
     due_at: n.due_at, pinned: n.pinned, repeat: n.repeat, created_at: n.created_at,
+    assignee: n.assignee, reactions: n.reactions,
   }
 }
 
@@ -499,6 +523,7 @@ export function createNote(input: {
   tag?: string
   due_at?: string
   repeat?: string
+  assignee?: string
 }): Note {
   const note: Note = {
     id: crypto.randomUUID().replace(/-/g, ''),
@@ -510,11 +535,39 @@ export function createNote(input: {
     pinned: false,
     repeat: input.repeat && REPEAT_VALUES.has(input.repeat) ? input.repeat : '',
     created_at: localIso(),
+    assignee: (input.assignee ?? '').trim(),
+    reactions: {},
   }
   const raw = readRaw()
   raw.notes = [...raw.notes, serialize(note)]
   writeRaw(raw)
   return note
+}
+
+/**
+ * 切換一個人對一則便利貼的表情反應（有就取消、沒有就加上）。**不動
+ * `created_at`**——反應是輕量互動，不算「編輯」。回傳更新後的便利貼，找不到
+ * id 回 undefined；`emoji` 不在 `REACTION_EMOJIS` 白名單內由呼叫端（路由層）
+ * 先擋掉，這裡不重複驗證。
+ */
+export function toggleNoteReaction(id: string, emoji: string, author: string): Note | undefined {
+  const raw = readRaw()
+  let updated: Note | undefined
+  raw.notes = raw.notes.map((x) => {
+    const n = parseNote(x)
+    if (!n || n.id !== id) return x
+    const current = n.reactions[emoji] ?? []
+    const has = current.includes(author)
+    const nextList = has ? current.filter((a) => a !== author) : [...current, author]
+    const reactions = { ...n.reactions }
+    if (nextList.length) reactions[emoji] = nextList
+    else delete reactions[emoji]
+    updated = { ...n, reactions }
+    return serialize(updated)
+  })
+  if (!updated) return undefined
+  writeRaw(raw)
+  return updated
 }
 
 /**
@@ -662,7 +715,14 @@ export function advanceRepeat(id: string): Note | undefined {
 
 export function updateNote(
   id: string,
-  patch: { title?: string; body?: string; tag?: string; due_at?: string; repeat?: string },
+  patch: {
+    title?: string
+    body?: string
+    tag?: string
+    due_at?: string
+    repeat?: string
+    assignee?: string
+  },
 ): Note | undefined {
   const raw = readRaw()
   let updated: Note | undefined
@@ -681,6 +741,7 @@ export function updateNote(
             ? patch.repeat
             : ''
           : n.repeat,
+      assignee: patch.assignee !== undefined ? patch.assignee.trim() : n.assignee,
       created_at: localIso(), // 編輯視同重新建立
     }
     return serialize(updated)
@@ -732,6 +793,8 @@ export function createNotes(
     pinned: false,
     repeat: '',
     created_at: localIso(new Date(base - i)),
+    assignee: '',
+    reactions: {},
   }))
   const raw = readRaw()
   raw.notes = [...raw.notes, ...made.map(serialize)]
@@ -851,6 +914,7 @@ export function restoreNote(id: string): Note | undefined {
     id: target.id, title: target.title, body: target.body,
     tag: target.tag, image: target.image, due_at: target.due_at,
     pinned: target.pinned, repeat: target.repeat, created_at: target.created_at,
+    assignee: target.assignee, reactions: target.reactions,
   }
   raw.notes = [...raw.notes, serialize(restored)]
   writeRaw(raw)
@@ -964,7 +1028,7 @@ export interface DueSummary {
 }
 
 function toDueNote(n: Note): DueNote {
-  return { id: n.id, title: n.title, tag: n.tag, due_at: n.due_at, collection: activeCollection }
+  return { id: n.id, title: n.title, tag: n.tag, due_at: n.due_at, collection: getActiveCollection() }
 }
 
 export function dueSummary(): DueSummary {
@@ -991,13 +1055,14 @@ export function dueSummary(): DueSummary {
  * 鬧鐘」用這個（GET /notes/due-soon?scope=all），這樣研究生模式的便利貼設了
  * 到期日一樣會跳系統通知、算進角標數字。各自照自己那份資料算完再合併重排。
  *
- * dueSummary() 讀的是 module 變數 activeCollection，這裡暫時切過去、算完用
- * finally 還原成這個 request 進來時的值（onRequest hook 設的）——順序無關緊要，
- * store 全是同步 IO，中途不會被別的 request 插隊。研究生那份檔案不存在時
- * readRaw() 回空陣列，不會拋錯。
+ * dueSummary() 讀的是 AsyncLocalStorage 裡目前這個 request 的 collection，
+ * 這裡暫時切過去、算完用 finally 還原成進來時的值（onRequest hook 設的）——
+ * 這個函式本身全程同步、沒有 await，AsyncLocalStorage 的暫時切換／還原不會
+ * 被併發的其他 request 看到或干擾。研究生那份檔案不存在時 readRaw() 回空
+ * 陣列，不會拋錯。
  */
 export function dueSummaryAll(): DueSummary {
-  const prev = activeCollection
+  const prev = getActiveCollection()
   const overdue: DueNote[] = []
   const soon: DueNote[] = []
   const seen = new Set<string>()

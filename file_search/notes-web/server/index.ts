@@ -15,6 +15,7 @@ import {
   thesisImagesDir,
 } from './store'
 import { notesRoutes } from './notes'
+import { notificationsRoutes } from './notifications-routes'
 import { noteImageRoutes } from './note-image-routes'
 import { aiRoutes } from './ai-routes'
 import { filesRoutes } from './files-routes'
@@ -60,7 +61,9 @@ app.get('/api/share-info', async (req) => shareInfoPayload(req))
 
 // 「研究生模式」——前端在每個 /api 請求帶 `x-note-collection: life|thesis`，
 // 這裡在請求一進來就設定好 store 這一輪要動哪一份便利貼（生活 or 論文專案）。
-// store 全是同步 IO，同一個 handler 內不會被別的請求插隊，所以 module 變數安全。
+// `setActiveCollection()` 底層是 AsyncLocalStorage（見 store.ts），同一個
+// request 的整條 async 呼叫鏈（含圖片上傳那種真的有 await 的路徑）看到的都是
+// 自己這裡設定的值，不會被併發的其他 request 互相干擾。
 // 沒帶標頭（Node-RED、舊前端）一律當生活便利貼；共用模式下遠端一律鎖生活牆。
 app.addHook('onRequest', async (req) => {
   setActiveCollection(collectionForRequest(req))
@@ -101,6 +104,7 @@ await app.register(eventsRoutes, { prefix: '/api' })
 await app.register(activityRoutes, { prefix: '/api' })
 await app.register(hostRoutes, { prefix: '/api' })
 await app.register(notesRoutes, { prefix: '/api' })
+await app.register(notificationsRoutes, { prefix: '/api' })
 await app.register(noteImageRoutes, { prefix: '/api' })
 await app.register(aiRoutes, { prefix: '/api' })
 await app.register(filesRoutes, { prefix: '/api' })

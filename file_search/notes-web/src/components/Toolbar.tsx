@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  Activity, AlarmClock, ArrowDownUp, Bot, ChevronDown, ChevronUp, Columns3, CopyPlus,
+  Activity, AlarmClock, ArrowDownUp, Bell, Bot, ChevronDown, ChevronUp, Columns3, CopyPlus,
   CornerDownLeft, FileCode2, GraduationCap, HardDriveDownload, HardDriveUpload, History, Home,
   Plus, Recycle, Rows3, Search, Settings2, Sparkles, Sprout, Tags, Trash2,
 } from 'lucide-react'
@@ -56,6 +56,8 @@ export function Toolbar({
   onTrash,
   onHistory,
   onActivity,
+  onNotifications,
+  unreadNotifications = 0,
   dueOnly,
   onToggleDueOnly,
   sortLocked,
@@ -64,6 +66,7 @@ export function Toolbar({
   onToggleTagAxis,
   shareMode = false,
   aiEnabled = true,
+  canWrite = true,
   collapsed,
   onToggleCollapsed,
 }: {
@@ -107,6 +110,10 @@ export function Toolbar({
   onHistory: () => void
   /** 「誰動了我的牆」動態列表——只有共用模式才顯示這顆鈕（見呼叫端）。 */
   onActivity?: () => void
+  /** 站內通知——只有共用模式才顯示這顆鈕（見呼叫端）。 */
+  onNotifications?: () => void
+  /** 未讀通知數——>0 時鈴鐺疊一個紅點數字。 */
+  unreadNotifications?: number
   dueOnly: boolean
   onToggleDueOnly: () => void
   /** 「同分類排列方向」——快捷切換，跟「全域設定 → 外觀」是同一個設定。 */
@@ -118,6 +125,9 @@ export function Toolbar({
   shareMode?: boolean
   /** AI 搜尋／語意搜尋能不能用（共用模式且 host 在 /host 關掉 AI 時為 false）。 */
   aiEnabled?: boolean
+  /** 這個人能不能寫（唯讀身分＝false）——見 hooks/useSession.ts 的 useCanWrite()。
+   *  只是 UI 提示，真正的防線在後端 403。 */
+  canWrite?: boolean
   /** 上方面板（標題／簡介、集合分頁、搜尋排序新增、小按鈕列）收合中——手機
    *  用，跟 App.tsx 的主標題共用同一個開關，見那邊的說明。 */
   collapsed: boolean
@@ -245,10 +255,12 @@ export function Toolbar({
               ))}
             </select>
           </label>
-          <button className="btn add-note" onClick={onAdd}>
-            <Plus size={16} strokeWidth={2.6} aria-hidden />
-            新增便利貼
-          </button>
+          {canWrite && (
+            <button className="btn add-note" onClick={onAdd}>
+              <Plus size={16} strokeWidth={2.6} aria-hidden />
+              新增便利貼
+            </button>
+          )}
         </div>
 
         {/* 第三排：所有工具鈕，統一尺寸的正方形圖示鈕。 */}
@@ -390,6 +402,18 @@ export function Toolbar({
               title="動態——誰新增／改／刪了什麼（共用模式）"
             >
               <Activity size={15} strokeWidth={2.2} aria-hidden />
+            </button>
+          )}
+          {onNotifications && (
+            <button
+              className="btn ghost icon notif-btn"
+              onClick={onNotifications}
+              title="通知——例如便利貼指派給你了"
+            >
+              <Bell size={15} strokeWidth={2.2} aria-hidden />
+              {unreadNotifications > 0 && (
+                <span className="notif-badge">{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>
+              )}
             </button>
           )}
           </div>

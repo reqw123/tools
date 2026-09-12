@@ -16,9 +16,10 @@
  *   標頭）——這樣「已經登入的人」沒辦法臨時把標頭改成別人的名字來冒充。
  */
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { notesFilePath } from './store'
+import { atomicWriteFile } from './atomic-write'
 
 // 2026-09 搬進 .share/（純 notes-web 概念、桌面版不讀——見 store.ts 的
 // migrateLegacyDataLayout() 負責把舊位置的檔案一次性搬過來）。
@@ -30,9 +31,14 @@ const MAX_NAME = 40
 const MIN_PIN = 4
 const MAX_PIN = 20
 
+export type PersonRole = 'editor' | 'viewer'
+
 interface PersonRecord {
   pinHash: string
   createdAt: string
+  /** 缺省視為 'editor'——舊資料、沒被 host 特別設過的人都一樣，維持現況
+   *  可編輯。只有 host 在 /host 明確設成 'viewer' 才會被鎖唯讀。 */
+  role?: PersonRole
 }
 type PeopleFile = Record<string, PersonRecord>
 
@@ -45,22 +51,8 @@ function readPeople(): PeopleFile {
   }
 }
 
-let tmpSeq = 0
 function writePeople(data: PeopleFile): void {
-  const dir = dirname(PEOPLE_FILE)
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  const tmp = `${PEOPLE_FILE}.${process.pid}.${Date.now()}.${tmpSeq++}.tmp`
-  try {
-    writeFileSync(tmp, JSON.stringify(data, null, 1), 'utf-8')
-    renameSync(tmp, PEOPLE_FILE)
-  } catch (err) {
-    try {
-      rmSync(tmp, { force: true })
-    } catch {
-      /* 暫存檔清不掉就算了，不掩蓋原本的寫入錯誤 */
-    }
-    throw err
-  }
+  atomicWriteFile(PEOPLE_FILE, JSON.stringify(data, null, 1))
 }
 
 function hashPin(pin: string): string {
@@ -70,14 +62,40 @@ function hashPin(pin: string): string {
 export interface PersonSummary {
   name: string
   createdAt: string
+  role: PersonRole
 }
 
 /** 目前被 PIN 保護的名字清單（不含 PIN 本身）——給 host.html 的管理面板用。 */
 export function listPeople(): PersonSummary[] {
   const people = readPeople()
   return Object.entries(people)
-    .map(([name, rec]) => ({ name, createdAt: rec.createdAt }))
+    .map(([name, rec]) => ({ name, createdAt: rec.createdAt, role: rec.role ?? 'editor' }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+/** 只回名字（不含 createdAt／PIN）——給指派便利貼的下拉建議清單用。這些名字
+ *  本來就會出現在動態記錄／在場提示裡，不是新的資訊外洩。 */
+export function listPersonNames(): string[] {
+  return Object.keys(readPeople())
+}
+
+/** 這個人現在是不是唯讀——名字為空（匿名）或查不到這個人一律當 'editor'，
+ *  對齊「匿名預設可編輯」的決策；只有 host 明確設成 'viewer' 才會被鎖。 */
+export function getPersonRole(name: string): PersonRole {
+  if (!name) return 'editor'
+  return readPeople()[name]?.role ?? 'editor'
+}
+
+/** host 專用——設定某個已註冊名字的角色。找不到這個人回 false。不動
+ *  `createdAt`（那是簽進身分 cookie 的版本號，改角色不該讓現有 session 失效；
+ *  角色本身是即時查live 的，不用重新登入就生效）。 */
+export function setPersonRole(name: string, role: PersonRole): boolean {
+  const n = name.trim().slice(0, MAX_NAME)
+  const people = readPeople()
+  if (!people[n]) return false
+  people[n].role = role
+  writePeople(people)
+  return true
 }
 
 /**

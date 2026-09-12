@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { noteImageUrl, NotFoundError, REPEAT_LABELS, type Note, type NoteInput } from '../lib/api'
+import { noteImageUrl, NotFoundError, REACTION_EMOJIS, REPEAT_LABELS, type Note, type NoteInput } from '../lib/api'
 import { paperVars } from '../lib/color'
 import { dueLabel, dueStatus, stamp, timeAgo } from '../lib/format'
 import {
@@ -8,6 +8,7 @@ import {
   useCreateNote,
   useDeleteNote,
   useNotes,
+  useReactToNote,
   useReminderSettings,
   useRemoveNoteImage,
   useSetNoteImage,
@@ -18,9 +19,10 @@ import {
   useUploadNoteImage,
 } from '../hooks/useNotes'
 import { useShareInfo } from '../hooks/useShareInfo'
+import { useCanWrite } from '../hooks/useSession'
 import { useActivity, useEditingHeartbeat, usePresence } from '../hooks/useActivity'
 import { useCard, useSetCard } from '../hooks/useCard'
-import { displayAuthor } from '../lib/identity'
+import { displayAuthor, readAuthorName } from '../lib/identity'
 import { Body } from './Body'
 import { FileBrowser } from './FileBrowser'
 import { NoteForm } from './NoteForm'
@@ -58,6 +60,7 @@ export function NoteDialog({
   const ref = useRef<HTMLElement>(null)
   // 區網共用模式：不用能瀏覽 host 硬碟的 FileBrowser，改成瀏覽器原生 <input type=file> 上傳。
   const isShare = useShareInfo().mode === 'lan'
+  const canWrite = useCanWrite()
   const uploadFileRef = useRef<HTMLInputElement>(null)
   const [mode, setMode] = useState<Mode>(initialMode)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -145,6 +148,7 @@ export function NoteDialog({
   const toggleLine = useToggleNoteLine()
   const setPinned = useSetNotePinned()
   const advanceRepeat = useAdvanceRepeat()
+  const react = useReactToNote()
   const setImage = useSetNoteImage()
   const uploadImage = useUploadNoteImage()
   const removeImage = useRemoveNoteImage()
@@ -210,6 +214,7 @@ export function NoteDialog({
         tag: patch.tag ?? n.tag,
         due_at: patch.due_at ?? n.due_at,
         repeat: patch.repeat ?? n.repeat,
+        assignee: patch.assignee ?? n.assignee,
       },
       { onSuccess: onClose },
     )
@@ -316,6 +321,11 @@ export function NoteDialog({
               text={note.body}
               onToggleLine={(srcIndex) => toggleLine.mutate({ id: note.id, srcIndex })}
             />
+            {note.assignee && (
+              <p className="assignee-badge" title={`指派給：${note.assignee}`}>
+                👤 指派給 {note.assignee}
+              </p>
+            )}
             {due && (
               <p className={`due-badge ${due}`}>
                 {due === 'overdue' ? '⏰ 已逾期' : '⏳ 即將到期'}　{dueLabel(note.due_at)}
@@ -337,12 +347,35 @@ export function NoteDialog({
                 </span>
               )}
             </footer>
+            {canWrite && (
+              <div className="reaction-row">
+                {REACTION_EMOJIS.map((emoji) => {
+                  const reactors = note.reactions[emoji] ?? []
+                  const mine = reactors.includes(readAuthorName())
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className="reaction-btn"
+                      aria-pressed={mine}
+                      disabled={react.isPending}
+                      title={reactors.length ? reactors.join('、') : undefined}
+                      onClick={() => react.mutate({ id: note.id, emoji })}
+                    >
+                      {emoji} {reactors.length > 0 && reactors.length}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             {editingBy.length > 0 && (
               <p className="edit-warn">
                 ✏️ {editingBy.join('、')} 正在編輯這則——建議晚點再改，避免蓋掉對方的內容。
               </p>
             )}
             {(err || imgErr) && <p className="err">{err || imgErr}</p>}
+            {!canWrite && <p className="hint">👁 唯讀身分，不能編輯</p>}
+            {canWrite && (
             <div className="sheet-actions">
               {note.repeat && note.due_at && (
                 <button
@@ -436,6 +469,7 @@ export function NoteDialog({
                 </button>
               )}
             </div>
+            )}
           </>
         ) : (
           <>

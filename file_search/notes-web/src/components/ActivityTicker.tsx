@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Lock, LogOut, Pencil, Pin, Plus, RotateCcw, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { Lock, LogOut, Pencil, Pin, Plus, RotateCcw, Trash2, UserPlus, Wifi, WifiOff } from 'lucide-react'
 import { useActivity, usePresence } from '../hooks/useActivity'
 import { displayAuthor, readAuthorName, saveAuthorName } from '../lib/identity'
 import { timeAgo } from '../lib/format'
@@ -13,6 +13,7 @@ const VERB: Record<string, string> = {
   delete: '刪除了',
   restore: '復原了',
   'bulk-delete': '批次刪除了',
+  assigned: '指派了',
   connect: '已連線',
   disconnect: '已斷線',
 }
@@ -22,6 +23,7 @@ const ICON: Record<string, typeof Plus> = {
   delete: Trash2,
   restore: RotateCcw,
   'bulk-delete': Trash2,
+  assigned: UserPlus,
   connect: Wifi,
   disconnect: WifiOff,
 }
@@ -145,6 +147,9 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
           <span className="ap-target">{entry.count} 則</span>
         ) : (
           <span className="ap-target">「{entry.title || '(無標題)'}」</span>
+        )}
+        {entry.action === 'assigned' && entry.target && (
+          <span className="ap-target"> 給 {displayAuthor(entry.target)}</span>
         )}
       </span>
       <span className="ap-time mono">{timeAgo(entry.at)}</span>

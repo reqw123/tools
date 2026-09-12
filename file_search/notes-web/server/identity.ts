@@ -51,9 +51,17 @@ export function authorFrom(req: FastifyRequest): string {
 /**
  * 「這個人」的 key——具名（通過 PIN 驗證，或哪怕只是自己填的名字）就用名字，
  * 同一人多開視窗／分頁自然合併成一個；**匿名分不出是誰**，退而求其次用來源
- * IP，讓不同人的匿名連線／編輯還是分得開，不會全部擠成同一個「有人」。
- * presence.ts（誰在編輯）、connections.ts（誰上線）共用同一個規則。
+ * IP，讓不同人的匿名連線還是分得開，不會全部擠成同一個「有人」。
+ *
+ * `deviceId` 是選填的第三個區分依據（見前端 `lib/identity.ts` 的
+ * `getDeviceId()`）——單靠 IP 分不出「同一個公網 IP／Wi-Fi 分享的公網牆
+ * （ngrok）後面的不同匿名訪客」，會被誤併成同一個連線；帶了 `deviceId` 就
+ * 用 IP＋deviceId，沒帶（呼叫端沒有這個概念，例如彈幕冷卻）就維持舊的
+ * IP-only 行為。presence.ts（誰在編輯）走自己的 `editorKey()`，用的是
+ * `sessionStorage`（分頁層級）的 `clientId`，跟這裡刻意分開，見兩邊各自的
+ * 說明。
  */
-export function identityKey(author: string, ip: string): string {
-  return author || `anon:${ip}`
+export function identityKey(author: string, ip: string, deviceId?: string): string {
+  if (author) return author
+  return deviceId ? `anon:${ip}:${deviceId}` : `anon:${ip}`
 }

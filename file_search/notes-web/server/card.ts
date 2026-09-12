@@ -7,10 +7,11 @@
  * 跟 activity／presence 不同：這個**要持久**（不然展示螢幕重開一次 server
  * 就變空的），用跟 people.ts 一樣的原子寫入存一個小檔案。
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { notesFilePath, getNote, getActiveCollection, setActiveCollection } from './store'
 import { emitChange } from './change-bus'
+import { atomicWriteFile } from './atomic-write'
 
 // 2026-09 搬進 .share/（純 notes-web 概念、桌面版不讀，跟身分／訪客紀錄
 // 放在一起——見 store.ts 的 migrateLegacyDataLayout() 負責把舊位置的檔案
@@ -42,22 +43,8 @@ function readCard(): CardState {
   return EMPTY
 }
 
-let tmpSeq = 0
 function writeCard(state: CardState): void {
-  const dir = dirname(CARD_FILE)
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  const tmp = `${CARD_FILE}.${process.pid}.${Date.now()}.${tmpSeq++}.tmp`
-  try {
-    writeFileSync(tmp, JSON.stringify(state, null, 1), 'utf-8')
-    renameSync(tmp, CARD_FILE)
-  } catch (err) {
-    try {
-      rmSync(tmp, { force: true })
-    } catch {
-      /* 暫存檔清不掉就算了，不掩蓋原本的寫入錯誤 */
-    }
-    throw err
-  }
+  atomicWriteFile(CARD_FILE, JSON.stringify(state, null, 1))
 }
 
 export function getCard(): CardState {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { host } from '../lib/api'
+import { host, type PersonRole } from '../lib/api'
 import { useAiSettings, useAiTarget, useSaveAiSettings } from '../hooks/useAi'
 import type { AiSettingsInput } from '../lib/ai'
 import { displayAuthor } from '../lib/identity'
@@ -131,6 +131,19 @@ export function HostPanel() {
     }
   }
 
+  const setRole = async (name: string, role: PersonRole) => {
+    setBusy(true)
+    setErr('')
+    try {
+      await host.setPersonRole(name, role)
+      await qc.invalidateQueries({ queryKey: HOST_STATE_KEY })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const release = async (name: string) => {
     setBusy(true)
     setErr('')
@@ -249,6 +262,9 @@ export function HostPanel() {
         <p className="hint">
           這些名字被設過 PIN、受保護中。有人忘記 PIN 就在這裡「解除保護」——名字本身
           還在，只是變回沒設過 PIN 的狀態，下次任何人都能重新登入這個名字、順便設新 PIN。
+          旁邊的角色下拉可以把某個名字設成「唯讀」——設成唯讀的人登入後只能看不能
+          新增／編輯／刪除／反應，權限即時生效不用重新登入。沒特別設過的人（含匿名）
+          一律是「可編輯」，維持現況。
         </p>
         {data.people.length === 0 ? (
           <p className="dim">目前沒有任何名字設過 PIN。</p>
@@ -257,24 +273,35 @@ export function HostPanel() {
             {data.people.map((p) => (
               <li key={p.name}>
                 <span className="host-people-name">{p.name}</span>
-                {confirmRelease === p.name ? (
-                  <span className="host-people-actions">
-                    <button className="btn danger sm" disabled={busy} onClick={() => release(p.name)}>
-                      確定解除
-                    </button>
-                    <button className="btn ghost sm" disabled={busy} onClick={() => setConfirmRelease(null)}>
-                      取消
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    className="btn ghost sm"
+                <span className="host-people-actions">
+                  <select
+                    className="host-people-role"
+                    value={p.role}
                     disabled={busy}
-                    onClick={() => setConfirmRelease(p.name)}
+                    onChange={(e) => setRole(p.name, e.target.value as PersonRole)}
                   >
-                    解除保護
-                  </button>
-                )}
+                    <option value="editor">可編輯</option>
+                    <option value="viewer">唯讀</option>
+                  </select>
+                  {confirmRelease === p.name ? (
+                    <>
+                      <button className="btn danger sm" disabled={busy} onClick={() => release(p.name)}>
+                        確定解除
+                      </button>
+                      <button className="btn ghost sm" disabled={busy} onClick={() => setConfirmRelease(null)}>
+                        取消
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="btn ghost sm"
+                      disabled={busy}
+                      onClick={() => setConfirmRelease(p.name)}
+                    >
+                      解除保護
+                    </button>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

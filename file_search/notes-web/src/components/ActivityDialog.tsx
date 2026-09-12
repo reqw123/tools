@@ -10,6 +10,7 @@ const VERB: Record<string, string> = {
   delete: '刪除了',
   restore: '復原了',
   'bulk-delete': '批次刪除了',
+  assigned: '指派了',
   connect: '已連線',
   disconnect: '已斷線',
 }
@@ -72,6 +73,7 @@ export function ActivityDialog({ onClose }: { onClose: () => void }) {
                         : e.action === 'bulk-delete'
                           ? ` ${e.count} 則`
                           : `「${e.title || '(無標題)'}」`}
+                      {e.action === 'assigned' && e.target && ` 給 ${displayAuthor(e.target)}`}
                     </span>
                     <span className="bd-meta">{timeAgo(e.at)}</span>
                   </div>

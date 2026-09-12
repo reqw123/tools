@@ -7,6 +7,7 @@ import {
 } from './hooks/useNotes'
 import { useMinuteTick } from './hooks/useMinuteTick'
 import { useShareInfo } from './hooks/useShareInfo'
+import { useCanWrite } from './hooks/useSession'
 import { useAiSearch, useAiTarget, useSemanticSearch, useSemanticStatus } from './hooks/useAi'
 import { hasDesktopWall } from './lib/desktopWall'
 import { dueStatus } from './lib/format'
@@ -28,6 +29,8 @@ import { ImportNotesDialog } from './components/ImportNotesDialog'
 import { TrashDialog } from './components/TrashDialog'
 import { HistoryDialog } from './components/HistoryDialog'
 import { ActivityDialog } from './components/ActivityDialog'
+import { NotificationsDialog } from './components/NotificationsDialog'
+import { useNotifications } from './hooks/useNotifications'
 import { ActivityTicker } from './components/ActivityTicker'
 import { DanmakuLayer } from './components/DanmakuLayer'
 import { ScrollButtons } from './components/ScrollButtons'
@@ -70,6 +73,9 @@ export function App() {
   // 跟後端 `collectionForRequest()`／`shareGuardHook` 的 loopback 豁免要一致。
   // 之前這裡一律用 isShare，曾經害 host 自己在本機都看不到研究生模式。
   const isRemoteShare = isShare && !share.loopback
+  const canWrite = useCanWrite()
+  const { data: myNotifications } = useNotifications()
+  const unreadNotifications = myNotifications?.filter((n) => !n.read).length ?? 0
   // 上方面板收合（手機用）——主標題／簡介／統計＋工具列的三排全部收進一顆
   // 分界列，手機捲動便利貼時才不會不小心捲回這一大塊。見 lib/panelCollapse.ts。
   const [panelCollapsed, setPanelCollapsedState] = useState(getPanelCollapsed)
@@ -170,6 +176,7 @@ export function App() {
   const [trashOpen, setTrashOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [defaultTag, setDefTag] = useState(getDefaultTag)
   const applyDefaultTag = useCallback((t: string) => {
     setDefaultTag(t)
@@ -475,7 +482,7 @@ export function App() {
 
   const anyDialogOpen =
     !!dialog || batchCreate || batchTag || batchDelete || generateNotes || thesisSeed || importNotes ||
-    trashOpen || historyOpen || activityOpen || settingsOpen !== null
+    trashOpen || historyOpen || activityOpen || notificationsOpen || settingsOpen !== null
   // 已經在裁切中就不能再拉一次框——先恢復完整畫面才能重新選——不然兩個裁切
   // 範圍疊在一起的語意會很奇怪。
   const cropActive = canFloat && !anyDialogOpen && !croppedIds
@@ -616,8 +623,11 @@ export function App() {
         onTrash={() => setTrashOpen(true)}
         onHistory={() => setHistoryOpen(true)}
         onActivity={isShare ? () => setActivityOpen(true) : undefined}
+        onNotifications={isShare ? () => setNotificationsOpen(true) : undefined}
+        unreadNotifications={unreadNotifications}
         shareMode={isRemoteShare}
         aiEnabled={!isRemoteShare || share.ai}
+        canWrite={canWrite}
       />
 
       {aiResult && (
@@ -755,6 +765,7 @@ export function App() {
         />
       )}
       {activityOpen && <ActivityDialog onClose={() => setActivityOpen(false)} />}
+      {notificationsOpen && <NotificationsDialog onClose={() => setNotificationsOpen(false)} />}
       {aiResult && !answerDismissed && (
         <AiAnswerDialog
           query={aiResult.query}
