@@ -39,6 +39,12 @@ interface PersonRecord {
   /** 缺省視為 'editor'——舊資料、沒被 host 特別設過的人都一樣，維持現況
    *  可編輯。只有 host 在 /host 明確設成 'viewer' 才會被鎖唯讀。 */
   role?: PersonRole
+  /** 這個人自己的 Discord webhook——**由 host 手動輸入**（使用者私下把
+   *  webhook 網址給 host，不是自助填寫；沒有開放給一般使用者自己改的端點，
+   *  只有 `/host` 這個 loopback-only 的管理面板能設），指派給他的便利貼快
+   *  到期／已逾期時，Node-RED 用這個推播到他自己的 Discord 頻道（見
+   *  `GET /host/due-webhooks`）。''＝沒設過。 */
+  discordWebhook?: string
 }
 type PeopleFile = Record<string, PersonRecord>
 
@@ -63,13 +69,19 @@ export interface PersonSummary {
   name: string
   createdAt: string
   role: PersonRole
+  discordWebhook: string
 }
 
 /** 目前被 PIN 保護的名字清單（不含 PIN 本身）——給 host.html 的管理面板用。 */
 export function listPeople(): PersonSummary[] {
   const people = readPeople()
   return Object.entries(people)
-    .map(([name, rec]) => ({ name, createdAt: rec.createdAt, role: rec.role ?? 'editor' }))
+    .map(([name, rec]) => ({
+      name,
+      createdAt: rec.createdAt,
+      role: rec.role ?? 'editor',
+      discordWebhook: rec.discordWebhook ?? '',
+    }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
@@ -96,6 +108,39 @@ export function setPersonRole(name: string, role: PersonRole): boolean {
   people[n].role = role
   writePeople(people)
   return true
+}
+
+const MAX_WEBHOOK = 300
+/** Discord webhook 網址的形狀檢查——只收 discord.com／discordapp.com 底下的
+ *  `/api/webhooks/...` 路徑。這不是防禦不信任輸入（這個值只有 host 自己在
+ *  `/host` 才填得進去，不是遠端使用者能碰到的欄位），單純是「貼錯連結」的
+ *  防呆——host 手動轉貼使用者傳來的網址，打錯或貼到別的東西時立刻擋下來，
+ *  總比讓 Node-RED 之後對著一個錯的網址狂送請求好。 */
+const DISCORD_WEBHOOK_PATTERN = /^https:\/\/discord(app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/
+
+/** 這個人現在設定的 Discord webhook——查不到這個人或沒設過一律回 ''。 */
+export function getPersonDiscordWebhook(name: string): string {
+  if (!name) return ''
+  return readPeople()[name]?.discordWebhook ?? ''
+}
+
+/** host 專用——設定或清除某個已註冊名字的 Discord webhook。webhook 留空是
+ *  「清除」；非空但格式不像 Discord webhook 網址就拒絕（見上面
+ *  DISCORD_WEBHOOK_PATTERN），回傳錯誤訊息。找不到這個人也算錯誤。 */
+export function setPersonDiscordWebhook(
+  name: string,
+  webhook: string,
+): { ok: true } | { ok: false; error: string } {
+  const n = name.trim().slice(0, MAX_NAME)
+  const people = readPeople()
+  if (!people[n]) return { ok: false, error: '找不到這個名字' }
+  const w = webhook.trim().slice(0, MAX_WEBHOOK)
+  if (w && !DISCORD_WEBHOOK_PATTERN.test(w)) {
+    return { ok: false, error: '看起來不是 Discord webhook 網址（要是 https://discord.com/api/webhooks/... 這種格式）' }
+  }
+  people[n].discordWebhook = w
+  writePeople(people)
+  return { ok: true }
 }
 
 /**

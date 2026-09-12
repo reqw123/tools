@@ -18,7 +18,7 @@ const PAGE_TITLE = '便利貼牆-開發者設定'
  * **只有主機本機（loopback）打得到背後的 `/api/host/*`**——遠端開這個網址
  * 會看到「只能在本機開啟」，不會看到任何管理內容，見 server/host-routes.ts。
  *
- * 目前管六件事：
+ * 目前管七件事：
  *   1. 開放模式——免共用密碼，但仍要求名字＋PIN（不是整關直接放行，見
  *      share.ts 的 openAccess／shareAuthHook）。純記憶體，**預設開**、重開
  *      server 會重置回開，想維持要密碼就自己在這裡關掉。
@@ -29,10 +29,14 @@ const PAGE_TITLE = '便利貼牆-開發者設定'
  *      provider 欄位，API Key／模型／連線位址不動，跟全域設定同一份檔案）。
  *   4. 身分保護——列出被 PIN 保護的名字，忘記 PIN 就在這裡「解除保護」，
  *      不用再手動開 `.sticky_wall_people.json` 改。
- *   5. 訪客紀錄——誰、什麼時候造訪過（見 server/visits.ts，持久化，跟前面
+ *   5. 每個人自己的 Discord webhook——**host 手動輸入**（使用者私下把 webhook
+ *      給 host，沒有自助填寫的入口），指派給他的便利貼快到期／已逾期時
+ *      Node-RED 打 `GET /api/host/due-webhooks` 取得清單、推播到他自己的
+ *      Discord 頻道（跟第 6 點的訪客通知是不同支端點、不同 webhook）。
+ *   6. 訪客紀錄——誰、什麼時候造訪過（見 server/visits.ts，持久化，跟前面
  *      幾項不同），文字視窗形式，5 秒輪詢更新一次。同一份資料也給 Node-RED
  *      輪詢轉發 Discord（見 Downloads 那份「多人牆flow.json」新增的分頁）。
- *   6. 登入畫面 3D Logo——host 個人品牌（見 LoginLogo3D.tsx），純記憶體、
+ *   7. 登入畫面 3D Logo——host 個人品牌（見 LoginLogo3D.tsx），純記憶體、
  *      **預設關**、重開 server 重置回關（素材約 5.6MB，不想預設讓每個訪客都
  *      下載）。關掉時前端完全不 mount 那個元件，不是載入了才藏起來。
  */
@@ -136,6 +140,19 @@ export function HostPanel() {
     setErr('')
     try {
       await host.setPersonRole(name, role)
+      await qc.invalidateQueries({ queryKey: HOST_STATE_KEY })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveWebhook = async (name: string, webhook: string) => {
+    setBusy(true)
+    setErr('')
+    try {
+      await host.setPersonWebhook(name, webhook)
       await qc.invalidateQueries({ queryKey: HOST_STATE_KEY })
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
@@ -262,9 +279,12 @@ export function HostPanel() {
         <p className="hint">
           這些名字被設過 PIN、受保護中。有人忘記 PIN 就在這裡「解除保護」——名字本身
           還在，只是變回沒設過 PIN 的狀態，下次任何人都能重新登入這個名字、順便設新 PIN。
-          旁邊的角色下拉可以把某個名字設成「唯讀」——設成唯讀的人登入後只能看不能
+          角色下拉可以把某個名字設成「唯讀」——設成唯讀的人登入後只能看不能
           新增／編輯／刪除／反應，權限即時生效不用重新登入。沒特別設過的人（含匿名）
-          一律是「可編輯」，維持現況。
+          一律是「可編輯」，維持現況。<b>Discord webhook</b> 是這個人自己的通知頻道——
+          使用者私下把 webhook 網址給你，貼在這裡，指派給他的便利貼快到期／已逾期時
+          Node-RED 會推播到他自己的 Discord（這裡沒有開放讓使用者自己填）。輸入框
+          失焦時自動存檔，留空＝清除。
         </p>
         {data.people.length === 0 ? (
           <p className="dim">目前沒有任何名字設過 PIN。</p>
@@ -272,36 +292,50 @@ export function HostPanel() {
           <ul className="host-people">
             {data.people.map((p) => (
               <li key={p.name}>
-                <span className="host-people-name">{p.name}</span>
-                <span className="host-people-actions">
-                  <select
-                    className="host-people-role"
-                    value={p.role}
-                    disabled={busy}
-                    onChange={(e) => setRole(p.name, e.target.value as PersonRole)}
-                  >
-                    <option value="editor">可編輯</option>
-                    <option value="viewer">唯讀</option>
-                  </select>
-                  {confirmRelease === p.name ? (
-                    <>
-                      <button className="btn danger sm" disabled={busy} onClick={() => release(p.name)}>
-                        確定解除
-                      </button>
-                      <button className="btn ghost sm" disabled={busy} onClick={() => setConfirmRelease(null)}>
-                        取消
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      className="btn ghost sm"
+                <div className="host-people-row">
+                  <span className="host-people-name">{p.name}</span>
+                  <span className="host-people-actions">
+                    <select
+                      className="host-people-role"
+                      value={p.role}
                       disabled={busy}
-                      onClick={() => setConfirmRelease(p.name)}
+                      onChange={(e) => setRole(p.name, e.target.value as PersonRole)}
                     >
-                      解除保護
-                    </button>
-                  )}
-                </span>
+                      <option value="editor">可編輯</option>
+                      <option value="viewer">唯讀</option>
+                    </select>
+                    {confirmRelease === p.name ? (
+                      <>
+                        <button className="btn danger sm" disabled={busy} onClick={() => release(p.name)}>
+                          確定解除
+                        </button>
+                        <button className="btn ghost sm" disabled={busy} onClick={() => setConfirmRelease(null)}>
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="btn ghost sm"
+                        disabled={busy}
+                        onClick={() => setConfirmRelease(p.name)}
+                      >
+                        解除保護
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <label className="host-people-webhook">
+                  Discord webhook
+                  <input
+                    type="text"
+                    defaultValue={p.discordWebhook}
+                    disabled={busy}
+                    placeholder="https://discord.com/api/webhooks/…（留空＝不通知）"
+                    onBlur={(e) => {
+                      if (e.target.value.trim() !== p.discordWebhook) saveWebhook(p.name, e.target.value)
+                    }}
+                  />
+                </label>
               </li>
             ))}
           </ul>

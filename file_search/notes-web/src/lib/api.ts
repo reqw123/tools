@@ -345,7 +345,7 @@ export interface HostState {
   aiEnabled: boolean
   /** 登入畫面要不要載入 host 的 3D logo（見 server/share.ts、LoginLogo3D.tsx）。 */
   loginLogo3d: boolean
-  people: { name: string; createdAt: string; role: PersonRole }[]
+  people: { name: string; createdAt: string; role: PersonRole; discordWebhook: string }[]
 }
 /** 一筆造訪紀錄——見 server/visits.ts。author=''＝匿名。 */
 export interface VisitEntry {
@@ -375,6 +375,13 @@ export const host = {
     req<{ people: HostState['people'] }>(`/host/people/${encodeURIComponent(name)}/role`, {
       method: 'POST',
       body: JSON.stringify({ role }),
+    }),
+  /** 設定／清除某個人自己的 Discord webhook——host 手動輸入，見
+   *  server/people.ts 的說明。webhook 傳空字串＝清除。 */
+  setPersonWebhook: (name: string, webhook: string) =>
+    req<{ people: HostState['people'] }>(`/host/people/${encodeURIComponent(name)}/webhook`, {
+      method: 'POST',
+      body: JSON.stringify({ webhook }),
     }),
   /** 訪客紀錄（持久化）——`/host` 的「訪客紀錄」文字視窗用。新到舊。 */
   getVisits: (limit?: number) =>

@@ -15,8 +15,15 @@ import {
   setOpenAccess,
   setShareAiEnabled,
 } from './share'
-import { listPeople, releasePerson, setPersonRole } from './people'
+import {
+  getPersonDiscordWebhook,
+  listPeople,
+  releasePerson,
+  setPersonDiscordWebhook,
+  setPersonRole,
+} from './people'
 import { listVisits } from './visits'
+import { dueSummaryAll } from './store'
 
 export const hostRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('onRequest', async (req, reply) => {
@@ -125,11 +132,81 @@ export const hostRoutes: FastifyPluginAsync = async (app) => {
     },
   )
 
+  /** 設定或清除某個已註冊名字自己的 Discord webhook——**host 手動輸入**（使用者
+   *  私下把 webhook 網址給 host，這裡沒有開放給一般使用者自己填的端點）。留空
+   *  字串＝清除；見 people.ts 的 setPersonDiscordWebhook() 的格式檢查。 */
+  app.post<{ Params: { name: string }; Body: { webhook?: string } }>(
+    '/host/people/:name/webhook',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['webhook'],
+          properties: { webhook: { type: 'string', maxLength: 300 } },
+        },
+      },
+    },
+    async (req, reply) => {
+      let name: string
+      try {
+        name = decodeURIComponent(req.params.name)
+      } catch {
+        return reply.code(400).send({ error: '名字格式不正確' })
+      }
+      const result = setPersonDiscordWebhook(name, req.body.webhook ?? '')
+      if (!result.ok) {
+        const code = result.error === '找不到這個名字' ? 404 : 400
+        return reply.code(code).send({ error: result.error })
+      }
+      return { people: listPeople() }
+    },
+  )
+
   /** 「訪客紀錄」文字視窗——誰、什麼時候造訪過（見 visits.ts）。同一支也給
    *  Node-RED 輪詢轉發 Discord 用：Node-RED 本身就跑在這台機器上，天生
    *  loopback，不用另外開一支不受限制的端點。 */
   app.get<{ Querystring: { limit?: string } }>('/host/visits', async (req) => {
     const limit = Number(req.query.limit)
     return { entries: listVisits(Number.isFinite(limit) && limit > 0 ? limit : undefined) }
+  })
+
+  /**
+   * 給 Node-RED 用的「指派給誰的便利貼快到期／已逾期了，且那個人有設自己的
+   * Discord webhook」清單——把 `dueSummaryAll()` 的到期資料跟 people.ts 的
+   * webhook 設定 join 起來，Node-RED 收到清單後自己決定要不要發、要不要
+   * dedupe（跟現有「便利貼到期提醒」分頁同一套 flow-context 記帳模式，這裡
+   * 不重複做，保持這支端點單純、無狀態）。沒設 webhook 的人不會出現在這裡。
+   */
+  app.get('/host/due-webhooks', async () => {
+    const { overdue, soon } = dueSummaryAll()
+    const items: {
+      kind: 'overdue' | 'soon'
+      noteId: string
+      noteTitle: string
+      dueAt: string
+      collection: string
+      assignee: string
+      webhook: string
+    }[] = []
+    for (const [list, kind] of [
+      [overdue, 'overdue'],
+      [soon, 'soon'],
+    ] as const) {
+      for (const n of list) {
+        if (!n.assignee) continue
+        const webhook = getPersonDiscordWebhook(n.assignee)
+        if (!webhook) continue
+        items.push({
+          kind,
+          noteId: n.id,
+          noteTitle: n.title,
+          dueAt: n.due_at,
+          collection: n.collection,
+          assignee: n.assignee,
+          webhook,
+        })
+      }
+    }
+    return { items }
   })
 }
