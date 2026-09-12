@@ -16,6 +16,7 @@ import {
 } from './store'
 import { notesRoutes } from './notes'
 import { notificationsRoutes } from './notifications-routes'
+import { startDueNotifier } from './due-notify'
 import { noteImageRoutes } from './note-image-routes'
 import { aiRoutes } from './ai-routes'
 import { filesRoutes } from './files-routes'
@@ -99,6 +100,9 @@ if (existsSync(notesFilePath)) {
 } else {
   app.log.warn('資料檔還不存在——第一次新增便利貼時會建立')
 }
+
+// 指派給你的便利貼快到期／已逾期了——定期掃描、發站內通知（見 due-notify.ts）。
+startDueNotifier()
 
 await app.register(eventsRoutes, { prefix: '/api' })
 await app.register(activityRoutes, { prefix: '/api' })

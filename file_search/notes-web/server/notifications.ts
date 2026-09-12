@@ -1,8 +1,13 @@
 /**
- * 「站內通知」——目前只有一種：便利貼指派給你了。**持久存檔**（跟
- * activity.ts／presence.ts 的純記憶體不同，仿 visits.ts 的結構），server 重開
- * 不會不見。`to` 是收件人名字，空字串（匿名）不會收到——匿名沒有地方能
- * 「回來領取」自己的通知。
+ * 「站內通知」——**持久存檔**（跟 activity.ts／presence.ts 的純記憶體不同，仿
+ * visits.ts 的結構），server 重開不會不見。`to` 是收件人名字，空字串（匿名）
+ * 不會收到——匿名沒有地方能「回來領取」自己的通知。三種 kind：
+ *   - 'assigned'：便利貼指派給你了（notes.ts 的 create/update 觸發，`by`＝
+ *     指派的人）。
+ *   - 'due-soon'／'due-overdue'：指派給你的便利貼快到期／已逾期了（見
+ *     `due-notify.ts` 的定期掃描，`by` 是空字串——這不是誰做的，是系統判斷
+ *     時間到了）。同一則便利貼同一個 due_at 只發一次，due_at 改變（含
+ *     「這次完成」把重複到期滾到下一次）才會重新計算、可能再發一次。
  */
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -15,7 +20,7 @@ const NOTIFICATIONS_FILE = join(dirname(notesFilePath), '.share', 'notifications
  *  MAX_ENTRIES 同一個防線層級。 */
 const MAX_ENTRIES = 500
 
-export type NotificationKind = 'assigned'
+export type NotificationKind = 'assigned' | 'due-soon' | 'due-overdue'
 
 export interface NotificationEntry {
   id: string

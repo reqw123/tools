@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Activity, AlarmClock, ArrowDownUp, Bell, Bot, ChevronDown, ChevronUp, Columns3, CopyPlus,
   CornerDownLeft, FileCode2, GraduationCap, HardDriveDownload, HardDriveUpload, History, Home,
-  Plus, Recycle, Rows3, Search, Settings2, Sparkles, Sprout, Tags, Trash2,
+  Plus, Recycle, Rows3, Search, Settings2, Sparkles, Sprout, Tags, Trash2, UserCheck,
 } from 'lucide-react'
 import { NOTE_SORTS, type NoteSort } from '../lib/noteSort'
 import type { SettingsTab } from './GlobalSettingsDialog'
@@ -60,6 +60,8 @@ export function Toolbar({
   unreadNotifications = 0,
   dueOnly,
   onToggleDueOnly,
+  mineOnly,
+  onToggleMineOnly,
   sortLocked,
   tagAxis,
   masonryOn,
@@ -116,6 +118,10 @@ export function Toolbar({
   unreadNotifications?: number
   dueOnly: boolean
   onToggleDueOnly: () => void
+  /** 「只看指派給我」——用目前顯示名字（lib/identity.ts 的 readAuthorName()）
+   *  比對 note.assignee，純疊加篩選，不像 dueOnly 會改排序。 */
+  mineOnly: boolean
+  onToggleMineOnly: () => void
   /** 「同分類排列方向」——快捷切換，跟「全域設定 → 外觀」是同一個設定。 */
   tagAxis: 'vertical' | 'horizontal'
   /** 「牆面動態排版」是否開著——關著時 tagAxis 沒有效果，切換時給提醒。 */
@@ -299,6 +305,14 @@ export function Toolbar({
             title="只看快到期／已逾期（依到期日由早到晚排序）。門檻與到期通知在「全域設定 → 提醒」"
           >
             <AlarmClock size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button
+            className={`btn ghost icon${mineOnly ? ' on' : ''}`}
+            onClick={onToggleMineOnly}
+            aria-pressed={mineOnly}
+            title="只看指派給我的便利貼（比對目前顯示的名字）"
+          >
+            <UserCheck size={15} strokeWidth={2.2} aria-hidden />
           </button>
           <button
             className={`btn ghost icon${!tagAxisLocked && !masonryOn ? ' dim' : ''}`}

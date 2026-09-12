@@ -8,6 +8,7 @@ import {
 import { useMinuteTick } from './hooks/useMinuteTick'
 import { useShareInfo } from './hooks/useShareInfo'
 import { useCanWrite } from './hooks/useSession'
+import { readAuthorName } from './lib/identity'
 import { useAiSearch, useAiTarget, useSemanticSearch, useSemanticStatus } from './hooks/useAi'
 import { hasDesktopWall } from './lib/desktopWall'
 import { dueStatus } from './lib/format'
@@ -117,6 +118,10 @@ export function App() {
   // 「只看快到期／已逾期」——疊加在其他篩選之上，開啟時同時把排序從「最新
   // 建立在上」換成「最早到期在上」，見下面 shown 的計算。
   const [dueOnly, setDueOnly] = useState(false)
+  // 「只看指派給我」——單純疊加篩選，不像 dueOnly 會改排序。跟其他元件一樣
+  // 直接讀 identity.ts 的 readAuthorName()（本地顯示名，不是 server 驗證過的
+  // 身分）；名字是空字串時篩出來自然是空清單（匿名沒有「指派給我」的意義）。
+  const [mineOnly, setMineOnly] = useState(false)
   // 每分鐘翻新一次，讓到期徽章／「只看快到期」篩選隨時間自己更新（見下面
   // shown 的 deps）——純視覺，不是鬧鐘。
   const minuteTick = useMinuteTick()
@@ -338,9 +343,10 @@ export function App() {
   // 一橫段」的排版（見 Wall 的 columnPerTag），置頂的幾個分類因此並排、都看得到。
   // 一旦有搜尋／選了分類／AI／只看快到期，或使用者在下拉挑了明確的排序（最新
   // 建立…），就一律攤平照那個排——新建的便利貼才會確實排到最前面。
-  // 「看全部」＝沒有任何篩選（croppedIds / AI / 語意 / 搜尋 / 選了分類 / 只看快到期）。
+  // 「看全部」＝沒有任何篩選（croppedIds / AI / 語意 / 搜尋 / 選了分類 / 只看快到期 / 只看指派給我）。
   const viewingAll =
-    !croppedIds && !aiResult && !aiMode && !semanticOn && !deferredQuery.trim() && !tag && !dueOnly
+    !croppedIds && !aiResult && !aiMode && !semanticOn && !deferredQuery.trim() && !tag && !dueOnly &&
+    !mineOnly
   const groupByTag = noteSort === 'auto' && viewingAll
   // 「同分類集中（分類間隔開）」排序——看全部限定：同分類的便利貼排在一起，
   // 每個分類自成一「帶」、帶之間硬換行＋分隔線（Wall 的 bandByTag）。
@@ -391,6 +397,10 @@ export function App() {
         : list
     }
     if (tag) base = base.filter((n) => n.tag === tag)
+    if (mineOnly) {
+      const myName = readAuthorName()
+      base = base.filter((n) => !!myName && n.assignee === myName)
+    }
     if (dueOnly) {
       // 疊加在其他篩選之上，同時把排序從工具列選的那個換成「最早到期在上」
       // ——due_at 是 ISO 字串，字典序排序就是時間序，不用另外解析。
@@ -421,7 +431,7 @@ export function App() {
     return floatedIds.size ? base.filter((n) => !floatedIds.has(n.id)) : base
     // minuteTick：每分鐘重算，讓「只看快到期」的篩選/排序隨時間翻新。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list, tag, deferredQuery, aiMode, aiResult, semanticActive, semanticRank, croppedIds, floatedIds, dueOnly, reminderSettings, minuteTick, groupByTag, tagBands, knownTags, noteSort, todoCounts, todoNoteIds])
+  }, [list, tag, deferredQuery, aiMode, aiResult, semanticActive, semanticRank, croppedIds, floatedIds, dueOnly, mineOnly, reminderSettings, minuteTick, groupByTag, tagBands, knownTags, noteSort, todoCounts, todoNoteIds])
 
   // 詳細視窗的「上一則／下一則」——在目前這份篩選/排序出的清單（shown）裡移
   // 動，不是整份未篩選清單，這樣使用者在「只看快到期」之類的篩選底下瀏覽
@@ -614,6 +624,8 @@ export function App() {
         onBatchDelete={() => setBatchDelete(true)}
         dueOnly={dueOnly}
         onToggleDueOnly={() => setDueOnly((v) => !v)}
+        mineOnly={mineOnly}
+        onToggleMineOnly={() => setMineOnly((v) => !v)}
         sortLocked={sortLocked}
         tagAxis={wallTagAxis}
         masonryOn={wallMasonry}

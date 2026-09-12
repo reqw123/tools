@@ -317,12 +317,14 @@ export const api = {
   listPeopleNames: () => req<{ names: string[] }>('/people').then((r) => r.names),
 }
 
-/** 一則站內通知——目前只有「便利貼指派給你了」這種，持久化存檔（見
- *  server/notifications.ts），server 重開不會不見。 */
+/** 一則站內通知——持久化存檔（見 server/notifications.ts），server 重開不會
+ *  不見。'assigned'＝便利貼指派給你了（`by`＝誰指派的）；'due-soon'／
+ *  'due-overdue'＝指派給你的便利貼快到期／已逾期了（`by` 是空字串，系統
+ *  判斷，不是誰做的）。 */
 export interface Notification {
   id: string
   to: string
-  kind: 'assigned'
+  kind: 'assigned' | 'due-soon' | 'due-overdue'
   noteId: string
   noteTitle: string
   by: string

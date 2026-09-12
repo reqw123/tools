@@ -7,10 +7,20 @@ import {
 import { displayAuthor } from '../lib/identity'
 import { timeAgo } from '../lib/format'
 import { scrimClose } from '../lib/scrimClose'
+import type { Notification } from '../lib/api'
+
+/** 通知內容——依 kind 組不同的句子；'due-*' 沒有「誰做的」，不顯示 by。 */
+function notificationText(n: Notification): string {
+  const title = n.noteTitle || '(無標題)'
+  if (n.kind === 'due-soon') return `「${title}」快到期了`
+  if (n.kind === 'due-overdue') return `「${title}」已經逾期了`
+  return `${displayAuthor(n.by)} 把「${title}」指派給你了`
+}
 
 /**
- * 「站內通知」——目前只有一種：便利貼指派給你了（見 server/notifications.ts）。
- * 持久化，server 重開不會不見；跟 ActivityDialog 同一套版面。
+ * 「站內通知」——便利貼指派給你了／指派給你的便利貼快到期或已逾期了（見
+ * server/notifications.ts）。持久化，server 重開不會不見；跟 ActivityDialog
+ * 同一套版面。
  */
 export function NotificationsDialog({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -46,7 +56,9 @@ export function NotificationsDialog({ onClose }: { onClose: () => void }) {
           ×
         </button>
         <h2>通知</h2>
-        <p className="dim">目前只有「便利貼指派給你了」這種——持久存檔，重開 server 不會不見。</p>
+        <p className="dim">
+          「指派給你」跟「指派給你的便利貼快到期／已逾期」——持久存檔，重開 server 不會不見。
+        </p>
 
         {isLoading ? (
           <p className="dim mono">// 讀取中…</p>
@@ -64,7 +76,8 @@ export function NotificationsDialog({ onClose }: { onClose: () => void }) {
                   <div>
                     <span className="bd-title">
                       {!n.read && '🔵 '}
-                      {displayAuthor(n.by)} 把「{n.noteTitle || '(無標題)'}」指派給你了
+                      {n.kind === 'due-overdue' ? '⏰ ' : n.kind === 'due-soon' ? '⏳ ' : ''}
+                      {notificationText(n)}
                     </span>
                     <span className="bd-meta">{timeAgo(n.at)}</span>
                   </div>

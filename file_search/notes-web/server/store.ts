@@ -1016,6 +1016,9 @@ export interface DueNote {
   /** 這則屬於哪一份便利貼——'life'（生活）或 'thesis'（研究生模式）。舊呼叫端
    *  （Node-RED 的格式化函式只讀 title/tag/due_at）忽略這個多出來的欄位不受影響。 */
   collection: NoteCollection
+  /** 指派給誰——''＝未指派。給 due-notify.ts 決定要不要發站內通知用；舊呼叫端
+   *  一樣忽略這個多出來的欄位。 */
+  assignee: string
 }
 
 export interface DueSummary {
@@ -1028,7 +1031,14 @@ export interface DueSummary {
 }
 
 function toDueNote(n: Note): DueNote {
-  return { id: n.id, title: n.title, tag: n.tag, due_at: n.due_at, collection: getActiveCollection() }
+  return {
+    id: n.id,
+    title: n.title,
+    tag: n.tag,
+    due_at: n.due_at,
+    collection: getActiveCollection(),
+    assignee: n.assignee,
+  }
 }
 
 export function dueSummary(): DueSummary {
