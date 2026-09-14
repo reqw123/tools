@@ -23,7 +23,9 @@ import {
   setPersonRole,
 } from './people'
 import { listVisits } from './visits'
-import { dueSummaryAll } from './store'
+import { dueSummaryAll, notesFilePath } from './store'
+import { dirname } from 'node:path'
+import { createBackupZip } from './backup'
 
 export const hostRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('onRequest', async (req, reply) => {
@@ -219,5 +221,20 @@ export const hostRoutes: FastifyPluginAsync = async (app) => {
       }
     }
     return { items }
+  })
+
+  /**
+   * 「備份／匯出」——把便利貼牆的資料夾（區網＋公網共用模式下就是
+   * `public-wall-data/`）整個打包成一個 zip 給人下載，見 `backup.ts`。
+   * **只認 loopback**（跟這支檔案其他端點一樣）：備份本來就是主機本人的
+   * 事，不開放給共用模式下的任何遠端使用者。
+   */
+  app.get('/host/export', async (_req, reply) => {
+    const zip = await createBackupZip(dirname(notesFilePath))
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    reply
+      .header('content-type', 'application/zip')
+      .header('content-disposition', `attachment; filename="sticky-wall-backup-${stamp}.zip"`)
+      .send(zip)
   })
 }

@@ -120,7 +120,13 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
         rmSync(dest, { force: true }) // 索引集不存在／這個路徑已經在裡面了——別留下孤兒檔案
         return reply.code(r.code).send({ error: r.error })
       }
-      logActivity({ action: 'create', indexName, title: part.filename || filename, author: displayAuthorFrom(req) })
+      logActivity({
+        action: 'create',
+        indexName,
+        title: part.filename || filename,
+        author: displayAuthorFrom(req),
+        viaUpload: true,
+      })
       return reply.code(201).send({ ok: true, path: dest })
     },
   )
@@ -194,7 +200,7 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
         rmSync(batchDir, { recursive: true, force: true }) // 索引集不存在——別留下孤兒資料夾
         return reply.code(r.code).send({ error: r.error })
       }
-      logActivity({ action: 'bulk-add', indexName, count: r.count, author: displayAuthorFrom(req) })
+      logActivity({ action: 'bulk-add', indexName, count: r.count, author: displayAuthorFrom(req), viaUpload: true })
       return reply.code(201).send({ added: r.count, skipped })
     },
   )

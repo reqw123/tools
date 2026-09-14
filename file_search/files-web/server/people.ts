@@ -1,14 +1,20 @@
 /**
  * 「簡易身分記憶與認證」——搬自 notes-web/server/people.ts，邏輯完全相同
  * （名字＋PIN 一旦定了就不能自己改，忘記 PIN 只能請牆主在 `/host` 解除
- * 保護），只拿掉 `discordWebhook` 欄位——索引牆沒有「到期提醒」這種需要
- * 通知個人 Discord 頻道的概念。
+ * 保護）。
  *
  * - 沒有帳號管理介面，忘記 PIN 就請牆主在 `/host` 解除保護。
  * - 認證用一張**無狀態**的簽章 cookie（HMAC，用共用密碼當金鑰）——換共用
  *   密碼＝所有身分一起失效。
  * - PIN 只在登入當下核對一次；核對過的名字進了簽章 cookie，之後每個請求
  *   靠 cookie 認人（`identity.ts` 的 `authorFrom()` 優先看這個）。
+ *
+ * `discordWebhook`（2026-09 補回來）：一開始搬過來時拿掉這個欄位，理由是
+ * 「索引牆沒有到期提醒這種需要通知個人 Discord 頻道的概念」——但後來加了
+ * 遠端上傳檔案，變成有一個對稱的通知情境：**有人上傳了新檔案**。跟便利貼
+ * 牆的到期提醒不同，上傳沒有「指派給誰」這種一對一的對象，所以這裡是
+ * **廣播給每個設過 webhook 的人**（見 `host-routes.ts` 的
+ * `/host/upload-notifications`），不是 join 到單一 assignee。
  */
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
@@ -24,6 +30,9 @@ const MAX_NAME = 40
 // （15 分鐘錯 10 次擋 15 分鐘），不是靠拉長碼數硬撐。
 const MIN_PIN = 4
 const MAX_PIN = 20
+const MAX_WEBHOOK = 300
+// notes-web 同一份 pattern——標準 Discord webhook 網址格式。
+const DISCORD_WEBHOOK_PATTERN = /^https:\/\/discord(app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/
 
 export type PersonRole = 'editor' | 'viewer'
 
@@ -33,6 +42,12 @@ interface PersonRecord {
   /** 缺省視為 'editor'——舊資料、沒被 host 特別設過的人都一樣，維持現況
    *  可編輯。只有 host 在 /host 明確設成 'viewer' 才會被鎖唯讀。 */
   role?: PersonRole
+  /** 這個人自己的 Discord webhook——**由 host 手動輸入**（使用者私下把
+   *  webhook 網址給 host，不是自助填寫；沒有開放給一般使用者自己改的端點，
+   *  只有 `/host` 這個 loopback-only 的管理面板能設）。有人上傳新檔案時，
+   *  Node-RED 用這個推播到他自己的 Discord 頻道（見
+   *  `GET /host/upload-notifications`）。''＝沒設過。 */
+  discordWebhook?: string
 }
 type PeopleFile = Record<string, PersonRecord>
 
@@ -66,13 +81,19 @@ export interface PersonSummary {
   name: string
   createdAt: string
   role: PersonRole
+  discordWebhook: string
 }
 
 /** 目前被 PIN 保護的名字清單（不含 PIN 本身）——給 host.html 的管理面板用。 */
 export function listPeople(): PersonSummary[] {
   const people = readPeople()
   return Object.entries(people)
-    .map(([name, rec]) => ({ name, createdAt: rec.createdAt, role: rec.role ?? 'editor' }))
+    .map(([name, rec]) => ({
+      name,
+      createdAt: rec.createdAt,
+      role: rec.role ?? 'editor',
+      discordWebhook: rec.discordWebhook ?? '',
+    }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
@@ -90,6 +111,30 @@ export function setPersonRole(name: string, role: PersonRole): boolean {
   people[n].role = role
   writePeople(people)
   return true
+}
+
+export function getPersonDiscordWebhook(name: string): string {
+  if (!name) return ''
+  return readPeople()[name]?.discordWebhook ?? ''
+}
+
+/** host 專用——設定或清除某個已註冊名字的 Discord webhook。webhook 留空是
+ *  「清除」；非空但格式不像 Discord webhook 網址就拒絕（見上面
+ *  DISCORD_WEBHOOK_PATTERN），回傳錯誤訊息。找不到這個人也算錯誤。 */
+export function setPersonDiscordWebhook(
+  name: string,
+  webhook: string,
+): { ok: true } | { ok: false; error: string } {
+  const n = name.trim().slice(0, MAX_NAME)
+  const people = readPeople()
+  if (!people[n]) return { ok: false, error: '找不到這個名字' }
+  const w = webhook.trim().slice(0, MAX_WEBHOOK)
+  if (w && !DISCORD_WEBHOOK_PATTERN.test(w)) {
+    return { ok: false, error: '看起來不是 Discord webhook 網址（要是 https://discord.com/api/webhooks/... 這種格式）' }
+  }
+  people[n].discordWebhook = w
+  writePeople(people)
+  return { ok: true }
 }
 
 /**

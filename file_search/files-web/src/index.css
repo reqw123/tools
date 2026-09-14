@@ -343,31 +343,32 @@ select option {
 .seg button:disabled { opacity: 0.35; cursor: not-allowed; }
 .seg button:disabled:hover { background: var(--raise); }
 
+/* 按鈕視覺（2026-09 改成圓臉/pill 造型，使用者反映原本的 8px 圓角+實線
+   邊框還是太「框線明顯、正正方方」）——拿掉邊框，改靠底色塊＋hover 時的
+   marker 色調當作互動回饋，圓角拉到 999px（兩端完全圓弧）。 */
 .btn {
   font: inherit;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  border: 1px solid var(--line);
+  border: none;
   background: var(--raise);
   color: var(--ink);
   font-weight: 500;
-  border-radius: 8px;
-  padding: 0.44rem 0.75rem;
+  border-radius: 999px;
+  padding: 0.44rem 0.85rem;
   cursor: pointer;
 }
 .btn:hover {
-  border-color: var(--marker);
-  background: color-mix(in srgb, var(--marker) 10%, var(--raise));
+  background: color-mix(in srgb, var(--marker) 16%, var(--raise));
   color: var(--marker-ink);
 }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn:disabled:hover { background: var(--raise); color: var(--ink); border-color: var(--line); }
-.btn.sm { font-size: 0.8rem; padding: 0.36rem 0.66rem; }
+.btn:disabled:hover { background: var(--raise); color: var(--ink); }
+.btn.sm { font-size: 0.8rem; padding: 0.36rem 0.72rem; }
 .btn.sm.on {
   background: var(--marker-solid);
   color: #fff;
-  border-color: var(--marker-solid);
   font-weight: 600;
 }
 .btn.sm.on:hover { background: var(--marker-solid); color: #fff; }
@@ -382,17 +383,16 @@ select option {
   align-items: center;
   gap: 0.35rem;
   height: 2.1rem;
-  padding: 0 0.62rem;
-  border: 1px solid var(--line);
+  padding: 0 0.75rem;
+  border: none;
   background: var(--raise);
   color: var(--ink-soft);
-  border-radius: 8px;
+  border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
 }
 .toggle:hover {
-  border-color: var(--marker);
-  background: color-mix(in srgb, var(--marker) 10%, var(--raise));
+  background: color-mix(in srgb, var(--marker) 16%, var(--raise));
   color: var(--marker-ink);
 }
 
@@ -825,6 +825,18 @@ select option {
   color: var(--marker-ink);
   white-space: nowrap;
 }
+/* 「合併動態」（多人牆閘道模式）裡標出「這筆是便利貼牆那邊的」——見
+   ActivityDialog.tsx，只有 e.wall==='notes' 的項目才會出現。 */
+.activity-wall-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--marker) 18%, var(--raise));
+  color: var(--marker-ink);
+  margin-right: 0.4rem;
+}
 .size {
   flex: none;
   width: 4rem;            /* 固定寬 + 靠右：容量成一欄、右緣對齊，空的也佔位 */
@@ -1020,15 +1032,13 @@ select option {
 .btn.primary {
   background: var(--marker-solid);
   color: #fff;
-  border-color: var(--marker-solid);
   font-weight: 600;
 }
-.btn.primary:hover { background: var(--marker-ink); color: #fff; border-color: var(--marker-ink); }
-.btn.danger { color: var(--alert); border-color: color-mix(in srgb, var(--alert) 42%, var(--line)); }
+.btn.primary:hover { background: var(--marker-ink); color: #fff; }
+.btn.danger { color: var(--alert); }
 .btn.danger:hover {
   background: color-mix(in srgb, var(--alert) 12%, var(--raise));
   color: var(--alert);
-  border-color: var(--alert);
 }
 
 .row-del { display: inline-flex; gap: 0.5rem; }

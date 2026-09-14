@@ -128,7 +128,13 @@ const notesEnv = {
   STICKY_NOTES_FILE: join(SHARED_DATA_DIR, '.sticky_notes.json'),
   GATEWAY_SECRET,
   OTHER_WALL_LABEL: '索引牆',
-  OTHER_WALL_SWITCH_URL: `http://127.0.0.1:${GATEWAY_PORT}/switch-wall?to=files`,
+  // **相對路徑，不能寫死 127.0.0.1**——瀏覽器點下去是照「目前網址列的
+  // origin」解析：主機本人是 http://localhost:8794，區網/公網訪客是
+  // LAN IP 或 ngrok 網域，各自都不一樣。曾經寫死 `http://127.0.0.1:${GATEWAY_PORT}`，
+  // 主機本人點沒事（他自己就是 127.0.0.1），但遠端使用者的瀏覽器會去連
+  // *他們自己電腦*的 127.0.0.1:8794——連不到東西，頁面整個掛掉。這是真實
+  // 使用者回報的 bug（「遠端玩家切換到索引牆會丟失頁面」）。
+  OTHER_WALL_SWITCH_URL: '/switch-wall?to=files',
   // 分享鈕/QR（ShareLinkButton）靠 share.ts 的 SHARE_WALL_URL 才會出現，那個
   // 又是從這個環境變數算的——閘道自己解析到的 ngrok 網址一定要往下傳，不然
   // 公網模式下兩邊都不會顯示分享鈕（這裡曾經漏掉，只拿 publicUrl 印自己的
@@ -154,7 +160,8 @@ const filesEnv = {
   INDEX_DIR: SHARED_DATA_DIR,
   GATEWAY_SECRET,
   OTHER_WALL_LABEL: '便利貼牆',
-  OTHER_WALL_SWITCH_URL: `http://127.0.0.1:${GATEWAY_PORT}/switch-wall?to=notes`,
+  // 見 notesEnv 同一個欄位的註解——相對路徑，不能寫死 127.0.0.1。
+  OTHER_WALL_SWITCH_URL: '/switch-wall?to=notes',
   // 見 notesEnv 同一個欄位的註解——閘道解析到的 ngrok 網址要往下傳，兩邊
   // 分享鈕才會在公網模式下正常出現。
   SHARE_PUBLIC_URL: publicUrl,

@@ -28,6 +28,11 @@ export interface ActivityEntry {
   title: string
   /** bulk-add/bulk-delete 時＝影響幾筆；其餘不帶。 */
   count?: number
+  /** 這筆 create/bulk-add 是不是透過「遠端上傳檔案」進來的（`upload-routes.ts`
+   *  設的），不是本機手動「加入索引」——`host-routes.ts` 的
+   *  `/host/upload-notifications` 靠這個旗標篩出真正的上傳事件，兩種來源
+   *  在活動記錄／動態列表的顯示文字上完全相同，不影響一般使用者看到的畫面。 */
+  viaUpload?: boolean
 }
 
 const MAX_ENTRIES = 300

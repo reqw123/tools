@@ -1,34 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Lock, LogOut, Pencil, Pin, Plus, RotateCcw, Trash2, UserPlus, Wifi, WifiOff } from 'lucide-react'
-import { useActivity, usePresence } from '../hooks/useActivity'
+import { Lock, LogOut, Pencil, Pin } from 'lucide-react'
+import { useActivity, useCombinedActivity, usePresence, type CombinedActivityEntry } from '../hooks/useActivity'
 import { displayAuthor, readAuthorName, saveAuthorName } from '../lib/identity'
 import { timeAgo } from '../lib/format'
 import { useShareInfo } from '../hooks/useShareInfo'
 import { session, type ActivityEntry } from '../lib/api'
-
-const VERB: Record<string, string> = {
-  create: '新增了',
-  update: '編輯了',
-  delete: '刪除了',
-  restore: '復原了',
-  'bulk-delete': '批次刪除了',
-  assigned: '指派了',
-  connect: '已連線',
-  disconnect: '已斷線',
-}
-const ICON: Record<string, typeof Plus> = {
-  create: Plus,
-  update: Pencil,
-  delete: Trash2,
-  restore: RotateCcw,
-  'bulk-delete': Trash2,
-  assigned: UserPlus,
-  connect: Wifi,
-  disconnect: WifiOff,
-}
-/** 沒有對應便利貼的動作——「小明 已連線」不用再接「「XXX」」。 */
-const NO_TARGET = new Set(['connect', 'disconnect'])
+import { WALL_LABEL, isNoTargetActivity, verbOfActivity, iconOfActivity } from '../lib/activityLabels'
 
 /**
  * 牆主標題右側的常駐面板（`.hero` 在寬螢幕右邊本來就空著一大塊）：
@@ -36,11 +14,21 @@ const NO_TARGET = new Set(['connect', 'disconnect'])
  *   - 現在有誰正在編輯（脈動小圓點）
  *   - 最近幾筆新增／改／刪動態，SSE 推播即時更新，新的一筆會滑入＋高亮閃一下
  * 只在共用模式顯示——單機沒有「別人」，這些資訊沒有意義。
+ *
+ * **合併動態**（2026-09 加，使用者要求「動態歷史紀錄之外，也要真的顯示在
+ * 即時的動態面板上」——一開始只有 `ActivityDialog.tsx` 的完整歷史清單做了
+ * 合併，這裡是標題旁邊常駐、隨時看得到的那塊）：`otherWall` 有值就改叫
+ * `useCombinedActivity()`，動詞字典／圖示抽到 `lib/activityLabels.ts` 跟
+ * Dialog 共用（不再各自複製一份——這是這兩個元件的舊技術債，這次順便修）。
  */
 export function ActivityTicker() {
-  const isShare = useShareInfo().mode === 'lan'
+  const shareInfo = useShareInfo()
+  const isShare = shareInfo.mode === 'lan'
+  const otherWall = shareInfo.otherWall
   const qc = useQueryClient()
-  const { data: entries } = useActivity(12)
+  const own = useActivity(12)
+  const combined = useCombinedActivity(12)
+  const { data: entries } = otherWall ? combined : own
   const { data: presence } = usePresence()
   // 跟 AppGate 共用同一個 query（key 一樣），不會多打一次 /api/session。
   // name 有值＝這個名字通過了 PIN 驗證（server/people.ts）——鎖住不能用這裡改，
@@ -134,21 +122,39 @@ export function ActivityTicker() {
   )
 }
 
-function ActivityRow({ entry }: { entry: ActivityEntry }) {
-  const Icon = ICON[entry.action] ?? Pencil
+function ActivityRow({ entry }: { entry: ActivityEntry | CombinedActivityEntry }) {
+  const Icon = iconOfActivity(entry)
+  if (entry.action === 'switch-wall' && 'toWall' in entry && entry.toWall) {
+    return (
+      <li className="ap-item ap-switch-wall">
+        <span className="ap-icon" aria-hidden>
+          <Icon size={15} strokeWidth={2.4} />
+        </span>
+        <span className="ap-text">
+          <b>{displayAuthor(entry.author)}</b> 切去了{WALL_LABEL[entry.toWall]}
+        </span>
+        <span className="ap-time mono">{timeAgo(entry.at)}</span>
+      </li>
+    )
+  }
   return (
     <li className={`ap-item ap-${entry.action}`}>
       <span className="ap-icon" aria-hidden>
         <Icon size={15} strokeWidth={2.4} />
       </span>
       <span className="ap-text">
-        <b>{displayAuthor(entry.author)}</b> {VERB[entry.action] ?? entry.action}
-        {NO_TARGET.has(entry.action) ? null : entry.action === 'bulk-delete' ? (
-          <span className="ap-target">{entry.count} 則</span>
+        {'wall' in entry && entry.wall === 'files' && <span className="activity-wall-tag">索引牆</span>}
+        <b>{displayAuthor(entry.author)}</b> {verbOfActivity(entry)}
+        {isNoTargetActivity(entry) ? null : entry.count ? (
+          <span className="ap-target">
+            {entry.count} {'wall' in entry && entry.wall === 'files' ? '筆' : '則'}
+          </span>
         ) : (
-          <span className="ap-target">「{entry.title || '(無標題)'}」</span>
+          <span className="ap-target">
+            「{entry.title || ('indexName' in entry ? entry.indexName : '') || '(無標題)'}」
+          </span>
         )}
-        {entry.action === 'assigned' && entry.target && (
+        {entry.action === 'assigned' && 'target' in entry && entry.target && (
           <span className="ap-target"> 給 {displayAuthor(entry.target)}</span>
         )}
       </span>

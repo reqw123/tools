@@ -60,3 +60,21 @@ export function connectionClosed(key: string, author: string): void {
     }
   }, DISCONNECT_GRACE_MS)
 }
+
+/**
+ * 目前真的在線的具名使用者名單——給「誰在線」這類即時狀態用（跟
+ * `listActivity()` 的「什麼時候連線過」歷史記錄是不同層次的資訊）。
+ * `count > 0` 才算「真的在線」，`count===0` 但還在 `disconnectTimer` 寬限期
+ * 內的（換頁那幾十毫秒）不算。匿名的人分不出是誰（key 開頭是 `anon:`，見
+ * `identity.ts` 的 `identityKey()`），不會出現在這份名單——具名的人
+ * `key === author` 本人，直接把 key 當名字回傳即可，不用另外存一份對照表。
+ * 2026-09 加，給多人牆閘道的「合併在線名單」用（見
+ * `share-gateway/index.mjs` 的 `handleCombinedOnline`）。
+ */
+export function listOnline(): string[] {
+  const names: string[] = []
+  for (const [key, e] of online) {
+    if (e.count > 0 && !key.startsWith('anon:')) names.push(key)
+  }
+  return names
+}

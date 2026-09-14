@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Lock, LogOut, Pencil, Pin } from 'lucide-react'
-import { useActivity, usePresence } from '../hooks/useActivity'
+import { useActivity, useCombinedActivity, usePresence, type CombinedActivityEntry } from '../hooks/useActivity'
 import { displayAuthor, readAuthorName, saveAuthorName } from '../lib/identity'
 import { timeAgo } from '../lib/format'
 import { useShareInfo } from '../hooks/useShareInfo'
 import { session, type ActivityEntry } from '../lib/api'
-import { ACTIVITY_ICON, ACTIVITY_NO_TARGET, ACTIVITY_VERB } from '../lib/activityLabels'
+import { WALL_LABEL, isNoTargetActivity, verbOfActivity, iconOfActivity } from '../lib/activityLabels'
 
 /**
  * 牆主標題右側的常駐面板，搬自 notes-web/src/components/ActivityTicker.tsx：
@@ -14,11 +14,20 @@ import { ACTIVITY_ICON, ACTIVITY_NO_TARGET, ACTIVITY_VERB } from '../lib/activit
  *   - 現在有誰正在看哪份索引集（脈動小圓點）
  *   - 最近幾筆新增／改／移除動態，SSE 推播即時更新
  * 只在共用模式顯示——單機沒有「別人」，這些資訊沒有意義。
- */
+ *
+ * **合併動態**（2026-09 加，使用者要求「動態歷史紀錄之外，也要真的顯示在
+ * 即時的動態面板上」——一開始只有 `ActivityDialog.tsx` 的完整歷史清單做了
+ * 合併，這裡是標題旁邊常駐、隨時看得到的那塊，同一份 `otherWall` 判斷、
+ * 同一份 `useCombinedActivity()`，渲染邏輯抽到 `lib/activityLabels.ts`
+ * 跟 Dialog 共用，不重複寫一份。 */
 export function ActivityTicker() {
-  const isShare = useShareInfo().mode === 'lan'
+  const shareInfo = useShareInfo()
+  const isShare = shareInfo.mode === 'lan'
+  const otherWall = shareInfo.otherWall
   const qc = useQueryClient()
-  const { data: entries } = useActivity(12)
+  const own = useActivity(12)
+  const combined = useCombinedActivity(12)
+  const { data: entries } = otherWall ? combined : own
   const { data: presence } = usePresence()
   const { data: sessionInfo } = useQuery({ queryKey: ['session'], queryFn: session.check, enabled: isShare })
   const verifiedName = sessionInfo?.name ?? null
@@ -108,20 +117,35 @@ export function ActivityTicker() {
   )
 }
 
-function ActivityRow({ entry }: { entry: ActivityEntry }) {
-  const Icon = ACTIVITY_ICON[entry.action] ?? Pencil
+function ActivityRow({ entry }: { entry: ActivityEntry | CombinedActivityEntry }) {
+  const Icon = iconOfActivity(entry)
+  if (entry.action === 'switch-wall' && 'toWall' in entry && entry.toWall) {
+    return (
+      <li className="ap-item ap-switch-wall">
+        <span className="ap-icon" aria-hidden>
+          <Icon size={15} strokeWidth={2.4} />
+        </span>
+        <span className="ap-text">
+          <b>{displayAuthor(entry.author)}</b> 切去了{WALL_LABEL[entry.toWall]}
+        </span>
+        <span className="ap-time mono">{timeAgo(entry.at)}</span>
+      </li>
+    )
+  }
   return (
     <li className={`ap-item ap-${entry.action}`}>
       <span className="ap-icon" aria-hidden>
         <Icon size={15} strokeWidth={2.4} />
       </span>
       <span className="ap-text">
-        <b>{displayAuthor(entry.author)}</b> {ACTIVITY_VERB[entry.action] ?? entry.action}
-        {ACTIVITY_NO_TARGET.has(entry.action) ? null : entry.count ? (
+        {'wall' in entry && entry.wall === 'notes' && <span className="activity-wall-tag">便利貼牆</span>}
+        <b>{displayAuthor(entry.author)}</b> {verbOfActivity(entry)}
+        {isNoTargetActivity(entry) ? null : entry.count ? (
           <span className="ap-target">{entry.count} 筆</span>
         ) : (
-          <span className="ap-target">「{entry.title || entry.indexName || '(無標題)'}」</span>
+          <span className="ap-target">「{entry.title || ('indexName' in entry ? entry.indexName : '') || '(無標題)'}」</span>
         )}
+        {'target' in entry && entry.target && <span className="ap-target"> 給 {displayAuthor(entry.target)}</span>}
       </span>
       <span className="ap-time mono">{timeAgo(entry.at)}</span>
     </li>

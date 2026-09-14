@@ -736,21 +736,25 @@ body {
   cursor: not-allowed;
 }
 
+/* 按鈕視覺（2026-09 改成圓臉/pill 造型，使用者反映原本的直角+實線邊框
+   「框線明顯、正正方方」太生硬）——拿掉邊框，改靠底色塊＋hover 時的淡色
+   底/加深當作互動回饋，圓角拉到 999px（兩端完全圓弧）。焦點可及性不受
+   影響：`.btn:focus-visible` 用 outline，不是 border，見下面。 */
 .btn {
   flex: none;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.55rem 0.95rem;
-  border: 1px solid var(--brass);
-  border-radius: 2px;
+  padding: 0.55rem 1.05rem;
+  border: none;
+  border-radius: 999px;
   background: var(--brass);
   color: #fff;
   font: inherit;
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: filter 0.15s;
+  transition: filter 0.15s, background 0.15s;
 }
 .btn:hover {
   filter: brightness(1.08);
@@ -758,7 +762,6 @@ body {
 .btn.ghost {
   background: transparent;
   color: var(--ink);
-  border-color: var(--hair);
 }
 .btn:disabled {
   opacity: 0.45;
@@ -766,13 +769,16 @@ body {
   filter: none;
 }
 .btn.ghost:hover {
-  border-color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
   filter: none;
 }
 .btn.danger {
   background: transparent;
   color: #c0392b;
-  border-color: color-mix(in srgb, #c0392b 45%, var(--hair));
+}
+.btn.danger:hover {
+  background: color-mix(in srgb, #c0392b 12%, transparent);
+  filter: none;
 }
 :root[data-theme='dark'] .btn.danger,
 :root:not([data-theme='light']) .btn.danger {
@@ -784,10 +790,9 @@ body {
    編輯／釘選／插入圖片／刪除）。 */
 .sheet:not(.plain):not(.answer) .btn.ghost {
   color: var(--paper-ink);
-  border-color: color-mix(in srgb, var(--paper-ink) 26%, transparent);
 }
 .sheet:not(.plain):not(.answer) .btn.ghost:hover {
-  border-color: color-mix(in srgb, var(--paper-ink) 55%, transparent);
+  background: color-mix(in srgb, var(--paper-ink) 14%, transparent);
 }
 :root[data-theme='dark'] .sheet:not(.plain):not(.answer) .btn.danger,
 :root:not([data-theme='light']) .sheet:not(.plain):not(.answer) .btn.danger {
@@ -2041,9 +2046,8 @@ body {
   padding: 0.5rem;
 }
 .btn.ghost.icon.on {
-  border-color: var(--brass);
   color: var(--brass);
-  background: color-mix(in srgb, var(--brass) 12%, transparent);
+  background: color-mix(in srgb, var(--brass) 18%, transparent);
 }
 /* 「同分類排列方向」快捷鈕——動態排版關著時目前沒作用，淡一點（仍可點，
    點了會切設定＋出提醒）。 */
@@ -2748,6 +2752,19 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 「合併動態」（多人牆閘道模式）標出「這筆是索引牆那邊的」——見
+   ActivityDialog.tsx，只有 e.wall==='files' 的項目才會出現。 */
+.activity-wall-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brass) 20%, transparent);
+  color: var(--ink);
+  margin-right: 0.4rem;
+}
 .bd-meta {
   flex: none;
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
@@ -2785,10 +2802,9 @@ body {
    「復原」、版本記錄的「還原到這個版本」）。 */
 .bd-list .btn.ghost {
   color: var(--paper-ink);
-  border-color: color-mix(in srgb, var(--paper-ink) 26%, transparent);
 }
 .bd-list .btn.ghost:hover {
-  border-color: color-mix(in srgb, var(--paper-ink) 55%, transparent);
+  background: color-mix(in srgb, var(--paper-ink) 14%, transparent);
 }
 :root[data-theme='dark'] .bd-list .btn.danger,
 :root:not([data-theme='light']) .bd-list .btn.danger {

@@ -8,7 +8,9 @@ const TOPIC_KEYS: Record<string, string[][]> = {
   notes: [['notes'], ['notes-trash'], ['notes-history']],
   settings: [['app-settings'], ['reminder-settings'], ['share-info']],
   'tag-colors': [['tag-colors']],
-  activity: [['activity']],
+  // combined-activity／combined-online（多人牆閘道的合併動態/在線名單）只有
+  // 「自己這面牆」的變動會推到——見 useActivity.ts 的 useCombinedOnline 說明。
+  activity: [['activity'], ['combined-activity'], ['combined-online']],
   presence: [['presence']],
   card: [['card']],
   notifications: [['notifications']],

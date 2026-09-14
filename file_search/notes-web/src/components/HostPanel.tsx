@@ -18,7 +18,7 @@ const PAGE_TITLE = '便利貼牆-開發者設定'
  * **只有主機本機（loopback）打得到背後的 `/api/host/*`**——遠端開這個網址
  * 會看到「只能在本機開啟」，不會看到任何管理內容，見 server/host-routes.ts。
  *
- * 目前管七件事：
+ * 目前管八件事：
  *   1. 開放模式——免共用密碼，但仍要求名字＋PIN（不是整關直接放行，見
  *      share.ts 的 openAccess／shareAuthHook）。純記憶體，**預設開**、重開
  *      server 會重置回開，想維持要密碼就自己在這裡關掉。
@@ -39,6 +39,9 @@ const PAGE_TITLE = '便利貼牆-開發者設定'
  *   7. 登入畫面 3D Logo——host 個人品牌（見 LoginLogo3D.tsx），純記憶體、
  *      **預設關**、重開 server 重置回關（素材約 5.6MB，不想預設讓每個訪客都
  *      下載）。關掉時前端完全不 mount 那個元件，不是載入了才藏起來。
+ *   8. 備份／匯出（2026-09 加）——把整個共用資料夾打包成 zip 下載，見
+ *      server/backup.ts。純 `<a href>` 下載連結，不是 fetch，讓瀏覽器自己
+ *      處理下載進度／存檔對話框。
  */
 export function HostPanel() {
   useEffect(() => {
@@ -378,6 +381,19 @@ export function HostPanel() {
           />
           {data.loginLogo3d ? '目前開啟——密碼牆會載入 3D logo' : '目前關閉（預設）'}
         </label>
+      </section>
+
+      <section className="host-section form">
+        <h2>備份／匯出</h2>
+        <p className="hint">
+          把這面共用便利貼牆的資料夾（便利貼 JSON、插圖、標籤色、身分／訪客
+          紀錄）整個打包成一個 zip 下載——`public-wall-data/`（或多人牆閘道
+          模式下的 `public-share-data/`）完全不在版控裡，資料損毀時這是唯一
+          的救援手段。
+        </p>
+        <a className="btn" href="/api/host/export">
+          匯出備份（.zip）
+        </a>
       </section>
 
       {err && <p className="err">{err}</p>}

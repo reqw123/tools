@@ -18,14 +18,21 @@ const PAGE_TITLE = '索引牆-開發者設定'
  * **只有主機本機（loopback）打得到背後的 `/api/host/*`**——遠端開這個
  * 網址會看到「只能在本機開啟」，見 server/host-routes.ts。
  *
- * 目前管四件事：
+ * 目前管六件事：
  *   1. 開放模式——免共用密碼，但仍要求名字＋PIN。純記憶體，預設開、重開
  *      server 會重置回開。
  *   2. AI 開關——遠端能不能用 AI（批次補說明的建議），即時切換、重開
  *      server 回到環境變數預設值。
  *   3. AI provider——批次補說明要打 OpenAI 還是本機 Ollama。
- *   4. 身分保護——列出被 PIN 保護的名字，忘記 PIN 就在這裡「解除保護」。
+ *   4. 身分保護——列出被 PIN 保護的名字，忘記 PIN 就在這裡「解除保護」；
+ *      每個人自己的 Discord webhook（2026-09 補回來，一開始搬過來時拿掉，
+ *      後來加了遠端上傳才有對稱的通知情境——有人上傳新檔案時廣播給每個
+ *      設過 webhook 的人，Node-RED 打 `GET /api/host/upload-notifications`
+ *      取得清單，見 server/host-routes.ts 的說明）。
  *   5. 訪客紀錄——誰、什麼時候造訪過，持久化，5 秒輪詢更新一次。
+ *   6. 備份／匯出（2026-09 加）——把整個共用資料夾打包成 zip 下載，見
+ *      server/backup.ts。純 `<a href>` 下載連結，不是 fetch，讓瀏覽器自己
+ *      處理下載進度／存檔對話框。
  */
 export function HostPanel() {
   useEffect(() => {
@@ -106,6 +113,19 @@ export function HostPanel() {
     setErr('')
     try {
       await host.setPersonRole(name, role)
+      await qc.invalidateQueries({ queryKey: HOST_STATE_KEY })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveWebhook = async (name: string, webhook: string) => {
+    setBusy(true)
+    setErr('')
+    try {
+      await host.setPersonWebhook(name, webhook)
       await qc.invalidateQueries({ queryKey: HOST_STATE_KEY })
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
@@ -233,6 +253,10 @@ export function HostPanel() {
           還在，只是變回沒設過 PIN 的狀態，下次任何人都能重新登入這個名字、順便設新 PIN。
           角色下拉可以把某個名字設成「唯讀」——設成唯讀的人登入後只能看不能
           新增／編輯／移除。沒特別設過的人（含匿名）一律是「可編輯」，維持現況。
+          <b>Discord webhook</b> 是這個人自己的通知頻道——使用者私下把 webhook
+          網址給你，貼在這裡，有人上傳新檔案時 Node-RED 會推播到他自己的
+          Discord（這裡沒有開放讓使用者自己填）。輸入框失焦時自動存檔，
+          留空＝清除。
         </p>
         {data.people.length === 0 ? (
           <p className="dim">目前沒有任何名字設過 PIN。</p>
@@ -272,6 +296,18 @@ export function HostPanel() {
                     )}
                   </span>
                 </div>
+                <label className="host-people-webhook">
+                  Discord webhook
+                  <input
+                    type="text"
+                    defaultValue={p.discordWebhook}
+                    disabled={busy}
+                    placeholder="https://discord.com/api/webhooks/…（留空＝不通知）"
+                    onBlur={(e) => {
+                      if (e.target.value.trim() !== p.discordWebhook) saveWebhook(p.name, e.target.value)
+                    }}
+                  />
+                </label>
               </li>
             ))}
           </ul>
@@ -293,6 +329,18 @@ export function HostPanel() {
             {visits.map((v) => `${stamp(v.at)}　${displayAuthor(v.author)}`).join('\n')}
           </pre>
         )}
+      </section>
+
+      <section className="host-section form">
+        <h2>備份／匯出</h2>
+        <p className="hint">
+          把這面共用索引牆的資料夾（`.md` 索引集、上傳的檔案、身分／訪客紀錄）
+          整個打包成一個 zip 下載——`public-index-data/`（或多人牆閘道模式下的
+          `public-share-data/`）完全不在版控裡，資料損毀時這是唯一的救援手段。
+        </p>
+        <a className="btn" href="/api/host/export">
+          匯出備份（.zip）
+        </a>
       </section>
 
       {err && <p className="err">{err}</p>}

@@ -24,7 +24,8 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "sharp": "^0.35.4",
-    "three": "^0.186.0"
+    "three": "^0.186.0",
+    "yazl": "^3.3.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -32,6 +33,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.4",
+    "@types/yazl": "^3.3.1",
     "@vitejs/plugin-react": "^6.0.4",
     "concurrently": "^9",
     "cross-env": "^7.0.3",

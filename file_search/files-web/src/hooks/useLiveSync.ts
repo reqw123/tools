@@ -9,7 +9,9 @@ const TOPIC_KEYS: Record<string, string[][]> = {
   'index-list': [['indexes']],
   index: [['index'], ['category-colors']],
   settings: [['share-info']],
-  activity: [['activity']],
+  // combined-activity／combined-online（多人牆閘道的合併動態/在線名單）只有
+  // 「自己這面牆」的變動會推到——見 useActivity.ts 的 useCombinedOnline 說明。
+  activity: [['activity'], ['combined-activity'], ['combined-online']],
   // entry-presence 的 query key 帶了動態的 indexName 後綴（見
   // useEntryPresence），這裡只給前綴——TanStack Query 的 invalidateQueries
   // 預設就是前綴比對，不用列出每個 indexName 的組合。

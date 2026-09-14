@@ -9,6 +9,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { listActivity } from './activity'
 import { currentViewers, heartbeat, stopViewing } from './presence'
 import { currentEntryEditors, heartbeatEntry, stopEditingEntry } from './entry-presence'
+import { listOnline } from './connections'
 import { clientIp, displayAuthorFrom } from './share'
 
 export const activityRoutes: FastifyPluginAsync = async (app) => {
@@ -16,6 +17,11 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
     const limit = Number(req.query.limit)
     return { entries: listActivity(Number.isFinite(limit) && limit > 0 ? limit : undefined) }
   })
+
+  /** 目前真的在線的具名使用者——見 connections.ts 的 listOnline()。給多人牆
+   *  閘道的「合併在線名單」用（單獨這面牆用不到，前端沒有獨立的「誰在線」
+   *  UI，只有閘道模式的合併動態會顯示）。 */
+  app.get('/online', async () => ({ names: listOnline() }))
 
   app.get('/presence', async () => currentViewers())
 

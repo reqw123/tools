@@ -11,6 +11,7 @@ import { broadcastDanmaku } from './events'
 import { clientIp, displayAuthorFrom } from './share'
 import { startSweeper } from './sweep'
 import { listPersonNames } from './people'
+import { listOnline } from './connections'
 
 const DANMAKU_MAX_CHARS = 60
 // 彈幕會即時推給「所有」開著牆的人，比一般寫入更容易造成干擾——除了共用的
@@ -26,6 +27,12 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
     const limit = Number(req.query.limit)
     return { entries: listActivity(Number.isFinite(limit) && limit > 0 ? limit : undefined) }
   })
+
+  /** 目前真的在線的具名使用者——見 connections.ts 的 listOnline()。給多人牆
+   *  閘道的「合併在線名單」用（單獨這面牆用不到，前端沒有獨立的「誰在線」
+   *  UI，只有閘道模式的合併動態會顯示；離線模式下 connections.ts 的
+   *  connectionOpened/Closed 本來就不會被呼叫，這裡永遠回空陣列，無害）。 */
+  app.get('/online', async () => ({ names: listOnline() }))
 
   app.get('/presence', async () => currentEditors())
 

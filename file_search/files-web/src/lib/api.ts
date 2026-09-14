@@ -170,12 +170,11 @@ export const session = {
 }
 
 /** `/host`（HostPanel.tsx）用的端點——一律只有主機本機（loopback）打得通。
- *  搬自 notes-web/src/lib/api.ts 的 `host`，拿掉登入 3D Logo、Discord
- *  webhook 相關端點。 */
+ *  搬自 notes-web/src/lib/api.ts 的 `host`，拿掉登入 3D Logo。 */
 export interface HostState {
   openAccess: boolean
   aiEnabled: boolean
-  people: { name: string; createdAt: string; role: PersonRole }[]
+  people: { name: string; createdAt: string; role: PersonRole; discordWebhook: string }[]
 }
 /** 一筆造訪紀錄——見 server/visits.ts。author=''＝匿名。 */
 export interface VisitEntry {
@@ -194,6 +193,12 @@ export const host = {
     req<{ people: HostState['people'] }>(`/host/people/${encodeURIComponent(name)}/role`, {
       method: 'POST',
       body: JSON.stringify({ role }),
+    }),
+  /** 設定或清除某個名字自己的 Discord webhook——留空字串＝清除。 */
+  setPersonWebhook: (name: string, webhook: string) =>
+    req<{ people: HostState['people'] }>(`/host/people/${encodeURIComponent(name)}/webhook`, {
+      method: 'POST',
+      body: JSON.stringify({ webhook }),
     }),
   /** 訪客紀錄（持久化）——`/host` 的「訪客紀錄」文字視窗用。新到舊。 */
   getVisits: (limit?: number) =>
