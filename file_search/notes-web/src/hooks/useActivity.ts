@@ -3,7 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 
 /** 「誰動了我的牆」——見 server/activity.ts。SSE 的 `activity` topic 會 invalidate
- *  這個 key（含子 key，TanStack Query 預設用前綴比對），收到就自動重抓。 */
+ *  這個 key（含子 key，TanStack Query 預設用前綴比對），收到就自動重抓。
+ *  **離線版也照樣打**——`activityRoutes` 不管 `SHARE_MODE` 都有註冊（見
+ *  `server/index.ts` 的說明：這裡跟 `/card`／`/danmaku` 是同一支路由，離線
+ *  的個人展示／多視窗情境也用得到），純記憶體不寫檔，沒有低耦合疑慮。 */
 export const ACTIVITY_KEY = ['activity'] as const
 export function useActivity(limit?: number) {
   return useQuery({
@@ -12,7 +15,9 @@ export function useActivity(limit?: number) {
   })
 }
 
-/** 「誰正在編輯哪一則」——noteId → 名字（''＝匿名）。見 server/presence.ts。 */
+/** 「誰正在編輯哪一則」——noteId → 名字（''＝匿名）。見 server/presence.ts。
+ *  同樣離線也照樣打——`Note.tsx` 卡片上的「正在編輯」提示不分本機/共用，
+ *  自己一個人開兩個視窗編同一則時也用得到。 */
 export const PRESENCE_KEY = ['presence'] as const
 export function usePresence() {
   return useQuery({

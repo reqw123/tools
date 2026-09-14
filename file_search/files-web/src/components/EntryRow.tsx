@@ -4,6 +4,8 @@ import { Clipboard, Eye, FolderOpen, Pencil, Pin, SquareArrowOutUpRight, Trash2 
 import type { Entry, PathStat } from '../lib/api'
 import { categoryColor } from '../lib/catColor'
 import { humanSize, kindLabel, kindOf, stampOf } from '../lib/format'
+import { displayAuthor } from '../lib/identity'
+import { useEntryEditingHeartbeat } from '../hooks/useActivity'
 import { FilePreview } from './FilePreview'
 
 export function EntryRow({
@@ -23,6 +25,8 @@ export function EntryRow({
   deleting,
   onPin,
   register,
+  indexName,
+  editors,
 }: {
   entry: Entry
   stat: PathStat | undefined
@@ -47,12 +51,20 @@ export function EntryRow({
    *  螢幕位置/大小，給懸浮視窗初始參考值。未提供＝不顯示釘選鈕。 */
   onPin?: (rect: DOMRect) => void
   register: (el: HTMLElement | null, path: string) => (() => void) | void
+  /** 目前這份索引集的名字——給編輯在場提示的心跳用（見 entry-presence.ts）。
+   *  未提供就整個不打心跳、不顯示「正在編輯」（單機模式）。 */
+  indexName?: string
+  /** 目前正在編輯這一列的人名清單（''＝匿名），來自 `useEntryPresence`。 */
+  editors?: string[]
 }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => register(ref.current, entry.path), [register, entry.path])
   const [preview, setPreview] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
+  // 這個表單開著就送心跳，讓共用牆上其他人看到「有人正在編輯這一列」；
+  // 收起表單／卸載自動說「編完了」，見 hooks/useActivity.ts。
+  useEntryEditingHeartbeat(indexName ?? null, entry.path, editOpen)
   const [draftCat, setDraftCat] = useState(entry.category)
   const [draftDesc, setDraftDesc] = useState(entry.description)
   const listId = useId()
@@ -118,6 +130,11 @@ export function EntryRow({
           <span className="grow" />
         )}
         {missing && <span className="badge miss">檔案已不存在</span>}
+        {editors && editors.length > 0 && (
+          <span className="badge editing" title="共用模式下有人正打開這一列的編輯表單">
+            {editors.map(displayAuthor).join('、')} 正在編輯
+          </span>
+        )}
         {/* 分類晶片放整列右邊固定一欄——不夾在檔名後面，檔名長短不一就不會
             讓每列的晶片參差不齊。容量固定寬度、永遠在最右（就算沒分類、
             沒容量也佔位），這樣「容量」跟「分類」各自成一欄、右緣都對齊。 */}

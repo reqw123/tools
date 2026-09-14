@@ -21,6 +21,10 @@ export interface ShareInfo {
    *  預設關（素材約 5.6MB，host 自己決定要不要讓訪客下載）。`<PasswordGate>`
    *  只在這個為 true 時才 mount 那個元件，關掉＝完全不發任何請求。 */
   loginLogo3d: boolean
+  /** 多人牆閘道啟動時才有值——另一面牆的顯示名稱＋切換用網址。工具列的
+   *  「切換到 XX」鈕靠這個決定要不要顯示、顯示什麼字、連去哪裡。獨立啟動器
+   *  （沒有閘道）沒有這個欄位，鈕不會出現。 */
+  otherWall?: { label: string; switchUrl: string }
   /** share-info 還沒回來——AppGate 用來避免先閃一下完整牆再跳密碼牆。 */
   loading: boolean
 }
@@ -45,6 +49,11 @@ export function useShareInfo(): ShareInfo {
       const res = await fetch('/api/share-info')
       if (!res.ok) return OFFLINE
       const j = (await res.json()) as Partial<ShareInfo>
+      const ow = j.otherWall
+      const otherWall =
+        ow && typeof ow.label === 'string' && typeof ow.switchUrl === 'string'
+          ? { label: ow.label, switchUrl: ow.switchUrl }
+          : undefined
       return {
         mode: j.mode === 'lan' ? 'lan' : 'off',
         ai: j.ai !== false,
@@ -52,6 +61,7 @@ export function useShareInfo(): ShareInfo {
         publicUrl: typeof j.publicUrl === 'string' ? j.publicUrl : undefined,
         openAccess: j.openAccess === true,
         loginLogo3d: j.loginLogo3d === true,
+        otherWall,
       }
     },
     staleTime: Infinity,

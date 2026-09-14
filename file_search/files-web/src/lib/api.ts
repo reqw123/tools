@@ -1,3 +1,5 @@
+import { authorHeaderValue } from './identity'
+
 export interface Entry {
   serial: number
   path: string
@@ -83,13 +85,40 @@ export interface BlankItem {
 
 const BASE = '/api'
 
+/** 區網共用模式：伺服器要密碼、但這個瀏覽器還沒登入（或 cookie 過期）。
+ *  AppGate 攔到這個就顯示 <PasswordGate>。搬自 notes-web/src/lib/api.ts。 */
+export class AuthError extends Error {
+  constructor() {
+    super('需要密碼')
+    this.name = 'AuthError'
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  // `FormData` body（上傳檔案，見 uploadEntry）不能手動設 content-type——
+  // 瀏覽器要自己算 multipart boundary，蓋掉它 fetch 會少了 boundary 直接壞掉。
+  const isJsonBody = typeof init?.body === 'string'
   const res = await fetch(BASE + path, {
-    headers: init?.body ? { 'content-type': 'application/json' } : undefined,
     ...init,
+    credentials: 'same-origin',
+    headers: {
+      ...(isJsonBody ? { 'content-type': 'application/json' } : {}),
+      'x-index-author': authorHeaderValue(),
+      ...init?.headers,
+    },
   })
+  if (res.status === 204) return undefined as T
   const data = (await res.json().catch(() => null)) as unknown
   if (!res.ok) {
+    if (
+      res.status === 401 &&
+      data &&
+      typeof data === 'object' &&
+      'needAuth' in data &&
+      (data as { needAuth: unknown }).needAuth
+    ) {
+      throw new AuthError()
+    }
     const msg =
       data && typeof data === 'object' && 'error' in data
         ? String((data as { error: unknown }).error)
@@ -97,6 +126,122 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(msg)
   }
   return data as T
+}
+
+/** 權限分級——'viewer' 只能讀不能寫（見 server/share.ts 的 shareGuardHook）。
+ *  匿名／沒被 host 特別設過的人一律是 'editor'。 */
+export type PersonRole = 'editor' | 'viewer'
+
+/** GET /session 的回應——`name` 有值＝這個名字通過了 PIN 驗證。 */
+export interface SessionInfo {
+  ok: boolean
+  name: string | null
+  role: PersonRole
+}
+const SESSION_OFFLINE: SessionInfo = { ok: false, name: null, role: 'editor' }
+
+/** 區網共用模式的密碼 session（cookie 由 server 設，這裡只管觸發／查詢）。
+ *  搬自 notes-web/src/lib/api.ts 的 `session`，機制完全相同。 */
+export const session = {
+  check: (): Promise<SessionInfo> =>
+    fetch(BASE + '/session', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : SESSION_OFFLINE))
+      .then(
+        (j: Partial<SessionInfo>): SessionInfo => ({
+          ok: !!j.ok,
+          name: j.name ?? null,
+          role: j.role === 'viewer' ? 'viewer' : 'editor',
+        }),
+      )
+      .catch(() => SESSION_OFFLINE),
+  login: async (password: string, name?: string, pin?: string): Promise<{ name: string | null }> => {
+    const res = await fetch(BASE + '/session', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password, name, pin }),
+    })
+    const j = (await res.json().catch(() => null)) as { error?: string; name?: string | null } | null
+    if (!res.ok) throw new Error(j?.error ?? '登入失敗')
+    return { name: j?.name ?? null }
+  },
+  logout: () =>
+    fetch(BASE + '/session', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {}),
+}
+
+/** `/host`（HostPanel.tsx）用的端點——一律只有主機本機（loopback）打得通。
+ *  搬自 notes-web/src/lib/api.ts 的 `host`，拿掉登入 3D Logo、Discord
+ *  webhook 相關端點。 */
+export interface HostState {
+  openAccess: boolean
+  aiEnabled: boolean
+  people: { name: string; createdAt: string; role: PersonRole }[]
+}
+/** 一筆造訪紀錄——見 server/visits.ts。author=''＝匿名。 */
+export interface VisitEntry {
+  author: string
+  at: string
+}
+export const host = {
+  getState: () => req<HostState>('/host/state'),
+  setOpenAccess: (open: boolean) =>
+    req<{ openAccess: boolean }>('/host/open-access', { method: 'POST', body: JSON.stringify({ open }) }),
+  setAiEnabled: (enabled: boolean) =>
+    req<{ aiEnabled: boolean }>('/host/ai', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  releasePerson: (name: string) =>
+    req<void>(`/host/people/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  setPersonRole: (name: string, role: PersonRole) =>
+    req<{ people: HostState['people'] }>(`/host/people/${encodeURIComponent(name)}/role`, {
+      method: 'POST',
+      body: JSON.stringify({ role }),
+    }),
+  /** 訪客紀錄（持久化）——`/host` 的「訪客紀錄」文字視窗用。新到舊。 */
+  getVisits: (limit?: number) =>
+    req<{ entries: VisitEntry[] }>(`/host/visits${limit ? `?limit=${limit}` : ''}`).then((r) => r.entries),
+}
+
+/** 「誰動了這份索引」的一筆記錄——純記憶體，server 重開就清空
+ *  （見 server/activity.ts）。搬自 notes-web/src/lib/api.ts 的
+ *  `ActivityEntry`，動作字典換成索引牆自己的。 */
+export type ActivityAction =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'bulk-add'
+  | 'bulk-delete'
+  | 'index-import'
+  | 'index-create'
+  | 'index-delete'
+  | 'connect'
+  | 'disconnect'
+
+export interface ActivityEntry {
+  at: string
+  author: string
+  action: ActivityAction
+  indexName: string
+  title: string
+  count?: number
+}
+
+export const activity = {
+  list: (limit?: number) =>
+    req<{ entries: ActivityEntry[] }>(`/activity${limit ? `?limit=${limit}` : ''}`).then((r) => r.entries),
+  /** indexName → 正在看的人名清單（''＝匿名）。 */
+  presence: () => req<Record<string, string[]>>('/presence'),
+  /** 開著某份索引集時定期打心跳；離開時送 `viewing:false`。見 server/presence.ts。 */
+  setViewing: (indexName: string, viewing: boolean, clientId?: string) =>
+    req<void>('/presence', { method: 'POST', body: JSON.stringify({ indexName, viewing, clientId }) }),
+  /** 這份索引集裡目前正在編輯的項目——path → 編輯者名字清單。見
+   *  server/entry-presence.ts。 */
+  entryPresence: (indexName: string) =>
+    req<Record<string, string[]>>(`/entry-presence?index=${encodeURIComponent(indexName)}`),
+  /** 某一列的 inline 編輯表單開著時定期打心跳；收起表單時送 `editing:false`。 */
+  setEntryEditing: (indexName: string, path: string, editing: boolean, clientId?: string) =>
+    req<void>('/entry-presence', {
+      method: 'POST',
+      body: JSON.stringify({ indexName, path, editing, clientId }),
+    }),
 }
 
 export const api = {
@@ -136,6 +281,47 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  /**
+   * 上傳自己的檔案加進索引集——遠端使用者不能瀏覽主機硬碟（`addEntry` 挑檔
+   * 靠 `/browse`，遠端一律 403），但可以把自己電腦上的檔案傳上來，落地到
+   * 這份索引集所在資料夾的 `.uploads/`，回傳新項目的（伺服器端）路徑。
+   * `category`／`description` 走 query string，body 只放檔案本身，見
+   * server/upload-routes.ts 開頭的說明。
+   */
+  uploadEntry: (name: string, file: File, category: string, description: string) => {
+    const qs = new URLSearchParams()
+    if (category) qs.set('category', category)
+    if (description) qs.set('description', description)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const form = new FormData()
+    form.append('file', file)
+    return req<{ ok: true; path: string }>(
+      `/indexes/${encodeURIComponent(name)}/upload${suffix}`,
+      { method: 'POST', body: form },
+    )
+  },
+  /**
+   * 上傳一整個資料夾（`webkitdirectory` 選出來的一批 `File`，各自帶
+   * `webkitRelativePath`）——每個檔案的相對路徑 `encodeURIComponent` 過後當
+   * multipart 的檔名送出去，server（`upload-routes.ts` 的 `sanitizeRelPath`）
+   * 解碼、拆段、重建資料夾結構，整批共用一個分類、一次寫入 `.md`。
+   * 回傳 `{ added, skipped }`——`skipped` 是路徑不合法／超過單檔或整批大小
+   * 上限被跳過的檔案數，不會讓整個上傳失敗。
+   */
+  uploadFolder: (name: string, files: File[], category: string) => {
+    const qs = new URLSearchParams()
+    if (category) qs.set('category', category)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    const form = new FormData()
+    for (const f of files) {
+      const relPath = f.webkitRelativePath || f.name
+      form.append('file', f, encodeURIComponent(relPath))
+    }
+    return req<{ added: number; skipped: number }>(
+      `/indexes/${encodeURIComponent(name)}/upload-batch${suffix}`,
+      { method: 'POST', body: form },
+    )
+  },
   /**
    * 原地編輯既有的一列：改分類／說明（路徑、在表格裡的位置都不動）。
    * serial＝1-based 原始列序，path＝該列預期路徑（對不上就擋下）。

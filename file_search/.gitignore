@@ -22,9 +22,26 @@ node_modules/
 # 桌面版／wallpaper-app 的便利貼。同樣是執行期自建資料，不進版控。
 /notes-web/public-wall-data/
 
+# 索引牆共用資料——跟 /indexes/ 刻意分開，理由同上，不進版控。索引牆已經
+# 沒有自己獨立的共用啟動器了（2026-09 移除，見 CONTEXT-MAP.md），這個資料夾
+# 目前只有透過下面的多人牆閘道才會用到；規則留著是因為舊資料可能還在磁碟上。
+/files-web/public-index-data/
+
+# 多人牆（啟動-多人牆（區網＋公網）.bat → share-gateway/serve.mjs）——便利貼牆
+# ＋索引牆共用一份登入的資料夾，跟上面兩個公用牆資料夾一樣不進版控，也跟它們
+# 各自獨立、互不干涉（見 CONTEXT-MAP.md）。
+/public-share-data/
+
 # 手動備份殘留
 *.bak
 *.bak-*
 
-# 區網共用模式的密碼（見「啟動-共用便利貼牆（區網）.bat」）
+# 區網共用模式的密碼
 /share-config.txt
+/index-share-config.txt
+/multi-wall-share-config.txt
+
+# 桌面捷徑圖示——從對應 assets/shortcut-icon.jpg 就地產生的衍生檔（見
+# wallpaper-app/make-shortcut.ps1、share-gateway/make-shortcut.ps1），每次
+# 啟動器跑起來都會重建，不需要進版控，只有來源 .jpg 要進。
+**/assets/shortcut-icon.ico

@@ -100,6 +100,28 @@ export function useAddEntry(name: string | null) {
   })
 }
 
+/** 上傳檔案加進索引集——見 api.ts 的 `uploadEntry()`。跟 `useAddEntry` 平行，
+ *  差別只在來源是「挑本機檔案」還是「上傳自己的檔案」。 */
+export function useUploadEntry(name: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { file: File; category: string; description: string }) =>
+      api.uploadEntry(name!, input.file, input.category, input.description),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['index', name] }),
+  })
+}
+
+/** 上傳一整個資料夾——見 api.ts 的 `uploadFolder()`。跟 `useBulkAdd`（本機
+ *  掃描結果批次匯入）平行，差別只在來源是主機硬碟還是使用者自己上傳的。 */
+export function useUploadFolder(name: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { files: File[]; category: string }) =>
+      api.uploadFolder(name!, input.files, input.category),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['index', name] }),
+  })
+}
+
 export function useUpdateEntry(name: string | null) {
   const qc = useQueryClient()
   return useMutation({

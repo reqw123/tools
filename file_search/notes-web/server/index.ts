@@ -54,6 +54,13 @@ if (SHARE_MODE === 'lan') {
   app.addHook('onRequest', shareAuthHook)
   app.addHook('onRequest', shareGuardHook)
   await app.register(shareSessionRoutes, { prefix: '/api' })
+  // 後台管理——開放模式、遠端 AI 開關、解除 PIN 保護、訪客紀錄——只有共用
+  // 模式才有意義，離線版沒有對應的使用情境，也不該讓離線的人不小心連到
+  // /host 就寫進 `.share/people.json`。**注意 activityRoutes 不在這裡**——
+  // 它還包了 /card（看板）、/danmaku、/people（指派用的名字清單），這些
+  // 離線（純桌面版／wallpaper-app 個人展示）也合法在用，見它自己 import 開頭
+  // 的說明，不能整包鎖進共用模式。
+  await app.register(hostRoutes, { prefix: '/api' })
   // ASCII only：這行會出現在使用者可見的 .bat 主控台（中文在 cp950 主控台會變亂碼）。
   app.log.info('LAN share mode ON - password wall active (loopback exempt)')
 }
@@ -105,9 +112,12 @@ if (existsSync(notesFilePath)) {
 // 指派給你的便利貼快到期／已逾期了——定期掃描、發站內通知（見 due-notify.ts）。
 startDueNotifier()
 
+// SSE 離線也要有（桌面版寫的檔案變動要能推給同時開著的網頁），但連線追蹤
+// 只在共用模式才做，見上面「低耦合」的說明和 events.ts 裡的判斷。
 await app.register(eventsRoutes, { prefix: '/api' })
+// activity／presence／card／danmaku／people——離線（純桌面版／wallpaper-app）
+// 也合法在用（尤其 /card 看板），不能鎖進 SHARE_MODE==='lan'，見上面說明。
 await app.register(activityRoutes, { prefix: '/api' })
-await app.register(hostRoutes, { prefix: '/api' })
 await app.register(notesRoutes, { prefix: '/api' })
 await app.register(notificationsRoutes, { prefix: '/api' })
 await app.register(noteImageRoutes, { prefix: '/api' })
@@ -164,7 +174,13 @@ app
   .listen({ port: PORT, host: HOST })
   .then(() => {
     app.log.info(`API listening on http://localhost:${PORT}`)
-    if (SHARE_MODE === 'lan') {
+    if (process.env.SHARE_BEHIND_GATEWAY === '1') {
+      // 多人牆閘道會印自己的、唯一正確的網址（見 share-gateway/serve.mjs）。
+      // 這裡如果照下面那段印區網網址會誤導——這支後端這時多半是
+      // `API_HOST=127.0.0.1`，那個網址其實連不進來，只會讓使用者混淆該用
+      // 哪一個。
+      app.log.info(`共用模式（lan，閘道模式）：只接受來自閘道的連線`)
+    } else if (SHARE_MODE === 'lan') {
       // ASCII only：這段是使用者要照著唸給別人的網址，會出現在 .bat 主控台。
       // 根路徑 `/` 什麼都不畫（見 main.tsx）——一定要帶 WALL_PATH 才進得去牆。
       const urls = lanAddresses().map((ip) => `    http://${ip}:${PORT}${WALL_PATH}`)

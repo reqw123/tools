@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { basename } from 'node:path'
 import {
   appendEntries,
   appendEntry,
@@ -25,6 +26,8 @@ import {
   updateRowsByOccurrences,
   validateIndexName,
 } from './store'
+import { logActivity } from './activity'
+import { displayAuthorFrom } from './share'
 
 export const routes: FastifyPluginAsync = async (app) => {
   app.get('/indexes', async () => ({ indexes: listIndexes() }))
@@ -57,6 +60,7 @@ export const routes: FastifyPluginAsync = async (app) => {
       const { filename, error } = validateIndexName(req.body.name ?? '')
       if (!filename) return reply.code(422).send({ error })
       createIndexFile(filename, req.body.content ?? '')
+      logActivity({ action: 'index-import', indexName: filename, title: filename, author: displayAuthorFrom(req) })
       return reply.code(201).send({ name: filename })
     },
   )
@@ -79,6 +83,7 @@ export const routes: FastifyPluginAsync = async (app) => {
       const { filename, error } = validateIndexName(req.body.name ?? '')
       if (!filename) return reply.code(422).send({ error })
       createBlankIndex(filename)
+      logActivity({ action: 'index-create', indexName: filename, title: filename, author: displayAuthorFrom(req) })
       return reply.code(201).send({ name: filename })
     },
   )
@@ -87,8 +92,10 @@ export const routes: FastifyPluginAsync = async (app) => {
   // 對應桌面版「🗑️ 刪除索引集」。只刪 .md 索引紀錄，不碰實體檔案。二次確認
   // （顯示名稱＋項目筆數）在前端 DeleteIndexDialog 做，這裡是最後一道防線。
   app.delete<{ Params: { name: string } }>('/indexes/:name', async (req, reply) => {
-    const r = deleteIndex(decodeURIComponent(req.params.name))
+    const name = decodeURIComponent(req.params.name)
+    const r = deleteIndex(name)
     if (!r.ok) return reply.code(r.code).send({ error: r.error })
+    logActivity({ action: 'index-delete', indexName: name, title: name, author: displayAuthorFrom(req) })
     return { ok: true }
   })
 
@@ -123,13 +130,11 @@ export const routes: FastifyPluginAsync = async (app) => {
       },
     },
     async (req, reply) => {
-      const r = appendEntry(
-        decodeURIComponent(req.params.name),
-        req.body.path ?? '',
-        req.body.category ?? '',
-        req.body.description ?? '',
-      )
+      const indexName = decodeURIComponent(req.params.name)
+      const path = req.body.path ?? ''
+      const r = appendEntry(indexName, path, req.body.category ?? '', req.body.description ?? '')
       if (!r.ok) return reply.code(r.code).send({ error: r.error })
+      logActivity({ action: 'create', indexName, title: basename(path), author: displayAuthorFrom(req) })
       return reply.code(201).send({ ok: true })
     },
   )
@@ -141,11 +146,17 @@ export const routes: FastifyPluginAsync = async (app) => {
       if (!Number.isInteger(serial) || serial < 1) {
         return reply.code(400).send({ error: 'serial 不正確' })
       }
-      const r = removeEntriesByOccurrences(
-        decodeURIComponent(req.params.name),
-        new Map([[serial - 1, req.query.expect]]),
-      )
+      const indexName = decodeURIComponent(req.params.name)
+      const r = removeEntriesByOccurrences(indexName, new Map([[serial - 1, req.query.expect]]))
       if (!r.ok) return reply.code(r.code).send({ error: r.error })
+      if (r.count > 0) {
+        logActivity({
+          action: 'delete',
+          indexName,
+          title: req.query.expect ? basename(req.query.expect) : '',
+          author: displayAuthorFrom(req),
+        })
+      }
       return { removed: r.count }
     },
   )
@@ -168,12 +179,16 @@ export const routes: FastifyPluginAsync = async (app) => {
       },
     },
     async (req, reply) => {
+      const indexName = decodeURIComponent(req.params.name)
       const category = req.body.category ?? ''
       const r = appendEntries(
-        decodeURIComponent(req.params.name),
+        indexName,
         (req.body.paths ?? []).map((path) => ({ path, category, description: '' })),
       )
       if (!r.ok) return reply.code(r.code).send({ error: r.error })
+      if (r.count > 0) {
+        logActivity({ action: 'bulk-add', indexName, count: r.count, author: displayAuthorFrom(req) })
+      }
       return reply.code(201).send({ added: r.count })
     },
   )
@@ -204,11 +219,15 @@ export const routes: FastifyPluginAsync = async (app) => {
       },
     },
     async (req, reply) => {
+      const indexName = decodeURIComponent(req.params.name)
       const targets = new Map<number, string | undefined>()
       for (const it of req.body.items ?? []) targets.set(it.serial - 1, it.path)
       if (!targets.size) return reply.code(422).send({ error: '沒有要刪除的項目' })
-      const r = removeEntriesByOccurrences(decodeURIComponent(req.params.name), targets)
+      const r = removeEntriesByOccurrences(indexName, targets)
       if (!r.ok) return reply.code(r.code).send({ error: r.error })
+      if (r.count > 0) {
+        logActivity({ action: 'bulk-delete', indexName, count: r.count, author: displayAuthorFrom(req) })
+      }
       return { removed: r.count }
     },
   )
@@ -256,9 +275,11 @@ export const routes: FastifyPluginAsync = async (app) => {
       },
     },
     async (req, reply) => {
+      const indexName = decodeURIComponent(req.params.name)
+      const updates = req.body.updates ?? []
       const r = updateRowsByOccurrences(
-        decodeURIComponent(req.params.name),
-        (req.body.updates ?? []).map((u) => ({
+        indexName,
+        updates.map((u) => ({
           occurrence: u.serial - 1,
           expectPath: u.path,
           category: u.category,
@@ -266,6 +287,15 @@ export const routes: FastifyPluginAsync = async (app) => {
         })),
       )
       if (!r.ok) return reply.code(r.code).send({ error: r.error })
+      if (r.count > 0) {
+        logActivity({
+          action: 'update',
+          indexName,
+          title: r.count === 1 && updates[0]?.path ? basename(updates[0].path) : '',
+          count: r.count > 1 ? r.count : undefined,
+          author: displayAuthorFrom(req),
+        })
+      }
       return { updated: r.count }
     },
   )

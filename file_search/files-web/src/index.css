@@ -175,6 +175,17 @@ code {
   max-width: 1100px;
   margin: 0 auto;
   padding: clamp(2.4rem, 6vw, 4rem) clamp(1.1rem, 4vw, 2.5rem) clamp(1rem, 3vw, 1.6rem);
+  /* 標題（.hero-main）> 左、動態面板（ActivityTicker）> 右——跟便利貼牆同一套
+     排版（見它的 CLAUDE.md「.hero 用 flex 分兩欄」）。窄螢幕 flex-wrap 讓
+     動態面板自動摺到標題下方，不用另外寫 media query。 */
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(1.5rem, 4vw, 3rem);
+  flex-wrap: wrap;
+}
+.hero-main {
+  flex: 1 1 26rem;
+  min-width: 0;
 }
 .eyebrow {
   font-size: 0.68rem;
@@ -799,6 +810,19 @@ select option {
   background: color-mix(in srgb, var(--alert) 22%, var(--raise));
   border: 1px solid color-mix(in srgb, var(--alert) 45%, transparent);
   color: var(--alert);
+  white-space: nowrap;
+}
+/* 共用模式下「誰正在編輯這一列」——見 entry-presence.ts。跟 .badge.miss 同
+   尺寸，換一個不那麼警示的顏色（用 --marker，不是 --alert）。 */
+.badge.editing {
+  flex: none;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--marker) 20%, var(--raise));
+  border: 1px solid color-mix(in srgb, var(--marker) 45%, transparent);
+  color: var(--marker-ink);
   white-space: nowrap;
 }
 .size {
@@ -1720,3 +1744,347 @@ select option {
   outline: 2px solid var(--marker);
   outline-offset: 2px;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   共用模式（區網／公網分享）——密碼牆、動態面板、`/host` 後台。
+   搬自 notes-web/src/index.css，把它的配色變數換成 files-web 自己的
+   （--brass→--marker、--hair→--line、--panel→--raise、--wall→--paper）。
+   ══════════════════════════════════════════════════════════════════ */
+
+.pw-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--paper);
+}
+.pw-card {
+  width: min(22rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.6rem 1.5rem 1.75rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--raise);
+  box-shadow: var(--shadow-2);
+}
+.pw-card h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--ink);
+}
+.pw-card .dim {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+.pw-card input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 1rem;
+}
+.pw-card input:focus-visible {
+  outline: 2px solid var(--marker);
+  outline-offset: 1px;
+}
+.pw-card .btn {
+  align-self: stretch;
+  justify-content: center;
+}
+.pw-card .err {
+  margin: 0;
+}
+.pw-card .pw-hint {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  margin-top: -0.3rem;
+  color: var(--ink-soft);
+}
+/* PIN 遺失無法自救的警告——比一般 .pw-hint 更顯眼一點，但不到 .err 那種紅色。 */
+.pw-card .pw-hint-warn {
+  padding: 0.5rem 0.65rem;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--marker) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--marker) 35%, transparent);
+  color: var(--ink);
+}
+.pw-card .pw-hint-warn b {
+  color: var(--marker-ink);
+}
+
+/* ─── 標題右側常駐面板（ActivityTicker.tsx）─────────────────────────── */
+.activity-panel {
+  flex: 1 1 22rem;
+  max-width: 30rem;
+  padding: 1.1rem 1.2rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--marker) 35%, var(--line));
+  background: color-mix(in srgb, var(--marker) 6%, var(--raise) 88%);
+}
+.ap-me {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 1rem;
+}
+.ap-me-label {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+.ap-me input {
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--marker);
+  border-radius: 5px;
+  background: var(--raise);
+  color: var(--ink);
+  width: 12rem;
+  max-width: 50vw;
+}
+.ap-name-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--marker-ink);
+  cursor: pointer;
+}
+.ap-name-btn:hover { filter: brightness(1.15); }
+.ap-name-btn svg { opacity: 0.6; }
+.ap-name-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--marker-ink);
+}
+.ap-name-locked svg { opacity: 0.75; }
+.ap-logout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: none;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.ap-logout-btn:hover { border-color: var(--marker); color: var(--ink); }
+.ap-logout-btn:disabled { opacity: 0.6; cursor: default; }
+
+.ap-editing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: color-mix(in srgb, var(--marker) 16%, transparent);
+  color: var(--marker-ink);
+}
+.ap-pulse {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--marker-solid);
+  flex: none;
+}
+.ap-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: var(--marker-solid);
+  animation: ap-pulse-ring 1.6s ease-out infinite;
+}
+@keyframes ap-pulse-ring {
+  from { opacity: 0.55; transform: scale(0.4); }
+  to { opacity: 0; transform: scale(1.6); }
+}
+
+.ap-feed-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.9rem 0 0.5rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid color-mix(in srgb, var(--marker) 30%, var(--line));
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--marker-ink);
+}
+.ap-empty { font-size: 0.9rem; color: var(--ink-soft); }
+.ap-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+.ap-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0.1rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  border-bottom: 1px dashed color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.ap-item:last-child { border-bottom: none; }
+.ap-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  margin-top: 0.1rem;
+}
+.ap-create .ap-icon, .ap-bulk-add .ap-icon, .ap-index-create .ap-icon, .ap-index-import .ap-icon { background: rgba(34, 197, 94, 0.18); color: #16a34a; }
+.ap-update .ap-icon { background: rgba(59, 130, 246, 0.18); color: #2563eb; }
+.ap-delete .ap-icon, .ap-bulk-delete .ap-icon, .ap-index-delete .ap-icon { background: rgba(239, 68, 68, 0.18); color: #dc2626; }
+.ap-connect .ap-icon { background: rgba(34, 197, 94, 0.14); color: #15803d; }
+.ap-disconnect .ap-icon { background: rgba(120, 113, 108, 0.18); color: #78716c; }
+:root[data-theme='dark'] .ap-create .ap-icon, :root:not([data-theme='light']) .ap-create .ap-icon,
+:root[data-theme='dark'] .ap-bulk-add .ap-icon, :root:not([data-theme='light']) .ap-bulk-add .ap-icon,
+:root[data-theme='dark'] .ap-index-create .ap-icon, :root:not([data-theme='light']) .ap-index-create .ap-icon,
+:root[data-theme='dark'] .ap-index-import .ap-icon, :root:not([data-theme='light']) .ap-index-import .ap-icon { color: #4ade80; }
+:root[data-theme='dark'] .ap-update .ap-icon, :root:not([data-theme='light']) .ap-update .ap-icon { color: #60a5fa; }
+:root[data-theme='dark'] .ap-delete .ap-icon, :root:not([data-theme='light']) .ap-delete .ap-icon,
+:root[data-theme='dark'] .ap-bulk-delete .ap-icon, :root:not([data-theme='light']) .ap-bulk-delete .ap-icon,
+:root[data-theme='dark'] .ap-index-delete .ap-icon, :root:not([data-theme='light']) .ap-index-delete .ap-icon { color: #f87171; }
+:root[data-theme='dark'] .ap-connect .ap-icon, :root:not([data-theme='light']) .ap-connect .ap-icon { color: #4ade80; }
+:root[data-theme='dark'] .ap-disconnect .ap-icon, :root:not([data-theme='light']) .ap-disconnect .ap-icon { color: #a8a29e; }
+.ap-text { flex: 1 1 auto; min-width: 0; color: var(--ink-soft); }
+.ap-text b { color: var(--ink); font-weight: 700; }
+.ap-target { color: var(--ink); margin-left: 0.25rem; word-break: break-word; }
+.ap-time { flex: none; font-size: 0.7rem; color: var(--ink-soft); opacity: 0.8; white-space: nowrap; }
+
+/* ActivityDialog.tsx 的動態列表——比照 .modal-body 底下的一般清單，不跟
+   BatchDescribeDialog 的 .bd-list（卡片式，語意不同）搶同一套樣式。 */
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.activity-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.5rem 0.2rem;
+  border-bottom: 1px dashed var(--line-soft);
+}
+.activity-list li:last-child { border-bottom: none; }
+.activity-line { color: var(--ink); }
+.activity-time { flex: none; font-size: 0.76rem; color: var(--ink-faint); white-space: nowrap; }
+
+/* ─── `/host` 管理頁（components/HostPanel.tsx）─────────────────────── */
+.host-panel {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: clamp(2rem, 6vw, 4rem) clamp(1.25rem, 5vw, 2rem) 4rem;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+.host-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+.host-section h2 { margin: 0 0 0.5rem; font-size: 1.15rem; }
+.host-people {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.host-people li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raise);
+}
+.host-people-row { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.host-people-name { font-weight: 600; color: var(--ink); }
+.host-people-actions { display: flex; align-items: center; gap: 0.4rem; }
+.host-people-role {
+  font-size: 0.82rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--raise);
+  color: var(--ink);
+}
+.host-visits-log {
+  margin: 0.8rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raise);
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.65;
+  max-height: 16rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.check-inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 400;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.check-inline input { width: auto; accent-color: var(--marker); }
+.radio-row { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.3rem 0 0.2rem; }
+.radio {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+  color: var(--ink);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.radio input { width: auto; accent-color: var(--marker); }
+
+/* ShareLinkButton.tsx 的 QR 卡片——沿用 .modal 既有樣式，只需要圖片置中，
+   已經內嵌在元件的 inline style 裡，這裡不用額外補。 */

@@ -13,8 +13,8 @@ import type { FastifyPluginAsync } from 'fastify'
 import type { ServerResponse } from 'node:http'
 import { onChange } from './change-bus'
 import { notesFilePath } from './store'
-import { authorFrom, identityKey } from './identity'
-import { clientIp } from './share'
+import { identityKey } from './identity'
+import { SHARE_MODE, clientIp, displayAuthorFrom } from './share'
 import { connectionClosed, connectionOpened } from './connections'
 
 /** 監看的資料夾——生活便利貼、`.notes_settings.json`、標籤顏色都在這裡。 */
@@ -126,9 +126,12 @@ export const eventsRoutes: FastifyPluginAsync = async (app) => {
     // connections.ts（同一人開好幾個分頁只算一次連線；換頁那種瞬斷瞬連有寬限）。
     // deviceId 見前端 useLiveSync.ts／lib/identity.ts 的 getDeviceId()——分辨同
     // 一公網 IP 後面的不同匿名訪客，不然公網分享模式下訪客人數統計會偏低。
-    const author = authorFrom(req)
+    // **只在共用模式才記**——離線版一樣開這條 SSE 做即時同步，但不追蹤連線，
+    // 不然會往 indexDir（＝真正的 indexes/）底下寫 .share/visits.json，
+    // 破壞離線／共用兩邊低耦合。
+    const author = displayAuthorFrom(req)
     const key = identityKey(author, clientIp(req), req.query.deviceId)
-    connectionOpened(key, author)
+    if (SHARE_MODE === 'lan') connectionOpened(key, author)
 
     // 25 秒一次 keep-alive 註解行——擋掉 proxy / 瀏覽器的閒置逾時。
     const keepAlive = setInterval(() => {
@@ -145,7 +148,7 @@ export const eventsRoutes: FastifyPluginAsync = async (app) => {
       cleaned = true
       clearInterval(keepAlive)
       clients.delete(res)
-      connectionClosed(key, author)
+      if (SHARE_MODE === 'lan') connectionClosed(key, author)
     }
     req.raw.on('close', cleanup)
     req.raw.on('error', cleanup)

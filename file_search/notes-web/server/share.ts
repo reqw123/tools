@@ -61,14 +61,33 @@ export function assertShareConfig(): void {
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
 
+/** 多人牆閘道（`file_search/share-gateway/`）啟動器產生的一次性密鑰——只有
+ *  透過閘道啟動（`啟動-多人牆（區網＋公網）.bat`）才會設。閘道自己算好
+ *  「這次連線的真正來源是不是主機本人」，用這把密鑰簽出一個信任標頭直接
+ *  告訴這支後端，不用讓後端自己再猜一次（見下面 isLoopback 的說明）。 */
+const GATEWAY_SECRET = (process.env.GATEWAY_SECRET ?? '').trim()
+
 /**
  * loopback 豁免判斷。**帶了 `x-forwarded-for` 的一律不算 loopback**——那是經過
  * ngrok／反向代理進來的請求：ngrok agent 雖然是從本機 `127.0.0.1` 連上這個
  * server，但請求的真正來源在外網。若吃了豁免，整條隧道就繞過密碼牆與端點封鎖，
  * 等於把整面牆（含研究生牆、檔案瀏覽、AI 設定）無密碼攤在網際網路上。
  * 直連的本機 wallpaper-app／瀏覽器不會有這個標頭；區網直連的 IP 本來就非 loopback。
+ *
+ * **經多人牆閘道轉發時走另一條路**：閘道是「所有流量都先經過」的那一關，
+ * 這支後端收到的連線來源永遠是閘道自己（同機 127.0.0.1），上面那套
+ * 「看 socket 位址＋x-forwarded-for」的判斷在閘道前面就已經失真了。閘道會
+ * 自己判斷「這次連線的第一手來源」是不是主機本人，用 `x-gateway-loopback`
+ * 標頭（值＝`GATEWAY_SECRET` 表示是、`not:`+密鑰表示否）明講出來——這裡
+ * 只認密鑰對得上的標頭，密鑰沒設（獨立啟動器，沒有閘道）或標頭沒帶／
+ * 帶錯，一律照舊看 x-forwarded-for／socket 位址，行為完全不變。
  */
 export function isLoopback(req: FastifyRequest): boolean {
+  if (GATEWAY_SECRET) {
+    const trusted = req.headers['x-gateway-loopback']
+    if (trusted === GATEWAY_SECRET) return true
+    if (trusted === `not:${GATEWAY_SECRET}`) return false
+  }
   if (req.headers['x-forwarded-for'] != null) return false
   const addr = req.socket.remoteAddress ?? ''
   return LOOPBACK.has(addr)
@@ -133,6 +152,12 @@ export function setLoginLogo3dEnabled(v: boolean): void {
  * host 自己在本機都會被誤當成「遠端」而看不到這些功能——這正是曾經發生過
  * 的 bug：`isShare` 原本只看 `mode==='lan'`，沒分本機/遠端，開了共用模式後
  * host 自己用 wallpaper-app 也被連帶鎖住研究生模式。 */
+/** 多人牆閘道啟動器帶入——另一面牆的顯示名稱＋切換用網址（閘道自己的
+ *  `/switch-wall?to=...`）。獨立啟動器（沒有閘道）沒設這兩個環境變數，
+ *  `otherWall` 就不會出現在 `/api/share-info`，前端也就不會畫切換鈕。 */
+const OTHER_WALL_LABEL = (process.env.OTHER_WALL_LABEL ?? '').trim()
+const OTHER_WALL_SWITCH_URL = (process.env.OTHER_WALL_SWITCH_URL ?? '').trim()
+
 export function shareInfoPayload(req: FastifyRequest): {
   mode: ShareMode
   ai: boolean
@@ -140,6 +165,7 @@ export function shareInfoPayload(req: FastifyRequest): {
   publicUrl?: string
   openAccess?: boolean
   loginLogo3d?: boolean
+  otherWall?: { label: string; switchUrl: string }
 } {
   return {
     mode: SHARE_MODE,
@@ -147,7 +173,27 @@ export function shareInfoPayload(req: FastifyRequest): {
     loopback: isLoopback(req),
     ...(SHARE_MODE === 'lan' && SHARE_WALL_URL ? { publicUrl: SHARE_WALL_URL } : {}),
     ...(SHARE_MODE === 'lan' ? { openAccess, loginLogo3d } : {}),
+    ...(SHARE_MODE === 'lan' && OTHER_WALL_LABEL && OTHER_WALL_SWITCH_URL
+      ? { otherWall: { label: OTHER_WALL_LABEL, switchUrl: OTHER_WALL_SWITCH_URL } }
+      : {}),
   }
+}
+
+/**
+ * 顯示用的「這是誰」——比 `authorFrom()` 多一層：完全匿名（沒有身分 cookie、
+ * 也沒有 `x-note-author` 標頭）且是 loopback 連線時，回傳「開發者」而不是
+ * 空字串。**只給顯示用的地方用**（活動紀錄、訪客紀錄、在場提示這類 log）
+ * ——不能用在權限判斷或身分比對（`getPersonRole`、「指派給自己就不用通知」
+ * 那種），「開發者」不是真正註冊過的名字。之所以需要這一層：loopback 連線
+ * 完全不用經過密碼牆／名字＋PIN（見 `shareAuthHook`），本機測試/使用時很
+ * 容易全部顯示成「有人」，跟 `openAccess` 關閉時真正選擇匿名進牆的遠端訪客
+ * 混在一起分不清楚——搬自 files-web 同一支函式，那邊是使用者實際回報的
+ * 困惑（明明只有一個人登入，訪客紀錄卻多出「有人」），這裡補齊同一個修正。
+ */
+export function displayAuthorFrom(req: FastifyRequest): string {
+  const a = authorFrom(req)
+  if (a) return a
+  return isLoopback(req) ? '開發者' : ''
 }
 
 // ── 遠端 AI 每日額度 ──────────────────────────────────────────────────

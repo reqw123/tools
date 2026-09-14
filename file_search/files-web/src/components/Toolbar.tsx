@@ -5,6 +5,7 @@ import {
   FileX2,
   FolderPlus,
   FolderTree,
+  FolderUp,
   PencilLine,
   Plus,
   RefreshCw,
@@ -14,8 +15,11 @@ import {
   Tags,
   Trash2,
   Upload,
+  UploadCloud,
 } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle'
+import { ShareLinkButton } from './ShareLinkButton'
+import { SwitchWallButton } from './SwitchWallButton'
 
 export type Group = 'none' | 'category' | 'folder'
 export type Sort = 'serial' | 'name'
@@ -47,6 +51,8 @@ export function Toolbar({
   checking,
   onAdd,
   onBatchImport,
+  onUpload,
+  onUploadFolder,
   onBatchDescribe,
   onBatchCategory,
   onBatchDelete,
@@ -56,6 +62,8 @@ export function Toolbar({
   onCreateIndex,
   onEditIndex,
   onDeleteIndex,
+  onShowActivity,
+  isRemoteShare,
 }: {
   indexes: string[]
   index: string | null
@@ -84,6 +92,11 @@ export function Toolbar({
   /** 寫入動作——都需要選定一份索引集，否則停用。 */
   onAdd: () => void
   onBatchImport: () => void
+  /** 上傳自己的檔案／資料夾——跟 onAdd/onBatchImport 不同，**不受
+   *  `isRemoteShare` 限制**：不需要瀏覽主機硬碟，遠端使用者也能用，見
+   *  UploadEntryDialog／UploadFolderDialog。 */
+  onUpload: () => void
+  onUploadFolder: () => void
   onBatchDescribe: () => void
   onBatchCategory: () => void
   onBatchDelete: () => void
@@ -94,6 +107,12 @@ export function Toolbar({
   onCreateIndex: () => void
   onEditIndex: () => void
   onDeleteIndex: () => void
+  /** 開「動態」對話框（見 ActivityDialog）——不給就不顯示這顆按鈕（單機模式）。 */
+  onShowActivity?: () => void
+  /** 共用模式下的遠端連線——操作主機本身的功能（挑檔、掃資料夾、開系統
+   *  編輯器）一律停用，後端本來就會 403，這裡先讓按鈕看起來就不能按，
+   *  避免遠端使用者點了才發現不能用。見 server/share.ts 的 shareGuardHook。 */
+  isRemoteShare?: boolean
 }) {
   return (
     <div className="bar">
@@ -128,8 +147,12 @@ export function Toolbar({
           <button
             className="btn ghost icon"
             onClick={onEditIndex}
-            disabled={!index}
-            title="編輯索引集（用系統文字編輯器開啟這份 .md，改前言／路徑／格式）"
+            disabled={!index || isRemoteShare}
+            title={
+              isRemoteShare
+                ? '共用模式下這個功能只能在主機本機使用（會開啟主機的系統編輯器）'
+                : '編輯索引集（用系統文字編輯器開啟這份 .md，改前言／路徑／格式）'
+            }
           >
             <FilePenLine size={15} strokeWidth={2.2} aria-hidden />
           </button>
@@ -178,19 +201,55 @@ export function Toolbar({
             </button>
           </div>
           <ThemeToggle />
+          <ShareLinkButton />
+          <SwitchWallButton />
+          {onShowActivity && (
+            <button className="toggle" onClick={onShowActivity} title="誰新增／改／移除了什麼">
+              動態
+            </button>
+          )}
         </div>
 
         <div className="bar-row acts">
-          <button className="btn sm" onClick={onAdd} disabled={!index} title="從本機挑一個檔案加進索引">
+          <button
+            className="btn sm"
+            onClick={onAdd}
+            disabled={!index || isRemoteShare}
+            title={
+              isRemoteShare
+                ? '共用模式下這個功能只能在主機本機使用（會瀏覽主機的檔案系統）'
+                : '從本機挑一個檔案加進索引'
+            }
+          >
             <Plus size={14} strokeWidth={2.4} aria-hidden /> 加入索引
           </button>
           <button
             className="btn sm"
             onClick={onBatchImport}
-            disabled={!index}
-            title="掃描一整個資料夾，整批加進索引"
+            disabled={!index || isRemoteShare}
+            title={
+              isRemoteShare
+                ? '共用模式下這個功能只能在主機本機使用（會瀏覽主機的檔案系統）'
+                : '掃描一整個資料夾，整批加進索引'
+            }
           >
             <FolderPlus size={14} strokeWidth={2.2} aria-hidden /> 匯入資料夾
+          </button>
+          <button
+            className="btn sm"
+            onClick={onUpload}
+            disabled={!index}
+            title="從你自己的裝置上傳一個檔案，不需要瀏覽主機硬碟——遠端使用者也能用"
+          >
+            <UploadCloud size={14} strokeWidth={2.2} aria-hidden /> 上傳檔案
+          </button>
+          <button
+            className="btn sm"
+            onClick={onUploadFolder}
+            disabled={!index}
+            title="從你自己的裝置上傳一整個資料夾，不需要瀏覽主機硬碟——遠端使用者也能用"
+          >
+            <FolderUp size={14} strokeWidth={2.2} aria-hidden /> 上傳資料夾
           </button>
           <button
             className="btn sm"

@@ -20,6 +20,8 @@ import { Preamble } from './components/Preamble'
 import { DocView } from './components/DocView'
 import { EntryList } from './components/EntryList'
 import { AddEntryDialog } from './components/AddEntryDialog'
+import { UploadEntryDialog } from './components/UploadEntryDialog'
+import { UploadFolderDialog } from './components/UploadFolderDialog'
 import { BatchImportDialog } from './components/BatchImportDialog'
 import { BatchDescribeDialog } from './components/BatchDescribeDialog'
 import { BatchCategoryDialog } from './components/BatchCategoryDialog'
@@ -30,6 +32,10 @@ import { CreateIndexDialog } from './components/CreateIndexDialog'
 import { DeleteIndexDialog } from './components/DeleteIndexDialog'
 import { ScrollButtons } from './components/ScrollButtons'
 import { downloadIndexMarkdown } from './lib/exportIndex'
+import { ActivityTicker } from './components/ActivityTicker'
+import { ActivityDialog } from './components/ActivityDialog'
+import { useEntryPresence, useViewingHeartbeat } from './hooks/useActivity'
+import { useShareInfo } from './hooks/useShareInfo'
 
 // wallpaper-app 重開時用 `?floated=<JSON 陣列>` 把「已經是懸浮視窗」的項目
 // path 帶回來（見 wallpaper-app/main.js 的 currentUrl()），讓 floatedPaths
@@ -113,6 +119,8 @@ export function App() {
   const [toast, setToast] = useState('')
   const [dialog, setDialog] = useState<
     | 'add'
+    | 'upload'
+    | 'upload-folder'
     | 'import'
     | 'describe'
     | 'category'
@@ -121,8 +129,25 @@ export function App() {
     | 'import-index'
     | 'create-index'
     | 'delete-index'
+    | 'activity'
     | null
   >(null)
+
+  // 共用模式下的遠端連線——`share.loopback` 是逐請求算的（見
+  // server/share.ts 的 shareInfoPayload），不是看全域模式，這樣 host 自己在
+  // 本機（wallpaper-app／本機瀏覽器）永遠拿完整功能，只有真的從別的機器連
+  // 進來才收斂。這是 notes-web 踩過的坑（isShare vs isRemoteShare，見它的
+  // CLAUDE.md），這裡直接用對的判斷。
+  const share = useShareInfo()
+  const isRemoteShare = share.mode === 'lan' && !share.loopback
+
+  // 開著這份索引集時定期打心跳，讓共用牆上其他人看得到「誰正在看哪份」
+  // （見 server/presence.ts）；單機模式（isShare===false）打了也沒關係，
+  // 純粹是後端 activity/presence 沒人看而已，不用另外判斷要不要打。
+  useViewingHeartbeat(index)
+  // 這份索引集裡目前哪些列有人正在編輯（見 server/entry-presence.ts）——
+  // path → 編輯者名字清單，轉給 EntryList → EntryRow 顯示「XX 正在編輯」。
+  const { data: entryEditors } = useEntryPresence(index)
 
   const deferredQuery = useDeferredValue(query)
   const entries = useMemo(() => payload?.entries ?? [], [payload])
@@ -324,14 +349,17 @@ export function App() {
       <div className="backdrop" aria-hidden />
 
       <header className="hero">
-        <p className="eyebrow mono">Index Wall · file_search_app</p>
-        <h1>檔案索引</h1>
-        <p className="lede">
-          桌面工具「檔案快速搜尋」的 <code>indexes/*.md</code>{' '}
-          手動索引，一次看一份。可加入 / 編輯 / 移除項目、批次匯入資料夾、
-          批次補說明（可用 AI）、批次刪除（都只動 <code>.md</code>，不碰實體檔案）；
-          AI 全文搜尋等進階功能仍在桌面版。
-        </p>
+        <div className="hero-main">
+          <p className="eyebrow mono">Index Wall · file_search_app</p>
+          <h1>檔案索引</h1>
+          <p className="lede">
+            桌面工具「檔案快速搜尋」的 <code>indexes/*.md</code>{' '}
+            手動索引，一次看一份。可加入 / 編輯 / 移除項目、批次匯入資料夾、
+            批次補說明（可用 AI）、批次刪除（都只動 <code>.md</code>，不碰實體檔案）；
+            AI 全文搜尋等進階功能仍在桌面版。
+          </p>
+        </div>
+        <ActivityTicker />
       </header>
 
       <Toolbar
@@ -360,6 +388,8 @@ export function App() {
         checking={checking}
         onAdd={() => setDialog('add')}
         onBatchImport={() => setDialog('import')}
+        onUpload={() => setDialog('upload')}
+        onUploadFolder={() => setDialog('upload-folder')}
         onBatchDescribe={() => setDialog('describe')}
         onBatchCategory={() => setDialog('category')}
         onBatchDelete={() => setDialog('delete')}
@@ -369,6 +399,8 @@ export function App() {
         onCreateIndex={() => setDialog('create-index')}
         onEditIndex={onEditIndex}
         onDeleteIndex={() => setDialog('delete-index')}
+        onShowActivity={share.mode === 'lan' ? () => setDialog('activity') : undefined}
+        isRemoteShare={isRemoteShare}
       />
 
       <main className="wrap">
@@ -410,6 +442,8 @@ export function App() {
                 onDelete={onDelete}
                 deletingPath={deletingPath}
                 onPin={canFloat ? onPin : undefined}
+                indexName={index ?? undefined}
+                entryEditors={entryEditors}
               />
             )}
 
@@ -437,6 +471,28 @@ export function App() {
           onAdded={() => {
             setDialog(null)
             flash('已加入索引')
+          }}
+        />
+      )}
+      {dialog === 'upload' && index && (
+        <UploadEntryDialog
+          indexName={index}
+          categories={rawCategories}
+          onClose={() => setDialog(null)}
+          onUploaded={() => {
+            setDialog(null)
+            flash('已上傳並加入索引')
+          }}
+        />
+      )}
+      {dialog === 'upload-folder' && index && (
+        <UploadFolderDialog
+          indexName={index}
+          categories={rawCategories}
+          onClose={() => setDialog(null)}
+          onUploaded={(added, skipped) => {
+            setDialog(null)
+            flash(skipped > 0 ? `已上傳 ${added} 筆（${skipped} 個檔案被略過）` : `已上傳 ${added} 筆`)
           }}
         />
       )}
@@ -486,6 +542,7 @@ export function App() {
         />
       )}
       {dialog === 'ai' && <AiSettingsDialog onClose={() => setDialog(null)} />}
+      {dialog === 'activity' && <ActivityDialog onClose={() => setDialog(null)} />}
       {dialog === 'import-index' && (
         <ImportIndexDialog
           existingNames={indexes ?? []}

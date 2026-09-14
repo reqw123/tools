@@ -3,12 +3,12 @@
  *  見 events.ts 的 `broadcastDanmaku()`）。前三個純記憶體、提示性資訊，彈幕連記憶體
  *  都不留（飄過去就沒了）；`/card` 會持久存檔——見各自 module 開頭的說明。 */
 import type { FastifyPluginAsync } from 'fastify'
-import { authorFrom, identityKey } from './identity'
+import { identityKey } from './identity'
 import { listActivity } from './activity'
 import { currentEditors, heartbeat, stopEditing } from './presence'
 import { getCard, setCard } from './card'
 import { broadcastDanmaku } from './events'
-import { clientIp } from './share'
+import { clientIp, displayAuthorFrom } from './share'
 import { startSweeper } from './sweep'
 import { listPersonNames } from './people'
 
@@ -49,7 +49,7 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
     },
     async (req, reply) => {
       const { noteId, editing: isEditing, clientId } = req.body
-      const author = authorFrom(req)
+      const author = displayAuthorFrom(req)
       const ip = clientIp(req)
       if (isEditing === false) stopEditing(noteId!, author, ip, clientId)
       else heartbeat(noteId!, author, ip, clientId)
@@ -98,7 +98,7 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
     async (req, reply) => {
       const text = req.body.text!.trim().slice(0, DANMAKU_MAX_CHARS)
       if (!text) return reply.code(400).send({ error: '訊息不能是空的' })
-      const author = authorFrom(req)
+      const author = displayAuthorFrom(req)
       const key = identityKey(author, clientIp(req))
       const now = Date.now()
       if (now - (lastDanmakuAt.get(key) ?? 0) < DANMAKU_COOLDOWN_MS) {

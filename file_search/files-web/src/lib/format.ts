@@ -54,6 +54,31 @@ export function humanSize(bytes: number | undefined): string {
   return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${units[i]}`
 }
 
+/** ISO 字串 → 「2026.09.02 01:10」——給共用模式的動態記錄／訪客紀錄用
+ *  （跟上面 `stampOf()` 吃 mtime 數字不同，這個吃 activity/visits 存的 ISO
+ *  字串），搬自 notes-web/src/lib/format.ts 的 `stamp()`。 */
+export function stamp(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}  ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/** 相對時間，給活動記錄這種「剛剛發生的事」用；超過一天退回絕對日期
+ *  （`stamp()`）。搬自 notes-web/src/lib/format.ts 的 `timeAgo()`。 */
+export function timeAgo(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const sec = Math.max(0, Math.round((Date.now() - d.getTime()) / 1000))
+  if (sec < 10) return '剛剛'
+  if (sec < 60) return `${sec} 秒前`
+  const min = Math.round(sec / 60)
+  if (min < 60) return `${min} 分鐘前`
+  const hr = Math.round(min / 60)
+  if (hr < 24) return `${hr} 小時前`
+  return stamp(iso)
+}
+
 export function stampOf(mtimeMs: number | undefined): string {
   if (mtimeMs === undefined) return ''
   const d = new Date(mtimeMs)

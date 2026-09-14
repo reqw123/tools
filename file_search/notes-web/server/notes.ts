@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { logActivity } from './activity'
 import { authorFrom } from './identity'
+import { displayAuthorFrom } from './share'
 import { notify } from './notifications'
 import {
   advanceRepeat,
@@ -259,7 +260,12 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
     async (req, reply) => {
       const title = (req.body.title ?? '').trim()
       if (!title) return reply.code(422).send({ error: '標題不能留空' })
+      // author 是真身分（比對 assignee 用，判斷要不要靜音自己指派給自己的通知）；
+      // displayAuthor 只給顯示用的地方（log／通知內文），loopback 匿名會顯示
+      // 「開發者」而不是空字串——見 share.ts 的 displayAuthorFrom() 註解，兩者
+      // 不能混用，「開發者」不是真正註冊過的名字，不能拿去做身分比對。
       const author = authorFrom(req)
+      const displayAuthor = displayAuthorFrom(req)
       const note = createNote({
         title,
         body: req.body.body,
@@ -268,17 +274,17 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
         repeat: req.body.repeat,
         assignee: req.body.assignee,
       })
-      logActivity({ action: 'create', noteId: note.id, title: note.title, author })
+      logActivity({ action: 'create', noteId: note.id, title: note.title, author: displayAuthor })
       if (note.assignee) {
         logActivity({
           action: 'assigned',
           noteId: note.id,
           title: note.title,
-          author,
+          author: displayAuthor,
           target: note.assignee,
         })
         if (note.assignee !== author) {
-          notify(note.assignee, 'assigned', { noteId: note.id, noteTitle: note.title, by: author })
+          notify(note.assignee, 'assigned', { noteId: note.id, noteTitle: note.title, by: displayAuthor })
         }
       }
       return reply.code(201).send({ note })
@@ -305,18 +311,20 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       const before = getNote(req.params.id)
       const note = updateNote(req.params.id, req.body)
       if (!note) return reply.code(404).send({ error: 'not found' })
+      // 見上面 POST /notes 的同款註解：author 做身分比對，displayAuthor 只給顯示用。
       const author = authorFrom(req)
-      logActivity({ action: 'update', noteId: note.id, title: note.title, author })
+      const displayAuthor = displayAuthorFrom(req)
+      logActivity({ action: 'update', noteId: note.id, title: note.title, author: displayAuthor })
       if (note.assignee && note.assignee !== before?.assignee) {
         logActivity({
           action: 'assigned',
           noteId: note.id,
           title: note.title,
-          author,
+          author: displayAuthor,
           target: note.assignee,
         })
         if (note.assignee !== author) {
-          notify(note.assignee, 'assigned', { noteId: note.id, noteTitle: note.title, by: author })
+          notify(note.assignee, 'assigned', { noteId: note.id, noteTitle: note.title, by: displayAuthor })
         }
       }
       return { note }
@@ -327,7 +335,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
     const title = getNote(req.params.id)?.title ?? ''
     const ok = deleteNote(req.params.id)
     if (!ok) return reply.code(404).send({ error: 'not found' })
-    logActivity({ action: 'delete', noteId: req.params.id, title, author: authorFrom(req) })
+    logActivity({ action: 'delete', noteId: req.params.id, title, author: displayAuthorFrom(req) })
     return reply.code(204).send()
   })
 
@@ -417,7 +425,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
   app.post<{ Params: { id: string } }>('/notes/trash/:id/restore', async (req, reply) => {
     const note = restoreNote(req.params.id)
     if (!note) return reply.code(404).send({ error: 'not found' })
-    logActivity({ action: 'restore', noteId: note.id, title: note.title, author: authorFrom(req) })
+    logActivity({ action: 'restore', noteId: note.id, title: note.title, author: displayAuthorFrom(req) })
     return { note }
   })
 
@@ -501,7 +509,7 @@ export const notesRoutes: FastifyPluginAsync = async (app) => {
       const ids = req.body.ids ?? []
       const deleted = deleteNotes(ids)
       if (deleted > 0) {
-        logActivity({ action: 'bulk-delete', title: `${deleted} 則`, count: deleted, author: authorFrom(req) })
+        logActivity({ action: 'bulk-delete', title: `${deleted} 則`, count: deleted, author: displayAuthorFrom(req) })
       }
       return { deleted }
     },

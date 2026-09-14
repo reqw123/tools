@@ -27,6 +27,8 @@ export function EntryList({
   onDelete,
   deletingPath,
   onPin,
+  indexName,
+  entryEditors,
 }: {
   entries: Entry[]
   group: Group
@@ -50,6 +52,10 @@ export function EntryList({
   deletingPath?: string | null
   /** 把一列變成獨立懸浮視窗（wallpaper-app 專屬）；未提供＝不顯示釘選鈕。 */
   onPin?: (entry: Entry, rect: DOMRect) => void
+  /** 目前這份索引集的名字——轉給每一列的編輯在場提示心跳用。 */
+  indexName?: string
+  /** path → 目前正在編輯這一列的人名清單，來自 `useEntryPresence`。 */
+  entryEditors?: Record<string, string[]>
 }) {
   // 展開狀態、React key 都以「路徑（同路徑重複出現時加序號）」為準，不用 serial：
   // 刪一列之後 serial 會整份重排，用 serial 當 key 會讓下面的列換成別筆資料、
@@ -174,6 +180,8 @@ export function EntryList({
       deleting={deletingPath === e.path}
       onPin={onPin ? (rect) => onPin(e, rect) : undefined}
       register={register}
+      indexName={indexName}
+      editors={entryEditors?.[e.path]}
     />
     )
   }

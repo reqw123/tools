@@ -12,6 +12,7 @@ import type { TagCount } from './TagBar'
 import { TagBar } from './TagBar'
 import { ThemeToggle } from './ThemeToggle'
 import { ShareLinkButton } from './ShareLinkButton'
+import { SwitchWallButton } from './SwitchWallButton'
 
 /** 「語意」開關的即時狀態，給搜尋列底下那行揭露文字用。 */
 export type SemanticState =
@@ -194,6 +195,7 @@ export function Toolbar({
           )}
           <div className="tb-right">
             <ShareLinkButton />
+            <SwitchWallButton />
             <ThemeToggle />
           </div>
         </div>
