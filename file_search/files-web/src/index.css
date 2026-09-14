@@ -235,6 +235,51 @@ code {
 .bar-row.top { gap: 0.9rem; }
 .spacer, .grow { flex: 1; }
 
+/* 上方面板收合（標題/簡介＋動態面板、工具列全部：索引集選擇/檢視切換/動態
+   按鈕、操作鈕列、搜尋/篩選/分組/排序）——跟便利貼牆同一套設計（見它的
+   index.css 同名規則、lib/panelCollapse.ts）。grid-template-rows 0fr/1fr 是
+   純 CSS 高度動畫，不用 JS 量高度。內層 .panel-collapse-inner／
+   .hero-collapse-inner 一定要 min-height:0 讓 grid 真的能把它壓到 0，
+   overflow hidden 蓋住收合過程中還沒完全消失的內容。手機螢幕小，這塊面板
+   收起來能多看到好幾筆索引項目，也不會捲動項目時不小心捲回這裡；分界列
+   在下面（.panel-collapse-handle）負責收合/展開。.hero-collapse（App.tsx
+   包主標題那層）跟這裡共用同一個收合狀態，兩邊各自是獨立的 grid 容器、
+   但用同一個布林值一起動，效果上就是整塊一起收。 */
+.panel-collapse,
+.hero-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.22s ease;
+}
+.panel-collapse.collapsed,
+.hero-collapse.collapsed {
+  grid-template-rows: 0fr;
+}
+.panel-collapse > .panel-collapse-inner,
+.hero-collapse > .hero-collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.panel-collapse-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.3rem 0;
+  margin-top: -0.2rem;
+  border: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--ink-soft) 45%, transparent);
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+.panel-collapse-handle:hover {
+  color: var(--ink);
+}
+
 .index-pick {
   display: flex;
   align-items: baseline;

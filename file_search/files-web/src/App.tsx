@@ -36,6 +36,7 @@ import { ActivityTicker } from './components/ActivityTicker'
 import { ActivityDialog } from './components/ActivityDialog'
 import { useEntryPresence, useViewingHeartbeat } from './hooks/useActivity'
 import { useShareInfo } from './hooks/useShareInfo'
+import { getPanelCollapsed, setPanelCollapsed } from './lib/panelCollapse'
 
 // wallpaper-app 重開時用 `?floated=<JSON 陣列>` 把「已經是懸浮視窗」的項目
 // path 帶回來（見 wallpaper-app/main.js 的 currentUrl()），讓 floatedPaths
@@ -111,6 +112,15 @@ export function App() {
   )
 
   const [view, setView] = useState<View>('list')
+  // 上方面板（標題/簡介＋動態面板、工具列）收合——手機用，跟便利貼牆同一套
+  // 設計（見 lib/panelCollapse.ts）。App.tsx 這塊主標題跟 Toolbar.tsx 那幾排
+  // 共用同一個開關，一起收合／展開。
+  const [panelCollapsed, setPanelCollapsedState] = useState(getPanelCollapsed)
+  const togglePanelCollapsed = () => {
+    const next = !panelCollapsed
+    setPanelCollapsedState(next)
+    setPanelCollapsed(next)
+  }
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [folder, setFolder] = useState('')
@@ -348,6 +358,10 @@ export function App() {
     <div className="page">
       <div className="backdrop" aria-hidden />
 
+      {/* 跟 Toolbar.tsx 的 .panel-collapse 共用同一個 panelCollapsed 開關，兩邊
+          各自是獨立的 grid 容器、一起收合／展開（見 lib/panelCollapse.ts）。 */}
+      <div className={`hero-collapse${panelCollapsed ? ' collapsed' : ''}`}>
+      <div className="hero-collapse-inner">
       <header className="hero">
         <div className="hero-main">
           <p className="eyebrow mono">Index Wall · file_search_app</p>
@@ -361,8 +375,12 @@ export function App() {
         </div>
         <ActivityTicker />
       </header>
+      </div>
+      </div>
 
       <Toolbar
+        collapsed={panelCollapsed}
+        onToggleCollapsed={togglePanelCollapsed}
         indexes={indexes ?? []}
         index={index}
         onIndex={pickIndex}

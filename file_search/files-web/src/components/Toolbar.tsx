@@ -1,4 +1,6 @@
 import {
+  ChevronDown,
+  ChevronUp,
   Download,
   FilePenLine,
   FilePlus2,
@@ -26,6 +28,8 @@ export type Sort = 'serial' | 'name'
 export type View = 'list' | 'doc'
 
 export function Toolbar({
+  collapsed,
+  onToggleCollapsed,
   indexes,
   index,
   onIndex,
@@ -65,6 +69,10 @@ export function Toolbar({
   onShowActivity,
   isRemoteShare,
 }: {
+  /** 上方面板（索引集選擇/檢視切換/動態按鈕、操作鈕列、搜尋/篩選/分組/排序）
+   *  收合中——手機用，跟 App.tsx 的主標題共用同一個開關，見那邊的說明。 */
+  collapsed: boolean
+  onToggleCollapsed: () => void
   indexes: string[]
   index: string | null
   onIndex: (v: string) => void
@@ -117,6 +125,12 @@ export function Toolbar({
   return (
     <div className="bar">
       <div className="bar-inner">
+        {/* 整個上方面板（索引集選擇/檢視切換/動態按鈕、操作鈕列、搜尋/篩選/
+            分組/排序）收合成一顆分界列——手機上這塊佔太多高度，捲動索引項目
+            時容易不小心捲回這裡。CSS grid-rows 0fr/1fr 收合，收合狀態由
+            App.tsx 提供，跟主標題/簡介共用同一個開關，一起收合。 */}
+        <div className={`panel-collapse${collapsed ? ' collapsed' : ''}`}>
+          <div className="panel-collapse-inner">
         <div className="bar-row top">
           <label className="index-pick">
             <span className="mono lbl">索引集</span>
@@ -374,6 +388,30 @@ export function Toolbar({
           </button>
         </div>
         )}
+          </div>
+        </div>
+
+        {/* 分界列——手機上這塊面板太高，捲動索引項目時容易不小心捲回這裡。這顆
+            負責收合/展開上面整塊（索引集選擇/檢視切換/動態按鈕、操作鈕列、
+            搜尋/篩選/分組/排序）。項目清單本身不受影響，永遠看得到。 */}
+        <button
+          type="button"
+          className="panel-collapse-handle"
+          onClick={onToggleCollapsed}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? (
+            <>
+              <ChevronDown size={15} strokeWidth={2.4} aria-hidden />
+              展開
+            </>
+          ) : (
+            <>
+              <ChevronUp size={15} strokeWidth={2.4} aria-hidden />
+              收合
+            </>
+          )}
+        </button>
       </div>
     </div>
   )
