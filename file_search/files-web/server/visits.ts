@@ -14,6 +14,10 @@ const MAX_ENTRIES = 1000
 export interface VisitEntry {
   author: string // '' = 匿名，前端顯示「有人」
   at: string
+  /** 這筆造訪發生在哪面牆——固定寫死 'files'，見 notes-web/server/visits.ts
+   *  同一個欄位的說明（多人牆閘道模式下兩邊的 `.share/visits.json` 其實是
+   *  同一個檔案，靠「打哪個 port」猜牆別會誤判成同一筆造訪兩面牆各報一次）。 */
+  wall: 'files'
 }
 
 function readVisits(): VisitEntry[] {
@@ -38,7 +42,7 @@ function writeVisits(list: VisitEntry[]): void {
 
 /** 記一筆造訪——connections.ts 判定「真的是新連線」才會呼叫這個。 */
 export function recordVisit(author: string): VisitEntry {
-  const entry: VisitEntry = { author, at: new Date().toISOString() }
+  const entry: VisitEntry = { author, at: new Date().toISOString(), wall: 'files' }
   const list = readVisits()
   list.push(entry)
   if (list.length > MAX_ENTRIES) list.splice(0, list.length - MAX_ENTRIES)

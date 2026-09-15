@@ -22,6 +22,17 @@ const MAX_ENTRIES = 1000
 export interface VisitEntry {
   author: string // '' = 匿名，前端顯示「有人」
   at: string // ISO，跟 activity.ts 的 at 同格式
+  /** 這筆造訪發生在哪面牆——固定寫死 'notes'（這支模組本來就只有 notes-web
+   *  在跑），不是從環境變數猜的。2026-09 加：多人牆閘道模式下 notes-web／
+   *  files-web 的 `.share/visits.json` 其實是同一個檔案（見 share-gateway/
+   *  serve.mjs 把兩邊資料夾都指到 `public-share-data/`），Node-RED 原本靠
+   *  「打哪個 port 就標哪面牆」來分辨，結果因為兩個 port 讀到的其實是同一份
+   *  合併清單，同一筆造訪會被兩邊各自誤判成「這面牆也有新造訪」，各發一次
+   *  Discord 通知、兩則的牆別還可能因為輪詢先後而看起來像是「反過來」
+   *  （使用者回報「discord傳送是相反的」）。加這個欄位讓每筆紀錄自己講清楚
+   *  是哪面牆記的，不用再靠「從哪個 port 讀到」猜——舊資料沒有這個欄位，
+   *  讀取端（Node-RED）遇到沒有 `wall` 的舊紀錄仍照舊預設當 notes 處理。 */
+  wall: 'notes'
 }
 
 function readVisits(): VisitEntry[] {
@@ -47,7 +58,7 @@ function writeVisits(list: VisitEntry[]): void {
 /** 記一筆造訪——connections.ts 判定「真的是新連線」（不是換頁／重整那種瞬斷
  *  瞬連）才會呼叫這個。回傳這筆記錄本身，方便呼叫端不用另外組一次。 */
 export function recordVisit(author: string): VisitEntry {
-  const entry: VisitEntry = { author, at: new Date().toISOString() }
+  const entry: VisitEntry = { author, at: new Date().toISOString(), wall: 'notes' }
   const list = readVisits()
   list.push(entry)
   if (list.length > MAX_ENTRIES) list.splice(0, list.length - MAX_ENTRIES)
