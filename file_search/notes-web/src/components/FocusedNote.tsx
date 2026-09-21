@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNotes } from '../hooks/useNotes'
 import { Note } from './Note'
 import { NoteDialog } from './NoteDialog'
+import { windowDragHandlers } from '../lib/windowDrag'
 
 /**
  * 「拖出去變懸浮視窗」的實際內容——wallpaper-app 開的那個小視窗載入的就是
@@ -43,10 +44,10 @@ export function FocusedNote({ id }: { id: string }) {
           變懸浮視窗本來就是靠近邊緣才觸發），只留上緣一條窄窄的拖曳把手，
           萬一那條剛好貼著螢幕邊界，使用者會抓不到、完全動不了它。四邊都給
           一條拖曳區，不管視窗貼在哪一側，一定還有其他邊摸得到。 */}
-      <div className="focused-drag-handle" aria-hidden />
-      <div className="focused-drag-edge edge-bottom" aria-hidden />
-      <div className="focused-drag-edge edge-left" aria-hidden />
-      <div className="focused-drag-edge edge-right" aria-hidden />
+      <div className="focused-drag-handle" aria-hidden {...windowDragHandlers} />
+      <div className="focused-drag-edge edge-bottom" aria-hidden {...windowDragHandlers} />
+      <div className="focused-drag-edge edge-left" aria-hidden {...windowDragHandlers} />
+      <div className="focused-drag-edge edge-right" aria-hidden {...windowDragHandlers} />
       <button
         type="button"
         className="focused-unpin"

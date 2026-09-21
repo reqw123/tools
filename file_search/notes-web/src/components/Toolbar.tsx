@@ -13,6 +13,7 @@ import { TagBar } from './TagBar'
 import { ThemeToggle } from './ThemeToggle'
 import { ShareLinkButton } from './ShareLinkButton'
 import { SwitchWallButton } from './SwitchWallButton'
+import { hasDesktopWall } from '../lib/desktopWall'
 
 /** 「語意」開關的即時狀態，給搜尋列底下那行揭露文字用。 */
 export type SemanticState =
@@ -157,6 +158,22 @@ export function Toolbar({
       ? '「同分類集中」排序時每個分類自成一段、彼此隔開，橫／直排不影響——換其他排序方式才有作用'
       : undefined
 
+  // 「顯示/隱藏」快捷鍵提示——只有桌面牆（wallpaper-app）有這組全域快捷鍵，
+  // 一般瀏覽器分頁按了沒反應，不該顯示會誤導人的提示。字串向桌面殼要現況
+  // （使用者可能在設定視窗改過鍵，或那組鍵剛好註冊失敗），不要寫死
+  // 「Shift+X」——寫死的話設定一改，這裡的提示就跟實際按鍵對不起來。
+  const [hideShortcut, setHideShortcut] = useState<string | null>(null)
+  useEffect(() => {
+    if (!hasDesktopWall()) return
+    let cancelled = false
+    window.desktopWall?.getToggleVisibleShortcut().then((label) => {
+      if (!cancelled && label && !/未設定|⚠/.test(label)) setHideShortcut(label)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <div className="bar">
       <div className="bar-inner">
@@ -270,6 +287,12 @@ export function Toolbar({
             </button>
           )}
         </div>
+
+        {hideShortcut && (
+          <p className="hide-hint">
+            按下 <kbd>{hideShortcut}</kbd> 可隱藏頁面
+          </p>
+        )}
 
         {/* 第三排：所有工具鈕，統一尺寸的正方形圖示鈕。 */}
         <div className="bar-row bar-row-tools">

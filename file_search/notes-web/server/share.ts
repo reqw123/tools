@@ -125,17 +125,17 @@ export function setShareAiEnabled(v: boolean): void {
   emitChange('settings') // 牆上要即時顯示「AI 已停用」——推播給所有連著的畫面
 }
 
-// ── 登入畫面 3D Logo：host 個人品牌，純裝飾、預設關 ──────────────────────
+// ── 登入畫面 3D Logo：host 個人品牌，純裝飾、預設開 ──────────────────────
 // 素材（glTF＋貼圖，見 `src/components/LoginLogo3D.tsx`）放在
 // `public/branding/`，`.gitignore` 排除、不進版控——是這台機器 host 自己的
-// 東西，不是牆本身的功能。**純記憶體、預設關、重開 server 重置回關**：跟
-// `openAccess` 一樣的「一次性、圖方便」定位，但關掉的理由不是安全，是體積
-// ——這組素材原始檔案 ~30MB，離線用 three.js 的簡化器＋壓縮貼圖處理過後降到
-// ~5.6MB（見 LoginLogo3D.tsx 開頭的說明），但仍然不該每個訪客預設都要下載，
-// 讓 host 自己決定要不要開。前端只在這個開關為 true 時才 mount
+// 東西，不是牆本身的功能。**純記憶體、預設開、重開 server 重置回開**（2026-09
+// 使用者要求改成預設開——原本考量的是體積：這組素材原始檔案 ~30MB，離線用
+// three.js 的簡化器＋壓縮貼圖處理過後降到 ~5.6MB（見 LoginLogo3D.tsx 開頭的
+// 說明），單次下載約 5.6MB，但使用者確認可以接受，改成預設就顯示，要關掉
+// 省頻寬/GPU 才需要自己到 /host 關）。前端只在這個開關為 true 時才 mount
 // `<LoginLogo3D/>`，關掉＝完全不會發出任何下載請求、不會佔用 GPU 資源，
 // 不是「載入了但藏起來」。
-let loginLogo3d = false
+let loginLogo3d = true
 export function isLoginLogo3dEnabled(): boolean {
   return loginLogo3d
 }

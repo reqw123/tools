@@ -19,10 +19,20 @@ export interface DesktopWallApi {
   onNoteUnpinned: (cb: (id: string) => void) => void
   /** 懸浮視窗自己呼叫：關掉自己、便利貼放回牆上。只有懸浮視窗（FocusedNote）會用到。 */
   unpinSelf: () => void
+  /** 懸浮視窗的拖曳把手：按下開始讓視窗跟著游標走、放開結束。見 lib/windowDrag.ts。 */
+  dragWindowStart: () => void
+  dragWindowEnd: () => void
   /** 裁切檢視中移動牆視窗本身，dx/dy 是這次相對上一次滑鼠事件的位移量。 */
   moveWallBy: (dx: number, dy: number) => void
   /** 拖曳「恢復完整畫面」把手放開時呼叫一次，把移動後的新位置存檔。 */
   moveWallEnd: () => void
+  /** 便利貼內文網址 Ctrl+點擊——交給系統預設瀏覽器開，不要用 window.open()
+   *  開在這個 BrowserWindow 自己的、沒登入的 session 裡（會導致某些網站
+   *  例如需要登入才能播放的影片打不開）。見 lib/linkify.tsx。 */
+  openExternal: (url: string) => void
+  /** 「顯示/隱藏」快捷鍵目前的顯示字串（例如 "Shift+X"；使用者改過設定、
+   *  或那組鍵註冊失敗都會反映在回傳值上）——給工具列畫操作提示用。 */
+  getToggleVisibleShortcut: () => Promise<string>
 }
 
 declare global {

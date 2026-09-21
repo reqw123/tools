@@ -18,8 +18,9 @@ export interface ShareInfo {
    *  顯示密碼欄位、要不要強制名字＋PIN 必填。mode='off' 時沒有意義，固定 false。 */
   openAccess: boolean
   /** host 在 /host 開的「登入畫面 3D Logo」（見 LoginLogo3D.tsx）——純裝飾、
-   *  預設關（素材約 5.6MB，host 自己決定要不要讓訪客下載）。`<PasswordGate>`
-   *  只在這個為 true 時才 mount 那個元件，關掉＝完全不發任何請求。 */
+   *  預設開（素材約 5.6MB，host 自己決定要不要在 `/host` 關掉省頻寬）。
+   *  `<PasswordGate>` 只在這個為 true 時才 mount 那個元件，關掉＝完全不發
+   *  任何請求。 */
   loginLogo3d: boolean
   /** 多人牆閘道啟動時才有值——另一面牆的顯示名稱＋切換用網址。工具列的
    *  「切換到 XX」鈕靠這個決定要不要顯示、顯示什麼字、連去哪裡。獨立啟動器

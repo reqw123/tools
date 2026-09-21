@@ -368,9 +368,9 @@ export function HostPanel() {
           在密碼牆畫面放一個會緩慢自轉的 3D logo（目前放的是元培大學的模型）——
           純裝飾，跟登入邏輯無關。素材放在這台電腦的 <code>public/branding/</code>
           （不進版控），已經離線壓縮＋減面過（原始檔案 ~30MB，現在約 5.6MB），
-          單次下載約 5.6MB，<b>預設關</b>：關著的時候前端完全不會載入這個模型、
-          不佔頻寬也不佔 GPU 資源；開著才會在每個人開密碼牆時下載一次（瀏覽器
-          快取後同一台裝置不會重複下載）。重開 server 重置回關。
+          單次下載約 5.6MB，<b>預設開</b>：每個人開密碼牆時會下載一次（瀏覽器
+          快取後同一台裝置不會重複下載）；關掉的話前端完全不會載入這個模型、
+          不佔頻寬也不佔 GPU 資源。重開 server 重置回開。
         </p>
         <label className="check-inline">
           <input
@@ -379,7 +379,7 @@ export function HostPanel() {
             disabled={busy}
             onChange={toggleLoginLogo3d}
           />
-          {data.loginLogo3d ? '目前開啟——密碼牆會載入 3D logo' : '目前關閉（預設）'}
+          {data.loginLogo3d ? '目前開啟（預設）——密碼牆會載入 3D logo' : '目前關閉'}
         </label>
       </section>
 

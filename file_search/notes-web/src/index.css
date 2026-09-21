@@ -550,6 +550,58 @@ body {
 .bar-row-find .sort-pick { padding: 0 0.55rem 0 0.6rem; }
 .bar-row-find .add-note { padding: 0 1rem; }
 
+/* 「顯示/隱藏」快捷鍵提示——只有桌面牆（wallpaper-app）才會出現在 DOM
+   裡（見 Toolbar.tsx），刻意做得顯眼：跑馬燈漸層字＋發光按鍵帽，靠右對齊
+   貼著上面「新增便利貼」鈕，不然使用者永遠不知道有這顆隱藏快捷鍵。 */
+.hide-hint {
+  margin: 0.35rem 0 0.05rem;
+  text-align: right;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  background: linear-gradient(90deg, #f59e0b, #ec4899, #6366f1, #f59e0b);
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: hide-hint-shimmer 4s linear infinite;
+}
+.hide-hint kbd {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #6366f1, #ec4899);
+  border: none;
+  border-radius: 5px;
+  padding: 0.05rem 0.45rem;
+  margin: 0 0.15rem;
+  box-shadow: 0 0 0 rgba(236, 72, 153, 0.5);
+  animation: hide-hint-pulse 1.7s ease-in-out infinite;
+}
+@keyframes hide-hint-shimmer {
+  to {
+    background-position: 300% center;
+  }
+}
+@keyframes hide-hint-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(236, 72, 153, 0.55);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow: 0 0 10px 2px rgba(236, 72, 153, 0.55);
+    transform: translateY(-1px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hide-hint,
+  .hide-hint kbd {
+    animation: none;
+  }
+}
+
 /* ── 第三排：工具鈕，全部同尺寸正方形 ── */
 .bar-row-tools { gap: 0.4rem; }
 .bar-row-tools .btn.icon {
@@ -1249,6 +1301,39 @@ body {
   font-size: 0.74rem;
   color: color-mix(in srgb, var(--paper-ink) 60%, transparent);
   margin-top: 0.15rem;
+}
+/* 便利貼內文裡偵測到的網址——一般點擊冒泡給外層開便利貼，Ctrl/Cmd+左鍵才真的開新分頁
+   （見 lib/linkify.tsx），這裡純粹視覺提示「這段是連結」。 */
+.note-link {
+  position: relative;
+  color: color-mix(in srgb, var(--paper-ink) 70%, #2563eb 55%);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 0.14em;
+  cursor: pointer;
+}
+.note-link:hover {
+  text-decoration-style: solid;
+}
+/* 自訂懸浮提示（用 data-tip，不是瀏覽器原生 title）——原生 title 要等快 1 秒才彈出、
+   大小樣式各瀏覽器不一致，很容易讓人根本沒注意到「這裡要按 Ctrl/Cmd 才會開」；
+   自訂的滑過就立刻顯示，比較不會漏看。鍵盤 Tab 移過去（:focus-visible）也看得到。 */
+.note-link:hover::after,
+.note-link:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 5px);
+  background: rgba(20, 20, 20, 0.92);
+  color: #fff;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 20;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
 }
 .note footer {
   display: flex;
@@ -3421,16 +3506,19 @@ select option {
 .focused-note .note:focus-visible {
   transform: none;
 }
-/* 沒有系統標題列可以拖——上緣留一條透明的拖曳把手，靠 Electron 的
-   -webkit-app-region 讓整個小視窗能被拖著移動。 */
+/* 沒有系統標題列可以拖——上緣留一條透明的拖曳把手。**不用** `-webkit-app-region: drag`：
+   那種區域由作業系統處理、網頁收不到滑鼠事件，`:hover` 高亮跟 `cursor: move` 都不會
+   生效。改成一般元素，按住時由 lib/windowDrag.ts 通知主行程讓視窗跟著游標走
+   （wallpaper-app/window-drag.js）。 */
 .focused-drag-handle {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   height: 1.4rem;
-  -webkit-app-region: drag;
-  z-index: 6;
+  user-select: none;
+  touch-action: none;
+  z-index: 300; /* 蓋過對話框遮罩(.scrim 100)／放大檢視(.zoom-scrim 200)——不然對話框開著就拖不動視窗 */
   cursor: move;
 }
 /* 拖曳區是透明的、又很窄，不好抓——滑鼠移進去時改游標＋淡淡亮一條，
@@ -3443,13 +3531,14 @@ select option {
 /* 上緣以外的三邊也給一條拖曳區——這個視窗常常緊貼著某側螢幕邊界生出來，
    只有上緣能拖的話，貼著左/右/下邊界時那條把手可能整個被邊界吃掉、
    完全摸不到。四邊都給，不管貼哪一側，至少還有其他三邊可以抓來移動。
-   四個角落刻意留空（不蓋 app-region: drag）——BrowserWindow 本身
+   四個角落刻意留空（不蓋拖曳把手）——BrowserWindow 本身
    resizable: true，角落是原生縮放握把慣用的位置，蓋住的話會被拖曳搶走，
    反而讓「調整大小」變不能用。 */
 .focused-drag-edge {
   position: absolute;
-  -webkit-app-region: drag;
-  z-index: 6;
+  user-select: none;
+  touch-action: none;
+  z-index: 300;
   cursor: move;
 }
 .focused-drag-edge.edge-bottom {
@@ -3476,7 +3565,7 @@ select option {
   position: absolute;
   top: 0.25rem;
   right: 0.25rem;
-  z-index: 7;
+  z-index: 301;
   -webkit-app-region: no-drag;
   width: 22px;
   height: 22px;

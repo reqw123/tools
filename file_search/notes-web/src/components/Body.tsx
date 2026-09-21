@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { parseBody } from '../lib/format'
+import { linkifyText } from '../lib/linkify'
 
 export function Body({
   text,
@@ -15,7 +16,7 @@ export function Body({
   const parsed = useMemo(() => parseBody(text), [text])
 
   if ('paragraph' in parsed) {
-    return <p className="para">{parsed.paragraph}</p>
+    return <p className="para">{linkifyText(parsed.paragraph)}</p>
   }
 
   const all = parsed.lines
@@ -27,7 +28,7 @@ export function Body({
           <li key={i} className="fld">
             <span className="fld-label">{line.label ?? line.text}</span>
             <span className="fld-fill">
-              {line.value ? <span className="fld-value">{line.value}</span> : null}
+              {line.value ? <span className="fld-value">{linkifyText(line.value)}</span> : null}
             </span>
           </li>
         ) : (
@@ -48,7 +49,7 @@ export function Body({
             ) : (
               <b className="box" aria-hidden />
             )}
-            <span>{line.text}</span>
+            <span>{linkifyText(line.text)}</span>
           </li>
         ),
       )}
