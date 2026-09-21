@@ -103,21 +103,21 @@ $homeDir = $env:USERPROFILE
 $chip = @(@{ n = '下載'; p = "$homeDir\Downloads" }, @{ n = '文件'; p = "$homeDir\Documents" }, @{ n = '家目錄'; p = $homeDir }) |
   Where-Object { $ImportDir.StartsWith($_.p + '\', [StringComparison]::OrdinalIgnoreCase) } | Sort-Object { $_.p.Length } -Descending | Select-Object -First 1
 if (-not $chip) { throw "匯入資料夾必須在 下載／文件／家目錄 底下（檔案瀏覽器的捷徑），目前是：$ImportDir" }
-[void](Click-Elem $wall ('T(".fb-quick-chip",' + (Js $chip.n) + ')'))
+[void](Click-Elem $wall ('T(".fb-quick-chip",' + (Js $chip.n) + ')') -Fast)
 foreach ($seg in $ImportDir.Substring($chip.p.Length).Trim('\').Split('\')) {
-  [void](Click-Elem $wall ('X(".fb-item.dir .fb-name",' + (Js $seg) + ')'))
+  [void](Click-Elem $wall ('X(".fb-item.dir .fb-name",' + (Js $seg) + ')') -Fast)
 }
 Wait-Cond { Cdp-Eval (Wall-Target) ('document.querySelector(".fb").textContent.includes(' + (Js $ImportDir) + ')') } 5000 '進入目標資料夾'
-Hold 250
-[void](Click-Elem $wall 'X(".modal button","下一步")');             Log '選定資料夾 → 下一步'
-[void](Click-Elem $wall 'T("label","包含子資料夾")')
-[void](Click-Elem $wall 'X(".bi-scan button","掃描")');             Log '按「掃描」'
+Hold 120
+[void](Click-Elem $wall 'X(".modal button","下一步")' -Fast);         Log '選定資料夾 → 下一步'
+[void](Click-Elem $wall 'T("label","包含子資料夾")' -Fast)
+[void](Click-Elem $wall 'X(".bi-scan button","掃描")' -Fast);         Log '按「掃描」'
 Wait-Rect $wall 'document.querySelector(".bi-result")' 30000 | Out-Null
 $scan = Cdp-Eval (Wall-Target) '(() => { const e = document.querySelector(".bi-result"); return e ? e.textContent.replace(/\s+/g," ").trim() : ""; })()'
 Log "✔ 掃描結果：$scan"
 if ($scan -notmatch '掃到\s*(\d+)') { throw "讀不到掃描筆數：$scan" }
 $expected = [int]$Matches[1]
-Hold 700
+Hold 450
 Type-Into $wall 'document.querySelector("#bi-cat")' $IndexName 30
 Hold 200
 [void](Click-Elem $wall 'T(".modal-foot .btn.primary","匯入")');    Log '按「匯入」'
@@ -138,28 +138,38 @@ Hold 800
 [void](Click-Elem $wall 'document.querySelector(".row button[title=\"按一下變懸浮視窗\"]")')
 Wait-Cond { Float-Target 8788 } 8000 '影片懸浮視窗出現'
 Log '✔ 影片項目已變成懸浮視窗'
-Hold 500
-[void](Click-Elem $floatEntry 'document.querySelector(".row-head")')
-[void](Click-Elem $floatEntry 'T("button","預覽內容")')
+Hold 300
+[void](Click-Elem $floatEntry 'document.querySelector(".row-head")' -Fast)
+[void](Click-Elem $floatEntry 'T("button","預覽內容")' -Fast)
 Wait-Rect $floatEntry 'document.querySelector("video")' 10000 | Out-Null
-Hold 500
+Hold 250
 
-# 手動拖拉邊界擴大（真實滑鼠抓視窗最外緣）
+# 手動拖拉邊界擴大：抓視窗右上角，一次同時拉寬＋拉高（真人也是這樣拉的）；游標在最外緣角落會變成斜向縮放
 $g = Cdp-Eval (Float-Target 8788) '({x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight})'
 Log ("懸浮視窗原本大小 {0}×{1}" -f $g.w, $g.h)
-$ex = [int]($g.x + $g.w - 1); $ey = [int]($g.y + $g.h * 0.5)
-Move-Mouse $ex $ey 450; Hold 200
-$cur = [DemoCur]::Name(); if ($cur -ne 'SIZEWE') { Move-Mouse ($ex - 1) $ey 100; Hold 100; $cur = [DemoCur]::Name(); $ex = $ex - 1 }
-Log "游標在右緣變成：$cur"
-Drag-Mouse $ex $ey ($ex + 340) $ey 600
-$ty = [int]($g.y + 1)
-Move-Mouse ([int]($g.x + $g.w * 0.4)) $ty 400; Hold 150
-$cur2 = [DemoCur]::Name(); Log "游標在上緣變成：$cur2"
-Drag-Mouse ([int]($g.x + $g.w * 0.4)) $ty ([int]($g.x + $g.w * 0.4)) ([int][math]::Max(40, $g.y - 220)) 600
+$corner = $null; $cur = ''; $first = $true
+foreach ($o in @(@(3, 2), @(2, 2), @(4, 3), @(2, 4))) {           # 角落熱區很小，依序試幾個相對位置，直到游標變成斜向縮放
+  $tx = [int]($g.x + $g.w - $o[0]); $ty = [int]($g.y + $o[1])
+  Move-Mouse $tx $ty $(if ($first) { 380 } else { 40 }); $first = $false; Hold 90
+  $cur = [DemoCur]::Name()
+  if ($cur -eq 'SIZENESW') { $corner = @($tx, $ty); break }
+}
+Log "游標在右上角變成：$cur"
+if ($corner) { Drag-Mouse $corner[0] $corner[1] ($corner[0] + 340) ([int][math]::Max(40, $corner[1] - 220)) }
 $g2 = Cdp-Eval (Float-Target 8788) '({x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight})'
+if ($g2.w -le $g.w -and $g2.h -le $g.h) {                          # 角落沒抓到 → 改抓右緣＋上緣（各拖一次）
+  Log '  角落沒拖動，改抓右緣＋上緣'
+  $ex = [int]($g.x + $g.w - 1); $ey = [int]($g.y + $g.h * 0.5)
+  Move-Mouse $ex $ey 300; Hold 80
+  Drag-Mouse $ex $ey ($ex + 340) $ey
+  $tx = [int]($g.x + $g.w * 0.4); $ty = [int]($g.y + 1)
+  Move-Mouse $tx $ty 250; Hold 80
+  Drag-Mouse $tx $ty $tx ([int][math]::Max(40, $g.y - 220))
+  $g2 = Cdp-Eval (Float-Target 8788) '({x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight})'
+}
 Log ("✔ 拖拉後大小 {0}×{1}（原本 {2}×{3}）" -f $g2.w, $g2.h, $g.w, $g.h)
 if ($g2.w -le $g.w -and $g2.h -le $g.h) { $warnings += '視窗沒有被拖大' }
-Hold 500
+Hold 300
 
 # 播放 → N 秒 → 暫停（點影片畫面本身＝播放／暫停切換）
 $vr = Wait-Rect $floatEntry 'document.querySelector("video")' 5000

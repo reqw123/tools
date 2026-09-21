@@ -60,11 +60,14 @@ function Click-At([int]$x, [int]$y, [int]$ms = 700) {
   [DemoWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 70
   [DemoWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 250
 }
-function Drag-Mouse([int]$x1, [int]$y1, [int]$x2, [int]$y2, [int]$ms = 900) {
-  Move-Mouse $x1 $y1 600; Start-Sleep -Milliseconds 200
-  [DemoWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 180
-  Move-Mouse $x2 $y2 $ms; Start-Sleep -Milliseconds 250
-  [DemoWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 350
+function Drag-Mouse([int]$x1, [int]$y1, [int]$x2, [int]$y2, [int]$ms = -1) {
+  # 游標已經在起點（呼叫前先移過去確認過游標形狀）就不再重新移動；拖曳時間預設依距離（約 0.25～0.8 秒）
+  $p = Cursor-Pos
+  if ([math]::Abs($p[0] - $x1) -gt 3 -or [math]::Abs($p[1] - $y1) -gt 3) { Move-Mouse $x1 $y1 500; Start-Sleep -Milliseconds 120 }
+  if ($ms -lt 0) { $d = [math]::Sqrt(($x2 - $x1) * ($x2 - $x1) + ($y2 - $y1) * ($y2 - $y1)); $ms = [int][math]::Min(800, [math]::Max(250, 150 + $d * 0.6)) }
+  [DemoWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 80
+  Move-Mouse $x2 $y2 $ms; Start-Sleep -Milliseconds 100
+  [DemoWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 150
 }
 function Type-Text([string]$s, [int]$delay = 45) { foreach ($c in $s.ToCharArray()) { [DemoWin]::TypeChar($c); Start-Sleep -Milliseconds $delay } }
 function Press-Combo([byte[]]$vks) {

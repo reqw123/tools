@@ -29,17 +29,40 @@ function Cdp-Targets {
 function Wall-Target { Cdp-Targets | Where-Object { $_.url -match '^http://127\.0\.0\.1:(8787|8788)/' -and $_.url -notmatch 'focus=' } | Select-Object -First 1 }
 function Float-Target([string]$port) { Cdp-Targets | Where-Object { $_.url -match "^http://127\.0\.0\.1:$port/" -and $_.url -match 'focus=' } | Select-Object -First 1 }
 
-function Cdp-Eval($target, [string]$expr) {
+# 每個分頁重用同一條 WebSocket（原本每次查詢都重新連線，一個步驟要查好幾次，累積起來很慢）
+$script:CdpWs = @{}
+$script:CdpId = 0
+function Cdp-Conn($target) {
+  $u = $target.webSocketDebuggerUrl
+  $c = $script:CdpWs[$u]
+  if ($c -and $c.State -eq 'Open') { return $c }
   $c = New-Object Net.WebSockets.ClientWebSocket
+  $c.ConnectAsync([uri]$u, [Threading.CancellationToken]::None).Wait()
+  $script:CdpWs[$u] = $c
+  return $c
+}
+function Cdp-Eval($target, [string]$expr) {
   $ct = [Threading.CancellationToken]::None
-  $c.ConnectAsync([uri]$target.webSocketDebuggerUrl, $ct).Wait()
-  $msg = @{ id = 1; method = 'Runtime.evaluate'; params = @{ expression = $expr; returnByValue = $true; awaitPromise = $true } } | ConvertTo-Json -Depth 6 -Compress
-  $bytes = [Text.Encoding]::UTF8.GetBytes($msg)
-  $c.SendAsync((New-Object 'System.ArraySegment[byte]' -ArgumentList (, $bytes)), 'Text', $true, $ct).Wait()
-  $buf = New-Object byte[] 65536; $sb = New-Object Text.StringBuilder
-  do { $r = $c.ReceiveAsync((New-Object 'System.ArraySegment[byte]' -ArgumentList (, $buf)), $ct).Result; [void]$sb.Append([Text.Encoding]::UTF8.GetString($buf, 0, $r.Count)) } until ($r.EndOfMessage)
-  $c.Dispose()
-  $o = $sb.ToString() | ConvertFrom-Json
+  $o = $null
+  for ($attempt = 1; $attempt -le 2; $attempt++) {
+    try {
+      $c = Cdp-Conn $target
+      $script:CdpId++; $id = $script:CdpId
+      $msg = @{ id = $id; method = 'Runtime.evaluate'; params = @{ expression = $expr; returnByValue = $true; awaitPromise = $true } } | ConvertTo-Json -Depth 6 -Compress
+      $bytes = [Text.Encoding]::UTF8.GetBytes($msg)
+      $c.SendAsync((New-Object 'System.ArraySegment[byte]' -ArgumentList (, $bytes)), 'Text', $true, $ct).Wait()
+      $buf = New-Object byte[] 65536
+      do {   # 收到「id 對得上」的那則回應為止（前面逾時的查詢若遲到的回應會被略過）
+        $sb = New-Object Text.StringBuilder
+        do { $r = $c.ReceiveAsync((New-Object 'System.ArraySegment[byte]' -ArgumentList (, $buf)), $ct).Result; [void]$sb.Append([Text.Encoding]::UTF8.GetString($buf, 0, $r.Count)) } until ($r.EndOfMessage)
+        $o = $sb.ToString() | ConvertFrom-Json
+      } until ($o.id -eq $id)
+      break
+    } catch {
+      $script:CdpWs.Remove($target.webSocketDebuggerUrl)      # 連線壞了（例如分頁換了）→ 丟掉，重連再試一次
+      if ($attempt -eq 2) { throw }
+    }
+  }
   if ($o.result.exceptionDetails) { throw ("JS error: " + $o.result.exceptionDetails.text + " " + $o.result.exceptionDetails.exception.description) }
   return $o.result.result.value
 }
@@ -67,11 +90,11 @@ function Wait-Rect([scriptblock]$getTarget, [string]$expr, [int]$timeoutMs = 100
       $t = & $getTarget
       if ($t) {
         $r1 = Find-Rect $t $expr
-        if ($r1) { Start-Sleep -Milliseconds 70; $r2 = Find-Rect $t $expr
+        if ($r1) { Start-Sleep -Milliseconds 40; $r2 = Find-Rect $t $expr
           if ($r2 -and [math]::Abs($r1.x - $r2.x) -lt 1.5 -and [math]::Abs($r1.y - $r2.y) -lt 1.5) { return $r2 } }
       }
     } catch { }
-    Start-Sleep -Milliseconds 60
+    Start-Sleep -Milliseconds 30
   }
   throw "找不到元素（逾時 ${timeoutMs}ms）：$expr"
 }
@@ -81,15 +104,22 @@ function Wait-Cond([scriptblock]$cond, [int]$timeoutMs = 10000, [string]$what = 
   throw "等待逾時（${timeoutMs}ms）：$what"
 }
 
-# 人類節奏的點擊：游標 0.35 秒移過去 → 停 0.13 秒（人的反應時間）→ 按 → 停 0.22 秒讓畫面反應
-function Click-Human([int]$x, [int]$y, [int]$moveMs = 350) {
-  Move-Mouse $x $y $moveMs; Start-Sleep -Milliseconds 130
+# 人類節奏的點擊：游標移過去 → 停一下（人的反應時間）→ 按 → 停一下讓畫面反應。
+# 移動時間跟距離有關（Fitts 定律的味道）：清單裡相鄰的項目只差幾十像素，不需要 0.35 秒；
+# 跨大半個螢幕才給滿 0.35 秒。$moveMs 明確指定時照指定。
+function Click-Human([int]$x, [int]$y, [int]$moveMs = -1, [int]$dwell = 130, [int]$settle = 220, [int]$minMove = 140) {
+  if ($moveMs -lt 0) {
+    $p = Cursor-Pos; $d = [math]::Sqrt(($x - $p[0]) * ($x - $p[0]) + ($y - $p[1]) * ($y - $p[1]))
+    $moveMs = [int][math]::Min(350, [math]::Max($minMove, 110 + $d * 0.28))
+  }
+  Move-Mouse $x $y $moveMs; Start-Sleep -Milliseconds $dwell
   [DemoWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60
-  [DemoWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 220
+  [DemoWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds $settle
 }
-function Click-Elem([scriptblock]$getTarget, [string]$expr, [int]$timeoutMs = 10000) {
+# -Fast：連續操作用（下一步本來就會等元素出現，不需要固定的停頓）——移動更短、停頓縮到約 0.06 秒
+function Click-Elem([scriptblock]$getTarget, [string]$expr, [int]$timeoutMs = 10000, [switch]$Fast) {
   $r = Wait-Rect $getTarget $expr $timeoutMs
-  Click-Human ([int]$r.x) ([int]$r.y)
+  if ($Fast) { Click-Human ([int]$r.x) ([int]$r.y) -1 60 60 100 } else { Click-Human ([int]$r.x) ([int]$r.y) }
   return $r
 }
 
