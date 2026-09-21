@@ -7,6 +7,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const store = require('./settings-store.js');
 const servers = require('./servers.js');
+const { registerWindowDrag } = require('./window-drag.js');
 
 // 純本機個人工具，同時開兩個沒意義（會兩邊各自管一份子行程）。
 if (!app.requestSingleInstanceLock()) {
@@ -801,6 +802,22 @@ ipcMain.handle('wall-pin-entry', (_e, entry, rect) => {
   pinEntryWindow(entry.indexName, entry.path, abs);
 });
 
+// 便利貼／索引項目內文裡的網址（notes-web 的 lib/linkify.tsx）Ctrl+點擊——
+// 桌面牆是 Electron 自己的 BrowserWindow，session 跟使用者平常用的瀏覽器是
+// 分開的、沒有登入狀態，網址若直接用 window.open() 在裡面開會遇到「沒登入
+// 播不了影片」這類問題（回報過）。改用 shell.openExternal() 交給作業系統
+// 預設瀏覽器開，沿用使用者平常的登入 session。只放行 http(s)——跟
+// linkify.tsx 抓網址用的規則一致，多一層防線擋掉萬一被塞進奇怪協定字串。
+ipcMain.on('wall-open-external', (_e, url) => {
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url);
+});
+
+// 牆面網頁自己要顯示「按 X 可隱藏」這類提示用——回傳「顯示/隱藏」（toggleVisible）
+// 目前實際生效的快捷鍵顯示字串（使用者在設定視窗改過的話會反映最新值；沒註冊成功
+// 也如實顯示，不要讓網頁上的提示跟實際按了沒反應的快捷鍵對不起來）。重用
+// accelLabel()——跟設定視窗看到的是同一份格式化邏輯。
+ipcMain.handle('wall-get-toggle-shortcut', () => accelLabel('toggleVisible'));
+
 // 懸浮視窗自己按「收回」時觸發（見 wall-preload.js 的 unpinSelf /
 // FocusedNote.tsx / FocusedEntry.tsx）。直接關掉這個視窗就好——清
 // pinnedWindows、清持久化、通知牆把這則/這筆放回清單，都在
@@ -809,6 +826,10 @@ ipcMain.on('wall-unpin-self', (e) => {
   const w = BrowserWindow.fromWebContents(e.sender);
   if (w && !w.isDestroyed()) w.close();
 });
+
+// 懸浮視窗的拖曳把手（網頁自己收滑鼠事件，游標才會變成「移動」圖案）——
+// 主行程這邊只負責跟著游標搬視窗，見 window-drag.js。
+registerWindowDrag();
 
 // 上次關閉時還開著的懸浮便利貼／索引項目——app 剛啟動、server 就緒之後
 // 呼叫一次，見 app.whenReady()。不管目前牆面顯示的是便利貼牆還是檔案索引

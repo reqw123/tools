@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('desktopWall', {
   // 懸浮視窗自己按「收回」用——這個 preload 同時掛在主牆視窗跟每個懸浮
   // 視窗上，主牆那邊不會用到這個方法。
   unpinSelf: () => ipcRenderer.send('wall-unpin-self'),
+  // 懸浮視窗的拖曳把手：按下時呼叫 dragWindowStart，主行程開始讓視窗跟著游標走；
+  // 放開（或被中斷）時呼叫 dragWindowEnd。見 window-drag.js。
+  dragWindowStart: () => ipcRenderer.send('wall-drag-start'),
+  dragWindowEnd: () => ipcRenderer.send('wall-drag-end'),
   // 裁切檢視中，「恢復完整畫面」按鈕兼職拖曳把手——dx/dy 是這次 mousemove
   // 相對上一次的位移量（MouseEvent.movementX/Y），累加送過來就好，視窗座標
   // 怎麼疊加是主行程的事。只有主牆視窗會用到。
@@ -29,4 +33,11 @@ contextBridge.exposeInMainWorld('desktopWall', {
   // 拖曳放開時送一次，讓主行程把移動後的新位置存檔——不要每個 mousemove
   // 都存，見 main.js 的 wall-move-end。
   moveWallEnd: () => ipcRenderer.send('wall-move-end'),
+  // 便利貼／索引項目內文裡的網址 Ctrl+點擊——交給系統預設瀏覽器開，
+  // 不要用 window.open() 在這個 BrowserWindow 自己的、沒登入的 session
+  // 裡開（見 main.js 的 wall-open-external）。
+  openExternal: (url) => ipcRenderer.send('wall-open-external', url),
+  // 「顯示/隱藏」快捷鍵目前的顯示字串（例如 "Shift+X"）——給牆面網頁畫
+  // 操作提示用，見 main.js 的 wall-get-toggle-shortcut。
+  getToggleVisibleShortcut: () => ipcRenderer.invoke('wall-get-toggle-shortcut'),
 });
