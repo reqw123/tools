@@ -94,6 +94,9 @@ npm run lint    # oxlint
 | GET | `/api/file?path=…` | 串流被索引的檔案本身（圖片／影音／PDF）。支援 `Range`（影音拖進度），非絕對路徑 400、找不到 404 |
 | GET | `/api/browse?path=…` | 選檔／選資料夾視窗用。`path` 空 → 磁碟機／根目錄清單；否則列該目錄的子資料夾與檔案（上限 4000 筆）。回 `{ path, parent, dirs[], files[], truncated }` |
 | POST | `/api/scan` | `{ dir, recursive?, categories? }` → 遞迴掃描資料夾（`categories` 是類型標籤，空 = 全部）。回 `{ files[], truncated, categoryCounts[] }`；超過 1000 筆 `truncated:true`（不該拿去匯入）。移植自 `scan_service.py` |
+| POST | `/api/scan/jobs` | 同 `/api/scan` 的參數，但**背景執行、立刻回 `202 { id }`**——「匯入資料夾」的進度條靠這組。掃描每 30ms 讓出一次事件迴圈（server 與 SSE 不會被大資料夾卡住）。路徑不合法直接 400 |
+| GET | `/api/scan/jobs/:id` | 輪詢：`{ state: 'running'\|'done'\|'error'\|'cancelled', progress: { walked, matched, dirs, current, total? }, result?, error? }`。`total` 只有「不含子資料夾」才有（可畫百分比）；遞迴掃描事先不知道總數，前端畫不定長進度條＋即時計數。完成後 `result` 同 `/api/scan` 的回應。工作存記憶體、完成後保留 10 分鐘，server 重開就 404 |
+| DELETE | `/api/scan/jobs/:id` | 取消進行中的掃描（關閉對話框／改條件／按取消時前端會呼叫）。回 204 |
 | GET | `/api/scan-categories` | 檔案類型篩選按鈕的 `{ label, icon, color }`（跟 `scan` 同一份 `EXT_CATEGORIES`；**跟便利貼牆「AI 生成便利貼」的掃描分類同一份**——含「程式碼」「設定與資料」「筆記本」，「其他」也可選）|
 | GET | `/api/indexes/:name/blank-suggestions` | 「批次補說明」步驟 1：說明是空的、檔案還在的項目 + 內容擷取建議。回 `{ items[], truncated }`。移植自 `find_blank_entries` + `build_suggestion` |
 
@@ -187,6 +190,10 @@ Python 不在（`PYTHON` 環境變數或 `python` 找不到、`file_search_app` 
   - `.md` → render 成 HTML；`.txt` / `.json` / 程式碼 → 等寬字顯示（上限 256 KB）
   - Office（`.docx` `.pptx` `.xlsx`）、壓縮檔等 → 不預覽，請「開啟檔案」
   - `.mkv` / `.mov` 之類瀏覽器可能沒有解碼器，`<video>` 會顯示錯誤——那也請「開啟檔案」
+  - **同時最多開 10 個預覽**（`EntryList` 的 `MAX_PREVIEWS`）：開第 11 個時自動收掉最舊的；
+    有預覽開著時右下角（捲動鈕左邊）會出現一顆小圓鈕（橡皮擦圖示＋開著的數量），按一下
+    「釋放全部預覽資源」全部收起（列本身仍展開，只卸載預覽）。影片／音訊暫停後不吃 CPU 與網路，
+    但只要預覽還開著，每個仍占瀏覽器約 25–35 MB 記憶體（實測，720p VP8）——這就是設上限的原因
   - 文字／markdown 預覽框上方有字級縮放（`−` `N%` `+`）；滑鼠移到框上時
     `Ctrl`/`⌘` + `+` / `−` / `0`、或 `Ctrl`＋滾輪也能縮，只縮這個框、不動整頁
     瀏覽器縮放，倍率記在 `localStorage`（`usePreviewZoom`）
@@ -320,7 +327,7 @@ CLAUDE.md），只是**兩邊各自一份程式碼、各自一份資料，不共
   Explorer、開系統文字編輯器、瀏覽/掃描整台硬碟，這幾支即使密碼登入了也
   不能對遠端開放（`shareGuardHook` 擋下）：
   - `POST /api/open`（開檔案總管）
-  - `POST /api/browse`、`POST /api/scan`（瀏覽/遞迴掃描本機任意路徑）
+  - `POST /api/browse`、`POST /api/scan` 與 `/api/scan/*`（瀏覽/遞迴掃描本機任意路徑，含背景掃描工作）
   - `POST /api/indexes/:name/edit`（開系統文字編輯器）
   - `PUT /api/ai/settings`、`POST /api/ai/test`、`POST /api/ai/models`（改
     host 的 AI provider／金鑰、連線測試——這些留給 `/host` 的 AI provider

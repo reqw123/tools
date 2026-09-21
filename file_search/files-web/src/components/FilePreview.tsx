@@ -11,6 +11,18 @@ const MESSAGE: Record<string, string> = {
   toobig: '檔案太大，不在網頁上預覽。',
 }
 
+/** 影音預覽卸載時明確放掉媒體資源。只靠 React 把 <video>／<audio> 從 DOM 拿掉，
+ *  瀏覽器要等垃圾回收才會釋放解碼器與已緩衝的資料；先 pause＋清 src＋load() 能立刻
+ *  中斷網路請求、放掉解碼器。ref callback 回傳的函式在元素卸載時執行（React 19）。 */
+const releaseMedia = (el: HTMLMediaElement | null) => {
+  if (!el) return
+  return () => {
+    el.pause()
+    el.removeAttribute('src')
+    el.load()
+  }
+}
+
 /** 被索引檔案本身的內容預覽：圖片／影音／PDF 直接串流，純文字／markdown／CSV 抓內容 render。 */
 export function FilePreview({ path, kind, ext }: { path: string; kind: Kind; ext?: string }) {
   const url = api.fileUrl(path)
@@ -21,14 +33,14 @@ export function FilePreview({ path, kind, ext }: { path: string; kind: Kind; ext
   if (kind === 'video') {
     return (
       <div className="preview">
-        <video className="preview-media" src={url} controls preload="metadata" />
+        <video ref={releaseMedia} className="preview-media" src={url} controls preload="metadata" />
       </div>
     )
   }
   if (kind === 'audio') {
     return (
       <div className="preview preview-audio">
-        <audio src={url} controls preload="metadata" />
+        <audio ref={releaseMedia} src={url} controls preload="metadata" />
       </div>
     )
   }

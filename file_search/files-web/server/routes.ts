@@ -27,6 +27,7 @@ import {
   validateIndexName,
 } from './store'
 import { logActivity } from './activity'
+import { cancelScanJob, getScanJob, startScanJob } from './scan-jobs'
 import { displayAuthorFrom } from './share'
 
 export const routes: FastifyPluginAsync = async (app) => {
@@ -301,27 +302,45 @@ export const routes: FastifyPluginAsync = async (app) => {
   )
 
   // 資料夾掃描（批次匯入用）。`categories` 是要收錄的類型標籤（空 = 全部）。
-  app.post<{ Body: { dir?: string; recursive?: boolean; categories?: string[] } }>(
-    '/scan',
-    {
-      schema: {
-        body: {
-          type: 'object',
-          required: ['dir'],
-          properties: {
-            dir: { type: 'string', minLength: 1, maxLength: 4096 },
-            recursive: { type: 'boolean' },
-            categories: { type: 'array', items: { type: 'string' }, maxItems: 20 },
-          },
-        },
+  const scanBodySchema = {
+    body: {
+      type: 'object',
+      required: ['dir'],
+      properties: {
+        dir: { type: 'string', minLength: 1, maxLength: 4096 },
+        recursive: { type: 'boolean' },
+        categories: { type: 'array', items: { type: 'string' }, maxItems: 20 },
       },
     },
-    async (req, reply) => {
-      const r = scanFolder(req.body.dir ?? '', req.body.recursive ?? false, req.body.categories ?? [])
-      if ('error' in r) return reply.code(400).send({ error: r.error })
-      return r
-    },
-  )
+  } as const
+  type ScanBody = { dir?: string; recursive?: boolean; categories?: string[] }
+
+  // 一次等到底的版本（沒有進度）。前端「匯入資料夾」改走下面的 /scan/jobs，
+  // 這支留給直接呼叫 API 的人。
+  app.post<{ Body: ScanBody }>('/scan', { schema: scanBodySchema }, async (req, reply) => {
+    const r = await scanFolder(req.body.dir ?? '', req.body.recursive ?? false, req.body.categories ?? [])
+    if ('error' in r) return reply.code(400).send({ error: r.error })
+    return r
+  })
+
+  // 背景掃描＋進度輪詢——大資料夾掃描要好一陣子，前端靠這組顯示進度條，見 scan-jobs.ts。
+  // 路徑都在 /scan/ 底下，share.ts 的 shareGuardHook 一併擋掉遠端。
+  app.post<{ Body: ScanBody }>('/scan/jobs', { schema: scanBodySchema }, async (req, reply) => {
+    const r = startScanJob(req.body.dir ?? '', req.body.recursive ?? false, req.body.categories ?? [])
+    if ('error' in r) return reply.code(400).send({ error: r.error })
+    return reply.code(202).send(r)
+  })
+
+  app.get<{ Params: { id: string } }>('/scan/jobs/:id', async (req, reply) => {
+    const job = getScanJob(req.params.id)
+    if (!job) return reply.code(404).send({ error: '找不到這個掃描工作（可能已過期或伺服器重開過），請重新掃描' })
+    return job
+  })
+
+  app.delete<{ Params: { id: string } }>('/scan/jobs/:id', async (req, reply) => {
+    cancelScanJob(req.params.id)
+    return reply.code(204).send()
+  })
 
   // 批次匯入的檔案類型篩選按鈕用（跟 scanFolder 同一份 EXT_CATEGORIES）。
   app.get('/scan-categories', async () => ({ categories: scanCategories }))

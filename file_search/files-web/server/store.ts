@@ -606,17 +606,50 @@ export interface ScanResult {
   extCounts: { ext: string; count: number }[]
 }
 
-export function scanFolder(
+/** 掃描進行中的即時進度（給前端進度條用，見 `scan-jobs.ts`）。 */
+export interface ScanProgress {
+  /** 已檢視的項目數（檔案＋資料夾，含被篩選掉的）。 */
+  walked: number
+  /** 目前符合條件的檔案數。 */
+  matched: number
+  /** 已讀完的資料夾數。 */
+  dirs: number
+  /** 正在讀的資料夾。 */
+  current: string
+  /** 只有「不含子資料夾」時才知道總數（那一層的項目數），前端才畫得出百分比；
+   *  遞迴掃描事先不可能知道總數，前端改畫「不定長」進度條＋即時計數。 */
+  total?: number
+}
+
+export interface ScanOptions {
+  onProgress?: (p: ScanProgress) => void
+  /** 每次讓出事件迴圈時檢查一次；回 true 就中止並回 `{ error: '已取消' }`。 */
+  isCancelled?: () => boolean
+}
+
+/** 掃描每連續跑這麼久就讓出一次事件迴圈（同時回報進度）。太短＝setImmediate
+ *  開銷佔比高；太長＝掃大資料夾時整個 server（含 SSE）卡住、進度也沒法輪詢。 */
+const SCAN_SLICE_MS = 30
+
+/** 起手式檢查——路徑合不合法。回錯誤訊息，沒問題回 null。 */
+export function checkScanDir(dir: string): string | null {
+  if (!isAbsolute(dir)) return '請提供絕對路徑'
+  try {
+    if (!statSync(dir).isDirectory()) return '這不是資料夾'
+  } catch {
+    return '找不到這個資料夾'
+  }
+  return null
+}
+
+export async function scanFolder(
   dir: string,
   recursive: boolean,
   categories: string[],
-): ScanResult | { error: string } {
-  if (!isAbsolute(dir)) return { error: '請提供絕對路徑' }
-  try {
-    if (!statSync(dir).isDirectory()) return { error: '這不是資料夾' }
-  } catch {
-    return { error: '找不到這個資料夾' }
-  }
+  opts: ScanOptions = {},
+): Promise<ScanResult | { error: string }> {
+  const bad = checkScanDir(dir)
+  if (bad) return { error: bad }
 
   const want = new Set<string>()
   for (const c of EXT_CATEGORIES) if (categories.includes(c.label)) for (const e of c.exts) want.add(e)
@@ -630,6 +663,9 @@ export function scanFolder(
   let walked = 0
   let matchedCount = 0
   let hitWalkLimit = false
+  let dirsDone = 0
+  let total: number | undefined
+  let sliceStart = performance.now()
   const stack = [dir]
   // 走檔迴圈本身不因為超過軟上限而提前結束——超過之後不再把細節塞進 files
   // （前端只需要前一段可以看/勾選），但繼續數 matchedCount，直到真的掃完，
@@ -642,10 +678,20 @@ export function scanFolder(
     } catch {
       continue
     }
+    if (!recursive) total = ents.length
+    dirsDone += 1
     for (const de of ents) {
       if (walked >= SCAN_WALK_HARD_LIMIT) {
         hitWalkLimit = true
         break
+      }
+      // 檔案很多時這整段是同步走檔，不讓出事件迴圈的話 server 會整個卡住、
+      // 前端連進度都輪詢不到——每跑滿一個時間片就回報進度並讓出一次。
+      if (performance.now() - sliceStart >= SCAN_SLICE_MS) {
+        opts.onProgress?.({ walked, matched: matchedCount, dirs: dirsDone, current: cur, total })
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        if (opts.isCancelled?.()) return { error: '已取消' }
+        sliceStart = performance.now()
       }
       walked += 1
       const full = join(cur, de.name)

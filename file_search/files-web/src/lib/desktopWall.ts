@@ -19,6 +19,9 @@ export interface DesktopWallApi {
   onEntryUnpinned: (cb: (entry: { indexName: string; path: string }) => void) => void
   /** 懸浮視窗自己呼叫：關掉自己、項目放回列表。只有懸浮視窗（FocusedEntry）會用到。 */
   unpinSelf: () => void
+  /** 懸浮視窗的拖曳把手：按下開始讓視窗跟著游標走、放開結束。見 lib/windowDrag.ts。 */
+  dragWindowStart: () => void
+  dragWindowEnd: () => void
 }
 
 declare global {

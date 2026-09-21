@@ -13,6 +13,8 @@ export function EntryRow({
   stat,
   expanded,
   onToggle,
+  preview,
+  onTogglePreview,
   onOpen,
   onCopy,
   onEdit,
@@ -32,6 +34,10 @@ export function EntryRow({
   stat: PathStat | undefined
   expanded: boolean
   onToggle: () => void
+  /** 這一列的內容預覽是不是開著。狀態在 EntryList（一次最多開 `MAX_PREVIEWS` 個、
+   *  超過自動收掉最舊的），這裡只負責顯示與回報「使用者按了預覽鈕」。 */
+  preview: boolean
+  onTogglePreview: () => void
   onOpen: (select: boolean) => void
   onCopy: () => void
   /** 原地改這一列的分類／說明（只動 .md，不碰實體檔案）。未提供＝不顯示按鈕。 */
@@ -59,7 +65,6 @@ export function EntryRow({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => register(ref.current, entry.path), [register, entry.path])
-  const [preview, setPreview] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   // 這個表單開著就送心跳，讓共用牆上其他人看到「有人正在編輯這一列」；
@@ -76,7 +81,6 @@ export function EntryRow({
   const [seenSig, setSeenSig] = useState(rowSig)
   if (seenSig !== rowSig) {
     setSeenSig(rowSig)
-    setPreview(false)
     setConfirmDel(false)
     // 這一列的內容變了（含編輯成功後重新載入）——收掉編輯框、草稿對回新值。
     setEditOpen(false)
@@ -179,7 +183,7 @@ export function EntryRow({
             {previewable && (
               <button
                 className={`btn sm${preview ? ' on' : ''}`}
-                onClick={() => setPreview((v) => !v)}
+                onClick={onTogglePreview}
                 disabled={missing}
               >
                 <Eye size={13} aria-hidden /> {preview ? '收起預覽' : '預覽內容'}

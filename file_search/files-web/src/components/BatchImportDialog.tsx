@@ -2,6 +2,7 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderOpen } from 'lucide-react'
 import { useBulkAdd, useScan, useScanCategories } from '../hooks/useIndexes'
 import { FileBrowser } from './FileBrowser'
+import { ProgressBar } from './ProgressBar'
 import { scrimClose } from '../lib/scrimClose'
 
 /** 「是不是同一個檔案」的比對 key——對齊桌面版 path_key（Windows：大小寫、`/`↔`\` 統一）。 */
@@ -76,6 +77,7 @@ export function BatchImportDialog({
   }
 
   const result = scan.data
+  const progress = scan.progress
   const fresh = useMemo(
     () => (result ? result.files.filter((f) => !existing.has(norm(f.path))) : []),
     [result, existing],
@@ -149,6 +151,7 @@ export function BatchImportDialog({
                 <input
                   type="checkbox"
                   checked={recursive}
+                  disabled={scan.isPending}
                   onChange={(e) => {
                     setRecursive(e.target.checked)
                     invalidate()
@@ -169,6 +172,7 @@ export function BatchImportDialog({
                       className={`type-btn${types.has(c.label) ? ' on' : ''}`}
                       style={{ '--tc': c.color } as CSSProperties}
                       aria-pressed={types.has(c.label)}
+                      disabled={scan.isPending}
                       onClick={() => toggleType(c.label)}
                     >
                       <span className="type-ico" aria-hidden>
@@ -181,7 +185,7 @@ export function BatchImportDialog({
               </div>
 
               <div className="bi-scan">
-                <button className="btn" onClick={runScan} disabled={scan.isPending}>
+                <button className="btn" onClick={runScan} disabled={scan.isPending || add.isPending}>
                   {scan.isPending ? '掃描中…' : '掃描'}
                 </button>
                 {scan.error && <span className="err">{scan.error.message}</span>}
@@ -209,7 +213,24 @@ export function BatchImportDialog({
                 )}
               </div>
 
-              {result && (
+              {scan.isPending && (
+                <ProgressBar
+                  label="正在掃描資料夾…"
+                  value={progress?.total ? Math.min(1, progress.walked / progress.total) : undefined}
+                  detail={
+                    progress
+                      ? `已檢視 ${progress.walked.toLocaleString()} 個項目 · 符合 ${progress.matched.toLocaleString()} 個 · 已走過 ${progress.dirs.toLocaleString()} 個資料夾`
+                      : '準備中…'
+                  }
+                  current={progress?.current ?? folder}
+                  onCancel={scan.cancel}
+                />
+              )}
+              {scan.isPending && (
+                <p className="sub">檔案很多時需要一點時間，畫面不是當機——請稍候，或按「取消」中止。</p>
+              )}
+
+              {result && !scan.isPending && (
                 <>
                   <div className="cat-pills">
                     {result.categoryCounts.map((c) => (
@@ -256,10 +277,20 @@ export function BatchImportDialog({
                 </datalist>
               </div>
 
+              {add.isPending && (
+                <ProgressBar label={`正在把 ${fresh.length.toLocaleString()} 筆寫進「${indexName}」…`} />
+              )}
               {add.error && <p className="err">{add.error.message}</p>}
             </div>
             <div className="modal-foot">
-              <button className="btn" onClick={() => setPhase('pick')} disabled={add.isPending}>
+              <button
+                className="btn"
+                onClick={() => {
+                  scan.reset()
+                  setPhase('pick')
+                }}
+                disabled={add.isPending}
+              >
                 重新選資料夾
               </button>
               <span className="spacer" />

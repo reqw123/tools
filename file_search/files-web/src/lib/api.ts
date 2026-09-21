@@ -75,6 +75,22 @@ export interface ScanResult {
   extCounts: { ext: string; count: number }[]
 }
 
+/** 背景掃描的即時進度（見 server/scan-jobs.ts）。`total` 只有「不含子資料夾」才有。 */
+export interface ScanProgress {
+  walked: number
+  matched: number
+  dirs: number
+  current: string
+  total?: number
+}
+
+export interface ScanJob {
+  state: 'running' | 'done' | 'error' | 'cancelled'
+  progress: ScanProgress
+  result?: ScanResult
+  error?: string
+}
+
 export interface BlankItem {
   serial: number
   path: string
@@ -109,23 +125,55 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (res.status === 204) return undefined as T
   const data = (await res.json().catch(() => null)) as unknown
-  if (!res.ok) {
-    if (
-      res.status === 401 &&
-      data &&
-      typeof data === 'object' &&
-      'needAuth' in data &&
-      (data as { needAuth: unknown }).needAuth
-    ) {
-      throw new AuthError()
-    }
-    const msg =
-      data && typeof data === 'object' && 'error' in data
-        ? String((data as { error: unknown }).error)
-        : `HTTP ${res.status}`
-    throw new Error(msg)
-  }
+  if (!res.ok) throw errorFromResponse(res.status, data)
   return data as T
+}
+
+/** 把非 2xx 回應變成該丟的錯（需要密碼 → AuthError，其餘取 `error` 欄位）。 */
+function errorFromResponse(status: number, data: unknown): Error {
+  if (
+    status === 401 &&
+    data &&
+    typeof data === 'object' &&
+    'needAuth' in data &&
+    (data as { needAuth: unknown }).needAuth
+  ) {
+    return new AuthError()
+  }
+  const msg =
+    data && typeof data === 'object' && 'error' in data
+      ? String((data as { error: unknown }).error)
+      : `HTTP ${status}`
+  return new Error(msg)
+}
+
+/**
+ * 帶「上傳進度」的 multipart POST。`fetch` 拿不到上傳位元組進度，只有
+ * `XMLHttpRequest.upload.onprogress` 有，所以大批檔案上傳走這支。`onProgress`
+ * 的 total 是整個請求本體（含 multipart 邊界）的大小，比純檔案大小略大一點。
+ */
+function postFormWithProgress<T>(
+  path: string,
+  form: FormData,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', BASE + path)
+    xhr.withCredentials = true
+    xhr.responseType = 'json'
+    xhr.setRequestHeader('x-index-author', authorHeaderValue())
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.(e.loaded, e.total)
+    }
+    xhr.onload = () => {
+      const data = xhr.response as unknown
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as T)
+      else reject(errorFromResponse(xhr.status, data))
+    }
+    xhr.onerror = () => reject(new Error('網路連線中斷，上傳未完成'))
+    xhr.send(form)
+  })
 }
 
 /** 權限分級——'viewer' 只能讀不能寫（見 server/share.ts 的 shareGuardHook）。
@@ -313,7 +361,12 @@ export const api = {
    * 回傳 `{ added, skipped }`——`skipped` 是路徑不合法／超過單檔或整批大小
    * 上限被跳過的檔案數，不會讓整個上傳失敗。
    */
-  uploadFolder: (name: string, files: File[], category: string) => {
+  uploadFolder: (
+    name: string,
+    files: File[],
+    category: string,
+    onProgress?: (loaded: number, total: number) => void,
+  ) => {
     const qs = new URLSearchParams()
     if (category) qs.set('category', category)
     const suffix = qs.toString() ? `?${qs}` : ''
@@ -322,9 +375,10 @@ export const api = {
       const relPath = f.webkitRelativePath || f.name
       form.append('file', f, encodeURIComponent(relPath))
     }
-    return req<{ added: number; skipped: number }>(
+    return postFormWithProgress<{ added: number; skipped: number }>(
       `/indexes/${encodeURIComponent(name)}/upload-batch${suffix}`,
-      { method: 'POST', body: form },
+      form,
+      onProgress,
     )
   },
   /**
@@ -365,11 +419,15 @@ export const api = {
   // ── 批次 ────────────────────────────────────────────────────────
   scanCategories: () =>
     req<{ categories: ScanCategory[] }>('/scan-categories').then((r) => r.categories),
-  scan: (dir: string, recursive: boolean, categories: string[]) =>
-    req<ScanResult>('/scan', {
+  /** 開始背景掃描，立刻回 job id；進度／結果用 scanStatus 輪詢。 */
+  scanStart: (dir: string, recursive: boolean, categories: string[]) =>
+    req<{ id: string }>('/scan/jobs', {
       method: 'POST',
       body: JSON.stringify({ dir, recursive, categories }),
     }),
+  scanStatus: (id: string) => req<ScanJob>(`/scan/jobs/${encodeURIComponent(id)}`),
+  scanCancel: (id: string) =>
+    req<void>(`/scan/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /** 批次匯入：整批共用一個分類，說明留空。回實際新增筆數（已收錄的會略過）。 */
   bulkAdd: (name: string, paths: string[], category: string) =>
     req<{ added: number }>(`/indexes/${encodeURIComponent(name)}/entries/bulk`, {

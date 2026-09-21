@@ -3,6 +3,7 @@ import { FolderOpen, FolderUp } from 'lucide-react'
 import { useScanCategories, useUploadFolder } from '../hooks/useIndexes'
 import { categoryOf, OTHER_LABEL } from '../lib/extCategories'
 import { scrimClose } from '../lib/scrimClose'
+import { ProgressBar } from './ProgressBar'
 
 /** 跟 server/store.ts 的 `SCAN_SKIP_DIRS` 同一份清單——遞迴掃描本機資料夾時
  *  略過的產出物／依賴／版控內部資料夾。上傳資料夾也比照略過，不然選到專案
@@ -69,6 +70,8 @@ export function UploadFolderDialog({
   const [allFiles, setAllFiles] = useState<File[]>([])
   const [types, setTypes] = useState<Set<string>>(new Set())
   const [category, setCategory] = useState('')
+  // 上傳位元組進度（XHR upload.onprogress）；null＝還沒收到第一筆回報。
+  const [sent, setSent] = useState<{ loaded: number; total: number } | null>(null)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -124,13 +127,36 @@ export function UploadFolderDialog({
   const truncated = files.length > MAX_BATCH_FILES
   const willSend = truncated ? files.slice(0, MAX_BATCH_FILES) : files
 
+  // 各檔案累計到第幾個位元組——把「已送出 N 位元組」換算成「約第幾個檔案」。
+  const cumulative = useMemo(() => {
+    const out: number[] = []
+    let acc = 0
+    for (const f of willSend) {
+      acc += f.size
+      out.push(acc)
+    }
+    return out
+  }, [willSend])
+  const sendBytes = cumulative[cumulative.length - 1] ?? 0
+
   const submit = () => {
     if (willSend.length === 0 || upload.isPending) return
+    setSent(null)
     upload.mutate(
-      { files: willSend, category: category.trim() },
+      {
+        files: willSend,
+        category: category.trim(),
+        onProgress: (loaded, total) => setSent({ loaded, total }),
+      },
       { onSuccess: (r) => onUploaded(r.added, r.skipped) },
     )
   }
+
+  // 位元組全部送完後，server 還要收尾（寫入索引、回應），這段沒有位元組可報，
+  // 改畫不定長進度條，不要讓 100% 卡著像當機。
+  const allSent = !!sent && sent.total > 0 && sent.loaded >= sent.total
+  const sentFraction = sent && sent.total > 0 ? sent.loaded / sent.total : 0
+  const filesDone = cumulative.filter((end) => end <= sentFraction * sendBytes).length
 
   return (
     <div className="scrim" {...scrimClose(() => { if (!upload.isPending) onClose() })}>
@@ -157,6 +183,9 @@ export function UploadFolderDialog({
                 從你這台裝置挑一整個資料夾上傳到「{indexName}」——會保留子資料夾結構，
                 但 <code>node_modules</code>／<code>.git</code> 這類產出物資料夾會自動略過。
                 跟「匯入資料夾」不同，這裡不需要瀏覽主機硬碟，適合共用牆上的遠端使用者。
+              </p>
+              <p className="sub">
+                資料夾裡的檔案很多時，瀏覽器讀取需要一點時間（選好後可能停一下才進下一步），請稍候，不是當機。
               </p>
               <button
                 type="button"
@@ -209,6 +238,7 @@ export function UploadFolderDialog({
                       className={`type-btn${types.has(c.label) ? ' on' : ''}`}
                       style={{ '--tc': c.color } as CSSProperties}
                       aria-pressed={types.has(c.label)}
+                      disabled={upload.isPending}
                       onClick={() => toggleType(c.label)}
                     >
                       <span className="type-ico" aria-hidden>
@@ -275,6 +305,26 @@ export function UploadFolderDialog({
                 </datalist>
               </div>
 
+              {upload.isPending && (
+                <ProgressBar
+                  label={
+                    allSent
+                      ? '檔案已傳完，伺服器正在寫入索引…'
+                      : `正在上傳 ${willSend.length.toLocaleString()} 個檔案…`
+                  }
+                  value={sent && !allSent ? sentFraction : allSent ? undefined : 0}
+                  detail={
+                    sent && !allSent
+                      ? `已傳 ${sizeLabel(sentFraction * sendBytes)} / ${sizeLabel(sendBytes)} · 約第 ${Math.min(filesDone + 1, willSend.length).toLocaleString()} / ${willSend.length.toLocaleString()} 個檔案`
+                      : allSent
+                        ? undefined
+                        : '準備上傳…'
+                  }
+                />
+              )}
+              {upload.isPending && (
+                <p className="sub">請保持視窗開啟，上傳完成前無法關閉；檔案很多或很大時需要一些時間。</p>
+              )}
               {upload.error && <p className="err">{upload.error.message}</p>}
             </div>
             <div className="modal-foot">

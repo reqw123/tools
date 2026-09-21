@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import {
   useCategoryColors,
@@ -9,6 +9,7 @@ import {
 } from '../hooks/useIndexes'
 import { useExists } from '../hooks/useExists'
 import { EntryRow } from './EntryRow'
+import { windowDragHandlers } from '../lib/windowDrag'
 
 /**
  * 「拖出去變懸浮視窗」的實際內容——wallpaper-app 開的那個小視窗載入的就是
@@ -32,7 +33,11 @@ export function FocusedEntry({ indexName, path }: { indexName: string; path: str
       ),
     [payload],
   )
+  const frameRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = useState(false)
+  // 這個小視窗一次只有一列，不需要 EntryList 那套「最多開 N 個預覽」的管理。
+  const [preview, setPreview] = useState(false)
   const { stats, request } = useExists()
 
   useEffect(() => {
@@ -47,6 +52,25 @@ export function FocusedEntry({ indexName, path }: { indexName: string; path: str
   useEffect(() => {
     if (isSuccess && !entry) window.desktopWall?.unpinSelf()
   }, [isSuccess, entry])
+
+  // 拖曳把手釘在不捲動的外框上，內層才捲動；捲軸有多寬就把右／下緣的把手往內縮多少，
+  // 不然把手會蓋住捲軸、捲軸拖不動。捲軸出現／消失取決於內容高度（展開、開預覽），
+  // 所以內容和捲動區變大小時都要重量。
+  const shown = !!entry
+  useLayoutEffect(() => {
+    const frame = frameRef.current
+    const scroller = scrollRef.current
+    if (!frame || !scroller) return
+    const measure = () => {
+      frame.style.setProperty('--sb-x', `${scroller.offsetWidth - scroller.clientWidth}px`)
+      frame.style.setProperty('--sb-y', `${scroller.offsetHeight - scroller.clientHeight}px`)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(scroller)
+    if (scroller.firstElementChild) ro.observe(scroller.firstElementChild)
+    return () => ro.disconnect()
+  }, [shown])
 
   const onOpen = useCallback((select: boolean) => {
     api.open(path, select).catch(() => {})
@@ -65,15 +89,15 @@ export function FocusedEntry({ indexName, path }: { indexName: string; path: str
   if (!entry) return null
 
   return (
-    <div className="focused-entry">
+    <div className="focused-entry" ref={frameRef}>
       {/* 四邊都能拖——這個小視窗常常是緊貼著某個螢幕邊界生出來的（拖出去
           變懸浮視窗本來就是靠近邊緣才觸發），只留上緣一條窄窄的拖曳把手，
           萬一那條剛好貼著螢幕邊界，使用者會抓不到、完全動不了它。四邊都給
           一條拖曳區，不管視窗貼在哪一側，一定還有其他邊摸得到。 */}
-      <div className="focused-drag-handle" aria-hidden />
-      <div className="focused-drag-edge edge-bottom" aria-hidden />
-      <div className="focused-drag-edge edge-left" aria-hidden />
-      <div className="focused-drag-edge edge-right" aria-hidden />
+      <div className="focused-drag-handle" aria-hidden {...windowDragHandlers} />
+      <div className="focused-drag-edge edge-bottom" aria-hidden {...windowDragHandlers} />
+      <div className="focused-drag-edge edge-left" aria-hidden {...windowDragHandlers} />
+      <div className="focused-drag-edge edge-right" aria-hidden {...windowDragHandlers} />
       <button
         type="button"
         className="focused-unpin"
@@ -82,26 +106,30 @@ export function FocusedEntry({ indexName, path }: { indexName: string; path: str
       >
         ↩
       </button>
-      <div className="list">
-        <EntryRow
-          entry={entry}
-          stat={stats[entry.path]}
-          expanded={expanded}
-          onToggle={() => setExpanded((v) => !v)}
-          onOpen={onOpen}
-          onCopy={onCopy}
-          onEdit={(v) => edit.mutate({ serial: entry.serial, path: entry.path, ...v })}
-          editing={edit.isPending}
-          editError={edit.isError ? (edit.error?.message ?? '更新失敗') : null}
-          categories={categories}
-          categoryColors={categoryColors ?? {}}
-          onSetCategoryColor={(c, color) =>
-            c.trim() && setCatColor.mutate({ category: c.trim(), color })
-          }
-          onDelete={() => del.mutate({ serial: entry.serial, path: entry.path })}
-          deleting={del.isPending}
-          register={() => undefined}
-        />
+      <div className="focused-scroll" ref={scrollRef}>
+        <div className="list">
+          <EntryRow
+            entry={entry}
+            stat={stats[entry.path]}
+            expanded={expanded}
+            onToggle={() => setExpanded((v) => !v)}
+            preview={preview}
+            onTogglePreview={() => setPreview((v) => !v)}
+            onOpen={onOpen}
+            onCopy={onCopy}
+            onEdit={(v) => edit.mutate({ serial: entry.serial, path: entry.path, ...v })}
+            editing={edit.isPending}
+            editError={edit.isError ? (edit.error?.message ?? '更新失敗') : null}
+            categories={categories}
+            categoryColors={categoryColors ?? {}}
+            onSetCategoryColor={(c, color) =>
+              c.trim() && setCatColor.mutate({ category: c.trim(), color })
+            }
+            onDelete={() => del.mutate({ serial: entry.serial, path: entry.path })}
+            deleting={del.isPending}
+            register={() => undefined}
+          />
+        </div>
       </div>
     </div>
   )

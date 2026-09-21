@@ -1036,6 +1036,53 @@ select option {
   z-index: 50;
 }
 
+/* 「釋放全部預覽資源」浮動鈕（EntryList）——有預覽開著才出現。極小、半透明，跟右下角
+   捲動鈕並排（左邊一格）用同一套 FAB 樣式，滑鼠移上去才變清楚，不擋內容。 */
+.preview-release {
+  position: fixed;
+  right: calc(clamp(0.6rem, 2vw, 1.3rem) + 2.4rem + 0.95rem);
+  bottom: clamp(0.6rem, 2vw, 1.3rem);
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--raise) 90%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.preview-release:hover,
+.preview-release:focus-visible {
+  opacity: 1;
+}
+.preview-release:hover {
+  background: color-mix(in srgb, var(--marker) 12%, var(--raise));
+}
+.preview-release-n {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.3rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.25rem;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: var(--marker-solid);
+  border-radius: 999px;
+}
+
 /* 右下角「捲到最上／最下」浮動鈕——內容比一個畫面高才出現（ScrollButtons）。 */
 .scroll-fab {
   position: fixed;
@@ -1465,6 +1512,75 @@ select option {
 .bi-result b { color: var(--ink); font-weight: 700; }
 .bi-result.warn { color: var(--alert); }
 
+/* 進度條（匯入資料夾掃描／寫入索引）。有 value 畫實際比例；沒有就畫來回滑動的
+   不定長條（遞迴掃描事先不知道總數）。 */
+.progress {
+  margin: 0.6rem 0 0.4rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.75rem;
+  background: var(--paper-2);
+}
+.progress-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
+.progress-label { font-size: 0.86rem; font-weight: 600; }
+.progress-meta {
+  margin-left: auto;
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.progress-meta b { color: var(--ink); }
+.progress-track {
+  position: relative;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--marker-solid);
+  transition: width 0.25s ease-out;
+}
+.progress-track.indeterminate .progress-fill {
+  position: absolute;
+  width: 35%;
+  animation: progress-slide 1.3s ease-in-out infinite;
+}
+@keyframes progress-slide {
+  0% { left: -35%; }
+  100% { left: 100%; }
+}
+.progress-detail {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.progress-current {
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 不要來回滑動——改成整條淡入淡出，仍然看得出「進行中」。 */
+  .progress-track.indeterminate .progress-fill {
+    left: 0;
+    width: 100%;
+    animation: progress-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes progress-pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 0.85; }
+  }
+}
+
 /* 檔案類型按鈕——每個類型一個色（--tc），一眼分辨。未選＝淡底＋原色字；
    選中＝滿色底＋白字。跟桌面版 ImportFolderDialog 的視覺一致。 */
 .type-grid {
@@ -1493,6 +1609,7 @@ select option {
   border-color: var(--tc);
 }
 .type-btn:active { transform: translateY(1px); }
+.type-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .type-btn.on {
   background: var(--tc);
   border-color: var(--tc);
@@ -1735,6 +1852,16 @@ select option {
   position: relative;
   width: 100vw;
   height: 100vh;
+  box-sizing: border-box;
+  /* 這一層自己不捲動——四邊的拖曳把手跟收回鈕是它的子元素，如果它是捲動容器，
+     把手（position: absolute）會跟著內容一起捲走：捲到下面之後上緣把手在畫面外、
+     左右邊只剩上半段、下緣跑到視窗中間，怎麼移到邊界都拖不動視窗（實測回報過）。
+     捲動交給內層 .focused-scroll。 */
+  overflow: hidden;
+}
+.focused-scroll {
+  position: absolute;
+  inset: 0;
   padding: 0.35rem;
   box-sizing: border-box;
   overflow: auto;
@@ -1744,21 +1871,24 @@ select option {
      兩個疊在一起會讓展開後超出視窗高度的內容（路徑/按鈕列/預覽）被直接
      裁掉、外層 .focused-entry 的 overflow: auto 完全碰不到——使用者只能
      拖拉視窗邊界撐大才看得到，滾輪沒用。改成 min-height 撐滿短內容、
-     overflow: visible 讓內容可以長高，捲動交回 .focused-entry 處理。 */
+     overflow: visible 讓內容可以長高，捲動交回 .focused-scroll 處理。 */
   min-height: 100%;
   overflow: visible;
 }
 .focused-entry .row {
   border-top: none;
 }
-/* 沒有系統標題列可以拖——四邊留透明的拖曳把手，靠 Electron 的
-   -webkit-app-region 讓整個小視窗能被拖著移動；角落故意留空給原生縮放
+/* 沒有系統標題列可以拖——四邊留透明的拖曳把手。**不用** `-webkit-app-region: drag`：
+   那種區域由作業系統處理、網頁收不到滑鼠事件，`:hover` 高亮跟 `cursor: move` 都不會
+   生效（實測游標停上去仍是一般箭頭）。改成一般元素，按住時由 lib/windowDrag.ts 通知
+   主行程讓視窗跟著游標走（wallpaper-app/window-drag.js）；角落故意留空給原生縮放
    握把（這個視窗 resizable: true）。 */
 .focused-drag-handle,
 .focused-drag-edge {
   position: absolute;
-  -webkit-app-region: drag;
-  z-index: 6;
+  user-select: none;
+  touch-action: none;
+  z-index: 300; /* 蓋過對話框遮罩(.scrim 100)／放大檢視(.zoom-scrim 200)——不然對話框開著就拖不動視窗 */
   cursor: move;
 }
 /* 拖曳區是透明的、又很窄，不好抓——滑鼠移進去時改游標＋淡淡亮一條。 */
@@ -1767,18 +1897,19 @@ select option {
   background: color-mix(in srgb, var(--marker) 24%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--marker) 55%, transparent);
 }
-.focused-drag-handle { top: 0; left: 0; right: 0; height: 1.4rem; }
-.focused-drag-edge.edge-bottom { left: 16px; right: 16px; bottom: 0; height: 14px; }
-.focused-drag-edge.edge-left { top: 1.4rem; bottom: 16px; left: 0; width: 14px; }
-.focused-drag-edge.edge-right { top: 1.4rem; bottom: 16px; right: 0; width: 14px; }
+/* --sb-x／--sb-y＝內層捲軸的寬／高（FocusedEntry 量出來的），把手讓開捲軸，不蓋住它。 */
+.focused-drag-handle { top: 0; left: 0; right: var(--sb-x, 0px); height: 1.4rem; }
+.focused-drag-edge.edge-bottom { left: 16px; right: calc(16px + var(--sb-x, 0px)); bottom: var(--sb-y, 0px); height: 14px; }
+.focused-drag-edge.edge-left { top: 1.4rem; bottom: calc(16px + var(--sb-y, 0px)); left: 0; width: 14px; }
+.focused-drag-edge.edge-right { top: 1.4rem; bottom: calc(16px + var(--sb-y, 0px)); right: var(--sb-x, 0px); width: 14px; }
 
 /* 收回按鈕——沒有系統標題列就沒有 ✕，這是懸浮視窗唯一能關掉自己、放回
    列表的方式，一定要疊在拖曳把手之上（no-drag，不然按下去變成拖視窗）。 */
 .focused-unpin {
   position: absolute;
   top: 0.25rem;
-  right: 0.25rem;
-  z-index: 7;
+  right: calc(0.25rem + var(--sb-x, 0px));
+  z-index: 301;
   -webkit-app-region: no-drag;
   width: 22px;
   height: 22px;
