@@ -102,6 +102,7 @@ hint.html          快捷鍵提示視窗（畫面中央淡入淡出，透過 hin
 hint-preload.js
 make-shortcut.ps1  由 .bat 每次啟動時呼叫：assets/shortcut-icon.jpg → .ico、（重）建桌面捷徑
 assets/            shortcut-icon.jpg（桌面捷徑圖示來源，可自行替換）
+demo/              產品展示腳本：用真實滑鼠鍵盤把整段操作自動走一遍（約 1 分鐘）＋清理，見 demo/README.md
 tray-icon.png
 ```
 
