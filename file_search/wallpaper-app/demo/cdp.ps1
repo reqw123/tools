@@ -48,7 +48,7 @@ function Cdp-Eval($target, [string]$expr) {
     try {
       $c = Cdp-Conn $target
       $script:CdpId++; $id = $script:CdpId
-      $msg = @{ id = $id; method = 'Runtime.evaluate'; params = @{ expression = $expr; returnByValue = $true; awaitPromise = $true } } | ConvertTo-Json -Depth 6 -Compress
+      $msg = @{ id = $id; method = 'Runtime.evaluate'; params = @{ expression = $expr; returnByValue = $true; awaitPromise = $true; userGesture = $true } } | ConvertTo-Json -Depth 6 -Compress
       $bytes = [Text.Encoding]::UTF8.GetBytes($msg)
       $c.SendAsync((New-Object 'System.ArraySegment[byte]' -ArgumentList (, $bytes)), 'Text', $true, $ct).Wait()
       $buf = New-Object byte[] 65536
@@ -76,8 +76,12 @@ const X = (sel, t) => [...document.querySelectorAll(sel)].filter(vis).find(e => 
 const P = (sel, ph) => [...document.querySelectorAll(sel)].filter(vis).find(e => (e.placeholder || "").includes(ph));
 const D = [...document.querySelectorAll(".sheet[role=dialog]")].find(vis);
 const I = D ? [...D.querySelectorAll("input")].filter(i => !["date","time","checkbox","file","color"].includes(i.type)) : [];
+// fx/fy：有外框的視窗（設定視窗）內容區相對 screenX/screenY 的位移（左右框、標題列）；無邊框的牆／控制列兩個都是 0
 const R = e => { if (!e) return null; e.scrollIntoView({block: "nearest"}); const r = e.getBoundingClientRect(); if (r.width === 0 || r.height === 0) return null;
-  return {x: window.screenX + r.left + r.width / 2, y: window.screenY + r.top + r.height / 2, l: window.screenX + r.left, t: window.screenY + r.top, w: r.width, h: r.height}; };
+  const fx = (window.outerWidth - window.innerWidth) / 2, fy = window.outerHeight - window.innerHeight - fx, ox = window.screenX + fx, oy = window.screenY + fy;
+  // k：Windows 顯示縮放（125%／150%…）。網頁座標是邏輯像素，滑鼠（SetCursorPos，腳本宣告了 DPI aware）是實體像素
+  const k = window.devicePixelRatio || 1;
+  return {x: (ox + r.left + r.width / 2) * k, y: (oy + r.top + r.height / 2) * k, l: (ox + r.left) * k, t: (oy + r.top) * k, w: r.width * k, h: r.height * k}; };
 '@
 
 function Find-Rect($target, [string]$expr) { Cdp-Eval $target "(() => { $($script:JSHELP) return R($expr); })()" }
@@ -94,13 +98,14 @@ function Wait-Rect([scriptblock]$getTarget, [string]$expr, [int]$timeoutMs = 100
           if ($r2 -and [math]::Abs($r1.x - $r2.x) -lt 1.5 -and [math]::Abs($r1.y - $r2.y) -lt 1.5) { return $r2 } }
       }
     } catch { }
+    Check-User
     Start-Sleep -Milliseconds 30
   }
   throw "找不到元素（逾時 ${timeoutMs}ms）：$expr"
 }
 function Wait-Cond([scriptblock]$cond, [int]$timeoutMs = 10000, [string]$what = '條件') {
   $t0 = Get-Date
-  while (((Get-Date) - $t0).TotalMilliseconds -lt $timeoutMs) { try { if (& $cond) { return } } catch { }; Start-Sleep -Milliseconds 60 }
+  while (((Get-Date) - $t0).TotalMilliseconds -lt $timeoutMs) { try { if (& $cond) { return } } catch { }; Check-User; Start-Sleep -Milliseconds 60 }
   throw "等待逾時（${timeoutMs}ms）：$what"
 }
 

@@ -1,0 +1,178 @@
+[
+    {
+        "id": "96cbbaef0801ed70",
+        "type": "tab",
+        "label": "AI IoT 控制系統",
+        "disabled": true,
+        "info": ""
+    },
+    {
+        "id": "64fda6bb24b5eaed",
+        "type": "mqtt in",
+        "z": "96cbbaef0801ed70",
+        "name": "ESP32 控制接收",
+        "topic": "esp32/control",
+        "qos": "0",
+        "datatype": "auto",
+        "broker": "48d05c9fb6e6d922",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 180,
+        "y": 200,
+        "wires": [
+            [
+                "c330ad83d8a65476",
+                "74e6ecd905e7fa01"
+            ]
+        ]
+    },
+    {
+        "id": "74e6ecd905e7fa01",
+        "type": "switch",
+        "z": "96cbbaef0801ed70",
+        "name": "ON/OFF 判斷",
+        "property": "payload",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "ON",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "OFF",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 450,
+        "y": 200,
+        "wires": [
+            [
+                "16d4de41daace207",
+                "7e141508abd0564d"
+            ],
+            [
+                "23844a5a4ba2e594",
+                "306abfe380412fe0"
+            ]
+        ]
+    },
+    {
+        "id": "7e141508abd0564d",
+        "type": "mqtt out",
+        "z": "96cbbaef0801ed70",
+        "name": "送出 ON",
+        "topic": "esp32/led",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "48d05c9fb6e6d922",
+        "x": 760,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "306abfe380412fe0",
+        "type": "mqtt out",
+        "z": "96cbbaef0801ed70",
+        "name": "送出 OFF",
+        "topic": "esp32/led",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "48d05c9fb6e6d922",
+        "x": 760,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "c330ad83d8a65476",
+        "type": "debug",
+        "z": "96cbbaef0801ed70",
+        "name": "收到控制指令",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 210,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "16d4de41daace207",
+        "type": "debug",
+        "z": "96cbbaef0801ed70",
+        "name": "LED ON",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 700,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "23844a5a4ba2e594",
+        "type": "debug",
+        "z": "96cbbaef0801ed70",
+        "name": "LED OFF",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 700,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "48d05c9fb6e6d922",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "YY.local",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    }
+]

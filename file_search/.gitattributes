@@ -1,0 +1,5 @@
+# 換機器 clone 下來也要能跑：批次檔一定要 CRLF（cmd 讀 LF 的批次檔，標籤／goto 會出錯），
+# PowerShell 腳本一併固定。repo 裡存 LF，checkout 時轉 CRLF——不靠各台電腦的 core.autocrlf 設定。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

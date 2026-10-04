@@ -2,12 +2,13 @@
 """清掉 run.ps1 展示時新增的資料。
 
 只動「這次展示產生、而且精確比對得到」的東西，比對不到就整個中止，不猜：
-  1. indexes/.sticky_notes.json 裡「這次執行期間新增、且帶展示特徵（完整標題／標籤「展示」／內文開頭句）」的便利貼
-     （其餘便利貼、垃圾桶都不動）——不只認完整標題，因為打字偶發掉字時標題會殘缺
+  1. indexes/.sticky_notes.json 裡「這次執行期間新增、且帶展示特徵（完整標題／標籤「展示」／內文固定句）」的便利貼，
+     主清單跟垃圾桶都清（展示會示範「刪除→從垃圾桶復原」，中途失敗時那張可能停在垃圾桶）；
+     其餘便利貼、垃圾桶裡的其他東西都不動——不只認完整標題，因為打字偶發掉字時標題會殘缺
   2. indexes/.sticky_notes_history/ 裡「內含展示便利貼、且是這次執行之後才產生」的快照
   3. indexes/<index>.md——只在裡面所有資料列的路徑都落在 --import-dir 底下時才刪
   4. %APPDATA%/wallpaper-app/settings.json 裡這張便利貼與這個索引集的懸浮視窗紀錄，
-     並把 wall 還原成執行前的值
+     並把 wall（以及 --settings-snapshot 給的 startMode／wallOpacity／crop）還原成執行前的值
 
 為什麼用 Python 而不是 PowerShell：這兩個 JSON 檔要「原樣寫回」（縮排、非 ASCII 不跳脫、
 結尾換行），Windows PowerShell 5.1 的 ConvertTo-Json 會整份重新排版。這裡先驗證
@@ -29,7 +30,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 IDX = os.path.join(ROOT, 'indexes')
 APPDATA = os.environ.get('APPDATA', '')
 SETTINGS = os.path.join(APPDATA, 'wallpaper-app', 'settings.json')
-BODY_MARK = '這張便利貼是 AI 用真實滑鼠與鍵盤'   # run.ps1 展示便利貼內文的開頭，用來認出殘缺標題的展示便利貼
+BODY_MARK = '這張便利貼是 AI 用真實滑鼠與鍵盤'   # run.ps1 展示便利貼內文裡的固定句，用來認出殘缺標題的展示便利貼
 
 
 def load(path, indent):
@@ -58,6 +59,10 @@ def main():
     ap.add_argument('--index', required=True, help='展示時新建的索引集名稱（不含 .md）')
     ap.add_argument('--import-dir', required=True, help='匯入的資料夾（用來確認索引集裡只有這次匯入的東西）')
     ap.add_argument('--restore-wall', default='sticky', choices=['sticky', 'index'], help='執行前的 wall 設定')
+    ap.add_argument('--id-prefix', default='',
+                    help='這個前綴開頭的便利貼一律清掉（主清單＋垃圾桶，不看時間）——展示「從 JSON 匯入」的範例資料用固定前綴的 id')
+    ap.add_argument('--settings-snapshot', help='JSON 檔：執行前 settings.json 裡 startMode／wallOpacity／crop 的值，'
+                                                 '照原樣寫回（展示會切模式、調透明度、拉框裁切）')
     ap.add_argument('--since', type=int, required=True,
                     help='這次執行開始的 Unix 時間（秒）；只清這之後新增的便利貼／產生的歷史快照。'
                          '必填：不給的話比對範圍會變成所有時間，可能誤刪你自己標籤剛好叫「展示」的舊便利貼')
@@ -77,17 +82,32 @@ def main():
     #    不只認完整標題——打字偶發掉字時標題會殘缺（實際發生過：少了最後一個「示」），只認完整標題就漏掉了。
     since_local = datetime.fromtimestamp(a.since).isoformat()
     def is_demo(n):
-        return (n.get('title') == a.title or n.get('tag') == '展示' or n.get('body', '').startswith(BODY_MARK))
-    notes, eol = load(notes_p, 1)
-    hit = [n for n in notes['notes'] if n.get('created_at', '') >= since_local and is_demo(n)]
-    if len(hit) > 3:
-        sys.exit(f'中止：這次執行期間有 {len(hit)} 張符合展示特徵的便利貼，太多了，不確定是不是都是展示產生的。')
-    ids = {n['id'] for n in hit}
-    if hit:
-        before = len(notes['notes'])
+        return (n.get('title') == a.title or n.get('tag') == '展示' or BODY_MARK in n.get('body', ''))
+    if not os.path.exists(notes_p):          # 全新電腦、展示在新增便利貼之前就中止——還沒有這個檔
+        print('便利貼：資料檔還不存在，略過')
+        notes, eol = {'notes': []}, None
+    else:
+        notes, eol = load(notes_p, 1)
+    pre = a.id_prefix
+    is_imported = lambda n: bool(pre) and str(n.get('id', '')).startswith(pre)
+    hit = [n for n in notes['notes'] if not is_imported(n) and n.get('created_at', '') >= since_local and is_demo(n)]
+    # 垃圾桶：刪除時間在這次執行之後的才算（created_at 會被「編輯＝重新建立」改掉，刪除時間比較準）
+    trash_hit = [n for n in notes.get('trash', []) if not is_imported(n) and n.get('deleted_at', '') >= since_local and is_demo(n)]
+    # 展示會新增 1 張＋批次新增 3 張（標籤都是「展示」），上限留一點餘裕；再多就不像是展示產生的
+    if len(hit) + len(trash_hit) > 6:
+        sys.exit(f'中止：這次執行期間有 {len(hit) + len(trash_hit)} 張符合展示特徵的便利貼，太多了，不確定是不是都是展示產生的。')
+    # 範例資料：id 前綴精確比對，不算進上面的數量上限
+    hit, trash_hit = hit + [n for n in notes['notes'] if is_imported(n)], trash_hit + [n for n in notes.get('trash', []) if is_imported(n)]
+    ids = {n['id'] for n in hit} | {n['id'] for n in trash_hit}
+    if ids:
+        before, tb = len(notes['notes']), len(notes.get('trash', []))
         notes['notes'] = [n for n in notes['notes'] if n['id'] not in ids]
-        save(notes_p, notes, 1, eol)
-        print(f'便利貼：{before} → {len(notes["notes"])}（移除 {len(hit)} 張：{[n["title"] for n in hit]}；垃圾桶 {len(notes.get("trash", []))} 筆未動）')
+        if 'trash' in notes:
+            notes['trash'] = [n for n in notes['trash'] if n['id'] not in ids]
+        if eol is not None:
+            save(notes_p, notes, 1, eol)
+        print(f'便利貼：{before} → {len(notes["notes"])}，垃圾桶 {tb} → {len(notes.get("trash", []))}'
+              f'（移除 {[n["title"] for n in hit + trash_hit]}；其他垃圾桶項目未動）')
     else:
         print('便利貼：這次執行期間沒有符合的展示便利貼（可能已清過），略過')
 
@@ -96,7 +116,7 @@ def main():
     for f in glob.glob(os.path.join(IDX, '.sticky_notes_history', '*.json')):
         if os.path.getmtime(f) >= a.since - 2:
             txt = open(f, encoding='utf-8').read()
-            if BODY_MARK in txt or a.title in txt:
+            if BODY_MARK in txt or a.title in txt or (pre and pre in txt):
                 os.remove(f)
                 removed += 1
     print(f'歷史快照：刪除 {removed} 份（這次執行期間產生、內含展示便利貼）')
@@ -122,8 +142,16 @@ def main():
         for k in [k for k in s.get('pinnedEntries', {}) if k.startswith(prefix)]:
             del s['pinnedEntries'][k]
         s['wall'] = a.restore_wall
+        restored = []
+        if a.settings_snapshot:
+            snap = json.load(open(a.settings_snapshot, encoding='utf-8'))
+            for k in ('startMode', 'wallOpacity', 'crop'):
+                if k in snap and s.get(k) != snap[k]:
+                    s[k] = snap[k]
+                    restored.append(f'{k}={json.dumps(snap[k])}')
         save(SETTINGS, s, 2, eol)
-        print(f'設定：懸浮便利貼 {len(s.get("pinnedNotes", {}))} 個、懸浮索引項目 {len(s.get("pinnedEntries", {}))} 個，wall={s["wall"]}')
+        print(f'設定：懸浮便利貼 {len(s.get("pinnedNotes", {}))} 個、懸浮索引項目 {len(s.get("pinnedEntries", {}))} 個，wall={s["wall"]}'
+              + (f'；還原 {", ".join(restored)}' if restored else ''))
     print(f'備份在：{backup_dir}')
 
 
