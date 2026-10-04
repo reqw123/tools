@@ -351,7 +351,7 @@ for ($i = 0; $i -lt 3; $i++) {
     try { Wait-Cond { (& $doneCount) -ge ($i + 1) } 2500 "勾第 $($i + 1) 項"; break }
     catch {
       if ($_.Exception.Message -like 'USER_ABORT*' -or $try -eq 3) { throw }
-      # 點歪了（打到卡片本身＝打開便利貼）——關掉重試，第二次起點擊點會避開被蓋住的地方
+      # 保險：點歪了（打到卡片本身＝打開便利貼）就關掉重試。根本原因（游標移上卡片才浮起、框位移）已在 Click-Elem 處理
       if (Cdp-Eval (Wall-Target) '!!document.querySelector(".sheet[role=dialog]")') { Press-Combo @(0x1B); Hold 400 }
       Log "  （勾第 $($i + 1) 項沒反應，重試第 $($try + 1) 次）"
     }

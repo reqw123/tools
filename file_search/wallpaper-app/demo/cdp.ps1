@@ -96,7 +96,8 @@ const R = e => { if (!e) return null; e.scrollIntoView({block: "nearest"}); cons
 
 function Find-Rect($target, [string]$expr) { Cdp-Eval $target "(() => { $($script:JSHELP) return R($expr); })()" }
 
-# 輪詢等到元素出現且位置穩定（對話框淡入時位置會動，連兩次一致才算數）
+# 輪詢等到元素出現且位置穩定（對話框淡入、卡片 hover 浮起都會動——連續三次、間隔 60ms 都在 1px 內才算數；
+# 只比兩次、間隔 40ms 的話，0.32 秒緩動動畫的尾巴會被誤判成已經停住）
 # 逾時扣掉中途暫停的時間（F8 暫停、等使用者處理系統提示）——不然暫停久一點，回來正在等的步驟就直接判定逾時
 function Wait-Elapsed($t0, $p0) { ((Get-Date) - $t0).TotalMilliseconds - ($script:PausedMs - $p0) }
 function Wait-Rect([scriptblock]$getTarget, [string]$expr, [int]$timeoutMs = 10000) {
@@ -106,8 +107,10 @@ function Wait-Rect([scriptblock]$getTarget, [string]$expr, [int]$timeoutMs = 100
       $t = & $getTarget
       if ($t) {
         $r1 = Find-Rect $t $expr
-        if ($r1) { Start-Sleep -Milliseconds 40; $r2 = Find-Rect $t $expr
-          if ($r2 -and [math]::Abs($r1.x - $r2.x) -lt 1.5 -and [math]::Abs($r1.y - $r2.y) -lt 1.5) { return $r2 } }
+        if ($r1) { Start-Sleep -Milliseconds 60; $r2 = Find-Rect $t $expr
+          if ($r2 -and [math]::Abs($r1.x - $r2.x) -lt 1 -and [math]::Abs($r1.y - $r2.y) -lt 1) {
+            Start-Sleep -Milliseconds 60; $r3 = Find-Rect $t $expr
+            if ($r3 -and [math]::Abs($r2.x - $r3.x) -lt 1 -and [math]::Abs($r2.y - $r3.y) -lt 1) { return $r3 } } }
       }
     } catch { }
     Check-User
@@ -134,9 +137,21 @@ function Click-Human([int]$x, [int]$y, [int]$moveMs = -1, [int]$dwell = 130, [in
   [DemoWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds $settle
 }
 # -Fast：連續操作用（下一步本來就會等元素出現，不需要固定的停頓）——移動更短、停頓縮到約 0.06 秒
+# 先移過去、再量一次、才點：游標一進到元素上，hover 效果可能讓它位移（便利貼卡片會放大 1.025 倍、上浮 10px，
+# 0.32 秒動畫）——在「游標還沒過去」時量到的位置，點下去會偏掉（全新環境實測：點待辦框卻打開了便利貼）。
 function Click-Elem([scriptblock]$getTarget, [string]$expr, [int]$timeoutMs = 10000, [switch]$Fast) {
   $r = Wait-Rect $getTarget $expr $timeoutMs
-  if ($Fast) { Click-Human ([int]$r.x) ([int]$r.y) -1 60 60 100 } else { Click-Human ([int]$r.x) ([int]$r.y) }
+  $p = Cursor-Pos; $d = [math]::Sqrt(($r.x - $p[0]) * ($r.x - $p[0]) + ($r.y - $p[1]) * ($r.y - $p[1]))
+  $moveMs = [int][math]::Min(350, [math]::Max($(if ($Fast) { 100 } else { 140 }), 110 + $d * 0.28))
+  Move-Mouse ([int]$r.x) ([int]$r.y) $moveMs
+  $r2 = $null; try { $r2 = Wait-Rect $getTarget $expr 2500 } catch { if ($_.Exception.Message -like 'USER_ABORT*') { throw } }
+  if ($r2) {
+    if ([math]::Abs($r2.x - $r.x) -gt 1.5 -or [math]::Abs($r2.y - $r.y) -gt 1.5) { Move-Mouse ([int]$r2.x) ([int]$r2.y) 90 }
+    $r = $r2
+  }
+  Start-Sleep -Milliseconds $(if ($Fast) { 40 } else { 90 })
+  [DemoWin]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60
+  [DemoWin]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds $(if ($Fast) { 60 } else { 220 })
   return $r
 }
 
