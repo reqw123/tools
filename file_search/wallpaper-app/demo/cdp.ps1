@@ -81,7 +81,17 @@ const R = e => { if (!e) return null; e.scrollIntoView({block: "nearest"}); cons
   const fx = (window.outerWidth - window.innerWidth) / 2, fy = window.outerHeight - window.innerHeight - fx, ox = window.screenX + fx, oy = window.screenY + fy;
   // k：Windows 顯示縮放（125%／150%…）。網頁座標是邏輯像素，滑鼠（SetCursorPos，腳本宣告了 DPI aware）是實體像素
   const k = window.devicePixelRatio || 1;
-  return {x: (ox + r.left + r.width / 2) * k, y: (oy + r.top + r.height / 2) * k, l: (ox + r.left) * k, t: (oy + r.top) * k, w: r.width * k, h: r.height * k}; };
+  // 點擊點要「真的打得到這個元素」：中心被別的東西蓋住（例如便利貼上絕對定位的完成章壓在第一個待辦框上）
+  // 就在元素範圍內找一個打得到的點——換螢幕尺寸、版面不同時最常出這種事
+  const hits = (cx, cy) => { const h = document.elementFromPoint(cx, cy); return !!h && (h === e || e.contains(h)); };
+  let cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  if (cx >= 0 && cy >= 0 && cx < innerWidth && cy < innerHeight && !hits(cx, cy)) {
+    for (const fy of [0.5, 0.3, 0.7, 0.2, 0.8]) { let found = false;
+      for (const fx2 of [0.5, 0.3, 0.7, 0.2, 0.8]) { const px = r.left + r.width * fx2, py = r.top + r.height * fy;
+        if (hits(px, py)) { cx = px; cy = py; found = true; break; } }
+      if (found) break; }
+  }
+  return {x: (ox + cx) * k, y: (oy + cy) * k, l: (ox + r.left) * k, t: (oy + r.top) * k, w: r.width * k, h: r.height * k}; };
 '@
 
 function Find-Rect($target, [string]$expr) { Cdp-Eval $target "(() => { $($script:JSHELP) return R($expr); })()" }

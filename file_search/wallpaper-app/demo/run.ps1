@@ -344,9 +344,18 @@ Log '✔ 便利貼新增成功（已寫入檔案，畫面上可見）'
 Hold 900; [void](Shot 'r03-note-added')
 
 Step '便利貼牆' '直接在牆上勾待辦' '不用打開編輯：點框框就勾掉。還有沒做完的是紅色 ✗，全部勾完自動蓋上綠色完成章。'
+$doneCount = { [int](Cdp-Eval (Wall-Target) "(() => { $($script:JSHELP) return $($noteJs)?.querySelectorAll('.task.done').length ?? 0; })()") }
 for ($i = 0; $i -lt 3; $i++) {
-  [void](Click-Elem $wall "$($noteJs)?.querySelectorAll('.task .box[role=checkbox]')[$i]")
-  Wait-Cond { [int](Cdp-Eval (Wall-Target) "(() => { $($script:JSHELP) return $($noteJs)?.querySelectorAll('.task.done').length ?? 0; })()") -ge ($i + 1) } 5000 "勾第 $($i + 1) 項"
+  for ($try = 1; $try -le 3; $try++) {
+    [void](Click-Elem $wall "$($noteJs)?.querySelectorAll('.task .box[role=checkbox]')[$i]")
+    try { Wait-Cond { (& $doneCount) -ge ($i + 1) } 2500 "勾第 $($i + 1) 項"; break }
+    catch {
+      if ($_.Exception.Message -like 'USER_ABORT*' -or $try -eq 3) { throw }
+      # 點歪了（打到卡片本身＝打開便利貼）——關掉重試，第二次起點擊點會避開被蓋住的地方
+      if (Cdp-Eval (Wall-Target) '!!document.querySelector(".sheet[role=dialog]")') { Press-Combo @(0x1B); Hold 400 }
+      Log "  （勾第 $($i + 1) 項沒反應，重試第 $($try + 1) 次）"
+    }
+  }
   Hold 350
 }
 Wait-Cond { Cdp-Eval (Wall-Target) "(() => { $($script:JSHELP) return !!$($noteJs)?.querySelector('.todo-stamp.all-done'); })()" } 5000 '完成章出現'
