@@ -46,9 +46,14 @@ if (-not $noWait -and $runArgs.Count -eq 0) {
   $total = 15 + ($chosen | Measure-Object -Property sec -Sum).Sum
   $total = [int]($total / [math]::Sqrt($sp.v))                            # 速度只縮放停頓，不是全程等比例，粗估就好
   $runArgs = @('-Sections', (($chosen | ForEach-Object id) -join ','), '-Speed', $sp.v)
+  $rec = $false
+  if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {                # 沒裝 ffmpeg 就不問
+    $in = Read-Host '  同時錄成影片嗎？ y＝錄（存到 wallpaper-app\demo\out\recordings）　直接按 Enter＝不錄'
+    if ($in.Trim() -match '^[yY]') { $runArgs += '-Record'; $rec = $true }
+  }
   Write-Host ''
   Write-Host ('  將播放：{0}' -f (($chosen | ForEach-Object { $_.name -replace '（.*$', '' }) -join '、'))
-  Write-Host ('  速度：{0}　大約 {1} 分 {2} 秒' -f $sp.name, [int][math]::Floor($total / 60), ($total % 60))
+  Write-Host ('  速度：{0}　大約 {1} 分 {2} 秒{3}' -f $sp.name, [int][math]::Floor($total / 60), ($total % 60), $(if ($rec) { '　（同時錄影，螢幕上看到的都會錄進去）' } else { '' }))
 }
 
 Write-Host ''
@@ -74,6 +79,8 @@ $rc = $LASTEXITCODE
 
 Write-Host ''
 if ($rc -eq 0) { Write-Host '展示完成。' }
+$latest = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'out\recordings') -Filter *.mp4 -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-30) } | Sort-Object LastWriteTime | Select-Object -Last 1
+if ($runArgs -contains '-Record' -and $latest) { Write-Host "錄影檔：$($latest.FullName)" }
 elseif ($rc -eq 2) { Write-Host '已提前結束，展示資料已清理、設定已還原。' }
 else { Write-Host "展示中止，結束碼 $rc。詳見 wallpaper-app\demo\out\run.log" }
 if (-not $noWait) { Write-Host '按任意鍵關閉…'; [void][Console]::ReadKey($true) }

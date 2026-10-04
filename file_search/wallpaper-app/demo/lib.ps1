@@ -257,6 +257,27 @@ function Notice-Start([string]$head, [string]$body) {
 }
 function Notice-Stop { [DemoNotice]::Stop() }
 
+# ── 錄影：用 ffmpeg 擷取主螢幕（gdigrab），整場展示錄成一支 MP4 ───────────────────
+# 字幕條、右側說明都是真的視窗，會一起錄進去。沒有聲音（gdigrab 只抓畫面）。
+# 停止時送「q」給 ffmpeg 讓它正常收尾（MP4 要寫完索引才播得了；直接砍掉會壞檔）。
+function Record-Start([string]$path) {
+  $ff = Get-Command ffmpeg -ErrorAction SilentlyContinue
+  if (-not $ff) { return $null }
+  New-Item -ItemType Directory -Force (Split-Path $path) | Out-Null
+  $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+  $w = $b.Width - ($b.Width % 2); $h = $b.Height - ($b.Height % 2)           # H.264／yuv420p 要偶數寬高
+  $psi = New-Object Diagnostics.ProcessStartInfo $ff.Source
+  $psi.Arguments = "-hide_banner -loglevel error -nostats -y -f gdigrab -framerate 30 -offset_x $($b.X) -offset_y $($b.Y) -video_size ${w}x$h -draw_mouse 1 -i desktop " +
+    "-c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p -movflags +faststart `"$path`""
+  $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.CreateNoWindow = $true
+  return [Diagnostics.Process]::Start($psi)
+}
+function Record-Stop($proc) {
+  if (-not $proc -or $proc.HasExited) { return }
+  try { $proc.StandardInput.Write('q'); $proc.StandardInput.Flush() } catch { }
+  if (-not $proc.WaitForExit(20000)) { try { $proc.Kill() } catch { } }
+}
+
 # ── Windows 原生檔案對話框（開啟／另存新檔）─────────────────────────────────────
 # 網頁的 <input type=file> 與下載會跳出系統對話框，它不是網頁、除錯埠看不到——用視窗類別 #32770 找。
 if (-not ([System.Management.Automation.PSTypeName]'DemoDlg').Type) {

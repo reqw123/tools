@@ -34,6 +34,8 @@ param(
   [string]$NoteTitle = 'AI 自動化展示',                                     # 展示用便利貼的標題
   [string[]]$Sections = @('shell', 'sticky', 'settings', 'index'),         # 要看哪幾段：shell 桌面牆外殼／sticky 便利貼牆／settings 設定視窗／index 索引牆
   [double]$Speed = 1.0,                                                     # 速度：2＝停頓減半、0.5＝停頓加倍（只影響讓觀眾閱讀的停頓，滑鼠移動維持人的節奏）
+  [switch]$Record,                                                          # 同時錄成影片（ffmpeg，存到 demo\out\recordings\）
+  [string]$RecordPath = '',                                                 # 錄影檔路徑（不給就用時間命名）
   [switch]$NoCleanup,                                                       # 跑完不要清掉新增的資料
   [switch]$KeepAppOnFailure                                                 # 失敗時讓桌面版留著開著、不清理（除錯用）
 )
@@ -271,6 +273,12 @@ $snap87 = $null; $snap88 = $null; $restored87 = $false; $failure = $null; $userA
 function App-Running { @(Get-Process electron -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*wallpaper-app*' }).Count -gt 0 }
 function Quit-App { $qt = Cdp-Targets | Where-Object { $_.url -match 'quit-button' } | Select-Object -First 1; if ($qt) { [void](Cdp-Eval $qt 'window.dwQuit.quit()') } }   # 不用滑鼠的關閉（安全網用）
 
+$recProc = $null
+if ($Record -or $RecordPath) {
+  if (-not $RecordPath) { $RecordPath = Join-Path $OutDir ('recordings\桌面牆展示_{0}.mp4' -f (Get-Date).ToString('yyyyMMdd_HHmmss')) }
+  $recProc = Record-Start $RecordPath
+  if ($recProc) { Write-Host "[錄影] 開始錄影：$RecordPath" } else { $warnings += '找不到 ffmpeg，這次沒有錄影（安裝 ffmpeg 並加進 PATH 就能用 -Record）' }
+}
 Caption-Start
 Notice-Start '你的原始檔案：唯讀' ("索引牆只讀取檔案、記下路徑與說明，資料存在系統自己的索引檔。`n`n移除項目、刪除索引集、批次操作都只動索引紀錄——硬碟上的原檔案不會被移動、修改或刪除。便利貼插圖也是另外複製一份。")
 Pace-Hint
@@ -794,7 +802,7 @@ Log ('全程 {0:N1} 秒' -f ((Get-Date) - $script:T0).TotalSeconds)
 # ── 安全網：失敗時桌面版可能還開著 ──────────────────────────────────────────
 $script:Aborting = $true; [DemoKeys]::Disarm()                           # 展示段落結束，之後的收尾不再理會滑鼠／按鍵
 if ($failure -and $KeepAppOnFailure -and -not $userAbort) {
-  Caption-Stop; Notice-Stop
+  Caption-Stop; Notice-Stop; Record-Stop $recProc
   Log '（-KeepAppOnFailure：桌面版保持開啟、沒有清理。處理完請用右上角 ✕ 關掉，再跑 cleanup.py；介面記憶不會自動還原。）'
   $script:LogW.Dispose()
   throw $failure
@@ -833,6 +841,11 @@ else {
 if ($warnings.Count) { Log '⚠ 注意：'; $warnings | ForEach-Object { Log "  - $_" } } elseif (-not $failure) { Log '✔ 全部檢查通過' }
 if ($userAbort) { Caption-Set '提前結束' '已清理完畢' '展示資料都清掉、設定也還原了。'; Start-Sleep -Milliseconds 1500 }
 elseif (-not $failure) { Caption-Set '展示結束' '謝謝觀看' '以上是桌面牆的主要功能。'; Hold 2500 }
+if ($recProc) {                                                           # 先停錄影（停在「謝謝觀看」那一格），再收字幕
+  Record-Stop $recProc
+  if (Test-Path -LiteralPath $RecordPath) { Log ('🎬 錄影已存：{0}（{1:N1} MB）' -f $RecordPath, ((Get-Item -LiteralPath $RecordPath).Length / 1MB)) }
+  else { Log "⚠ 錄影檔沒有產生：$RecordPath" }
+}
 Caption-Stop; Notice-Stop
 $script:LogW.Dispose()
 if ($userAbort) { exit 2 }                                                # 使用者提前結束：不是錯誤，但讓啟動器知道沒有跑完
