@@ -14,6 +14,8 @@ export function Wall({
   onOpen,
   floatable,
   onDragOut,
+  floatBlocked,
+  onFloatBlocked,
   minColWidth,
   masonry = true,
   columnPerTag = false,
@@ -25,6 +27,9 @@ export function Wall({
   onOpen: (n: NoteT) => void
   floatable?: boolean
   onDragOut?: (note: NoteT, rect: DOMRect) => void
+  /** 懸浮便利貼已達上限——見 Note 的同名 prop。 */
+  floatBlocked?: boolean
+  onFloatBlocked?: () => void
   /** 「全域設定」→ 牆面欄寬；未載入時用預設 240。 */
   minColWidth?: number
   /** false＝關掉 JS 動態排版，交給 index.css 的 CSS grid fallback。 */
@@ -273,6 +278,8 @@ export function Wall({
               onOpen={onOpen}
               floatable={floatable}
               onDragOut={onDragOut}
+              floatBlocked={floatBlocked}
+              onFloatBlocked={onFloatBlocked}
               onGeometryChange={relayoutNow}
             />
           ))}
@@ -295,6 +302,8 @@ export function Wall({
             onOpen={onOpen}
             floatable={floatable}
             onDragOut={onDragOut}
+            floatBlocked={floatBlocked}
+            onFloatBlocked={onFloatBlocked}
             onGeometryChange={relayoutNow}
           />
         </Fragment>

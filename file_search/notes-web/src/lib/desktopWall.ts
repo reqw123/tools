@@ -14,11 +14,13 @@ export interface DesktopWallApi {
   pinNote: (
     note: { id: string },
     rect: { x: number; y: number; width: number; height: number },
-  ) => void
+  ) => Promise<boolean | undefined>
   /** 懸浮視窗被關掉（不管是按 ✕ 還是別的方式）時，通知牆把那則放回清單。 */
   onNoteUnpinned: (cb: (id: string) => void) => void
   /** 懸浮視窗自己呼叫：關掉自己、便利貼放回牆上。只有懸浮視窗（FocusedNote）會用到。 */
   unpinSelf: () => void
+  /** 主牆幫某則懸浮便利貼收回（懸浮上限警告視窗裡用）。舊版 wallpaper-app 沒有這個方法。 */
+  unpinNote?: (id: string) => void
   /** 懸浮視窗的拖曳把手：按下開始讓視窗跟著游標走、放開結束。見 lib/windowDrag.ts。 */
   dragWindowStart: () => void
   dragWindowEnd: () => void

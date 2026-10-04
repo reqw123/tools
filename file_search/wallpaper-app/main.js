@@ -32,6 +32,7 @@ let settingsWin = null;
 let hintWin = null; // 快捷鍵提示視窗（畫面中央淡入淡出）
 let hintHideTimer = null;
 let quitWin = null; // 右上角「結束程式」懸浮按鈕——獨立視窗，見 createQuitButton()
+let ctrlWin = null; // 右下角控制列（顯示／隱藏牆、互動／穿透）——獨立視窗，見 createWallControls()
 let tray = null;
 let mode = 'background'; // 'background'（滑鼠穿透）| 'interactive'（可操作卡片）
 // app.quit() 會把每個視窗都真的關掉一輪（觸發各自的 'closed'）才真正結束
@@ -87,6 +88,7 @@ function applyMode() {
   raiseQuitButton();
   refreshTray();
   pushSettingsState();
+  pushControls();
 }
 
 function setMode(next) {
@@ -114,7 +116,9 @@ function toggleVisible() {
     win.show();
     if (quitWin) quitWin.show();
   }
+  // 控制列（ctrlWin）刻意不跟著藏——牆藏起來時要靠它上面那顆鈕叫回來
   refreshTray();
+  pushControls();
 }
 
 // ── 切換牆 / 牆面透明度 ─────────────────────────────────────────────
@@ -288,6 +292,7 @@ function revealWallForAlarm() {
   if (mode !== 'interactive') setMode('interactive');
   raiseQuitButton();
   refreshTray();
+  pushControls();
 }
 
 // toastXml 裡的文字要跳脫——標題/內容含 < & " 之類會讓整段 XML 壞掉、通知
@@ -610,6 +615,18 @@ ipcMain.on('dw-open-userdata', () => shell.openPath(path.dirname(store.settingsP
 // （will-quit 會清乾淨子行程）。
 ipcMain.on('dw-quit', () => app.quit());
 
+// 右下角控制列（wall-controls.html）的兩顆鈕——跟快捷鍵同一條路徑，也一樣
+// 在畫面中央閃一下結果（見 SHORTCUT_META 的 hint：隱藏時不閃，牆本來就要消失）。
+ipcMain.on('dw-toggle-mode', () => {
+  if (!win || !win.isVisible()) return; // 牆藏起來時那顆鈕是停用的，這裡再擋一次
+  toggleMode();
+  showHint(mode === 'interactive' ? '互動模式：可以操作卡片' : '背景模式：滑鼠穿透桌面');
+});
+ipcMain.on('dw-toggle-visible', () => {
+  toggleVisible();
+  if (win && win.isVisible()) showHint('顯示桌面牆');
+});
+
 // ── 便利貼牆：拖框裁切 / 拖出去變懸浮視窗 ─────────────────────────────
 // 兩個手勢的畫面/判斷邏輯都在 notes-web 那邊（見它的 App.tsx /
 // Note.tsx），這裡只負責「真的動視窗」這件事——resize/reposition 現有視窗
@@ -773,8 +790,15 @@ function pinEntryWindow(indexName, entryPath, rect) {
   });
 }
 
+// 懸浮便利貼同時最多幾則——跟 notes-web/src/App.tsx 的 MAX_FLOATING_NOTES 保持一致。
+// 網頁那邊會先擋（拖不起來＋跳警告），這裡是保險：超過就不開窗、回 false。
+// 只擋「新拖出去」的；restorePinnedWindows() 還原上次留著的不受限（不會偷偷丟掉使用者的版面）。
+const MAX_FLOATING_NOTES = 5;
+const floatingNoteCount = () => [...pinnedWindows.keys()].filter((k) => k.startsWith('note:')).length;
+
 ipcMain.handle('wall-pin-note', (_e, note, rect) => {
   if (!win || pinnedWindows.has(`note:${note.id}`)) return;
+  if (floatingNoteCount() >= MAX_FLOATING_NOTES) return false;
   const b = win.getBounds();
   // 存檔跟實際開窗要用同一組（已經夾在螢幕內的）座標，不然重開之後 restore
   // 用的是沒夾過的原始值，又要重新算一次——直接在這裡夾好，兩邊一致。
@@ -827,6 +851,13 @@ ipcMain.on('wall-unpin-self', (e) => {
   if (w && !w.isDestroyed()) w.close();
 });
 
+// 主牆幫某則懸浮便利貼按「收回」（懸浮數量上限的警告視窗裡用）——關掉那個
+// 視窗就好，'closed' 會清存檔並送 note-unpinned 回主牆，跟懸浮視窗自己收回同一條路。
+ipcMain.on('wall-unpin-note', (_e, id) => {
+  const w = pinnedWindows.get(`note:${id}`);
+  if (w && !w.isDestroyed()) w.close();
+});
+
 // 懸浮視窗的拖曳把手（網頁自己收滑鼠事件，游標才會變成「移動」圖案）——
 // 主行程這邊只負責跟著游標搬視窗，見 window-drag.js。
 registerWindowDrag();
@@ -858,6 +889,7 @@ ipcMain.handle('dw-set-shortcut', (_e, action, accel) => {
   }
   store.write({ shortcuts: { ...cur, [action]: trimmed } });
   registerShortcuts();
+  pushControls(); // 控制列的提示文字有寫快捷鍵
   const st = shortcutStatus[action];
   return {
     ok: st === 'ok',
@@ -869,6 +901,7 @@ ipcMain.handle('dw-set-shortcut', (_e, action, accel) => {
 ipcMain.handle('dw-reset-shortcuts', () => {
   store.resetShortcuts();
   registerShortcuts();
+  pushControls();
   return settingsState();
 });
 
@@ -1192,24 +1225,48 @@ function showHint(text) {
 const QUIT_W = 64;
 const QUIT_H = 64;
 const QUIT_MARGIN = 8; // 離螢幕邊緣留一點距離，不要卡到系統邊角手勢
+// 右下角控制列不能貼著右下角：兩面牆網頁右下角都有「捲到最上／最下」浮動鈕
+// （notes-web／files-web 的 .scroll-fab，right/bottom 1.3rem，加上捲軸約佔離右緣
+// 35~76px、離下緣 21~100px，40×79 的直立膠囊）。控制列做成同樣大小的膠囊並排在
+// 它左邊、上下緣對齊；視窗四周多 8px 透明邊給陰影——透明邊一樣會吃掉點擊，所以
+// 整個視窗都要避開捲動鈕。改了 .scroll-fab 的位置／大小要回來調這幾個數字。
+const CTRL_W = 56; // 40px 膠囊 + 左右各 8px
+const CTRL_H = 95; // 79px 膠囊 + 上下各 8px
+const CTRL_RIGHT = 78; // 視窗右緣離工作區右緣（捲動鈕左緣約在 76px）
+const CTRL_BOTTOM = 13; // 視窗下緣離工作區下緣（膠囊底緣＝21px，對齊捲動鈕）
 
+// 右下角的控制列（ctrlWin）跟這顆共用定位／置頂邏輯（同一個理由：
+// 牆穿透時點不到牆上的任何東西，只有獨立視窗點得到）——直接併在這兩個
+// 函式裡，所有既有的呼叫點（切模式、換螢幕、點牆搶焦點…）就都涵蓋到。
 function positionQuitButton() {
-  if (!quitWin || quitWin.isDestroyed()) return;
-  const { x, y, width } = targetDisplay().workArea;
-  quitWin.setBounds({
-    x: Math.round(x + width - QUIT_W - QUIT_MARGIN),
-    y: Math.round(y + QUIT_MARGIN),
-    width: QUIT_W,
-    height: QUIT_H,
-  });
+  const { x, y, width, height } = targetDisplay().workArea;
+  if (quitWin && !quitWin.isDestroyed()) {
+    quitWin.setBounds({
+      x: Math.round(x + width - QUIT_W - QUIT_MARGIN),
+      y: Math.round(y + QUIT_MARGIN),
+      width: QUIT_W,
+      height: QUIT_H,
+    });
+  }
+  // workArea 已經扣掉工作列，所以右下角不會壓到工作列
+  if (ctrlWin && !ctrlWin.isDestroyed()) {
+    ctrlWin.setBounds({
+      x: Math.round(x + width - CTRL_W - CTRL_RIGHT),
+      y: Math.round(y + height - CTRL_H - CTRL_BOTTOM),
+      width: CTRL_W,
+      height: CTRL_H,
+    });
+  }
 }
 
 // 牆重新搶最上層（切模式／切牆／設定視窗開關）時，把這顆按鈕的視窗跟著
 // 拉回最前——不然視覺上會被剛置頂的牆蓋掉，看不到也點不到。
 function raiseQuitButton() {
-  if (!quitWin || quitWin.isDestroyed()) return;
-  quitWin.setAlwaysOnTop(true, 'screen-saver', 1);
-  quitWin.moveTop();
+  for (const w of [quitWin, ctrlWin]) {
+    if (!w || w.isDestroyed()) continue;
+    w.setAlwaysOnTop(true, 'screen-saver', 1);
+    w.moveTop();
+  }
 }
 
 function createQuitButton() {
@@ -1244,6 +1301,49 @@ function createQuitButton() {
   });
 }
 
+// ── 右下角控制列 ───────────────────────────────────────────────────
+// 一條直立小膠囊、兩顆鈕：上＝顯示／隱藏牆（toggleVisible），下＝互動／穿透
+// （toggleMode）。設計理由同上面的「結束程式」按鈕：穿透模式下牆整片點不到，
+// 鈕必須是自己吃滑鼠的獨立視窗才按得到。跟結束按鈕不同的是牆隱藏時**不**跟著
+// 藏——不然藏起來就沒有東西可以按回來（只剩快捷鍵／系統匣）。
+// 置頂、定位跟結束按鈕共用（positionQuitButton／raiseQuitButton）。
+function pushControls() {
+  if (!ctrlWin || ctrlWin.isDestroyed()) return;
+  ctrlWin.webContents.send('dw-controls-state', {
+    mode,
+    visible: !!(win && win.isVisible()),
+    keys: { mode: accelLabel('toggleMode'), visible: accelLabel('toggleVisible') },
+  });
+}
+
+function createWallControls() {
+  ctrlWin = new BrowserWindow({
+    width: CTRL_W,
+    height: CTRL_H,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    movable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    focusable: true,
+    fullscreenable: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      contextIsolation: true,
+      preload: path.join(__dirname, 'wall-controls-preload.js'),
+    },
+  });
+  positionQuitButton();
+  ctrlWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  ctrlWin.loadFile(path.join(__dirname, 'wall-controls.html'));
+  ctrlWin.webContents.on('did-finish-load', pushControls);
+  raiseQuitButton(); // 同結束按鈕：開窗當下就搶回最上層，不然會被牆蓋過去
+  ctrlWin.on('closed', () => {
+    ctrlWin = null;
+  });
+}
+
 // ── 生命週期 ────────────────────────────────────────────────────────
 app.on('second-instance', () => {
   if (settingsWin) settingsWin.focus();
@@ -1267,6 +1367,7 @@ app.whenReady().then(async () => {
   createWall();
   createHintOverlay();
   createQuitButton();
+  createWallControls();
   restorePinnedWindows();
   startDueBadgePolling();
 

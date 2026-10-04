@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('desktopWall', {
   // 懸浮視窗自己按「收回」用——這個 preload 同時掛在主牆視窗跟每個懸浮
   // 視窗上，主牆那邊不會用到這個方法。
   unpinSelf: () => ipcRenderer.send('wall-unpin-self'),
+  // 主牆幫某則懸浮便利貼收回（懸浮數量上限的警告視窗裡的「收回」按鈕）。
+  unpinNote: (id) => ipcRenderer.send('wall-unpin-note', id),
   // 懸浮視窗的拖曳把手：按下時呼叫 dragWindowStart，主行程開始讓視窗跟著游標走；
   // 放開（或被中斷）時呼叫 dragWindowEnd。見 window-drag.js。
   dragWindowStart: () => ipcRenderer.send('wall-drag-start'),

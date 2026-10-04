@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<title>桌面牆控制列</title>
+<style>
+  /* 右下角控制列：一條直立膠囊、上下兩顆鈕，大小跟兩面牆網頁右下角的
+     「捲到最上／最下」浮動鈕（.scroll-fab，約 40×79）一樣，並排在它左邊。
+       上：顯示／隱藏牆（眼睛）——牆藏起來時整顆亮成黃銅色，提醒「按這裡叫回來」
+       下：互動／穿透（手指／幽靈）——互動模式亮成黃銅色；牆藏起來時停用
+     跟 quit-button.html 一樣，這個視窗刻意「不」設 setIgnoreMouseEvents，
+     牆穿透或隱藏時這兩顆還是點得到——這是它做成獨立視窗的理由。
+     視窗比膠囊大一圈（四周 8px 透明邊），留給陰影跟 hover 放大。 */
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+  }
+  #wrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pill {
+    width: 40px;
+    display: flex;
+    flex-direction: column;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(32, 27, 20, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow:
+      0 6px 16px -6px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(6px);
+    opacity: 0.85;
+    transition: opacity 0.15s;
+  }
+  .pill:hover,
+  .pill:focus-within {
+    opacity: 1;
+  }
+  button {
+    position: relative;
+    width: 100%;
+    height: 39px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.92);
+    cursor: pointer;
+    transition: background 0.25s ease, color 0.25s ease, opacity 0.25s ease;
+  }
+  button + button {
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
+  }
+  button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.14);
+  }
+  button:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: -3px;
+    border-radius: 999px;
+  }
+  /* 「亮起來」＝黃銅色：互動模式、或牆目前藏起來 */
+  button.lit {
+    color: #fff;
+    background: linear-gradient(160deg, #e0ad58, #a9782f);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+  button.lit:hover:not(:disabled) {
+    background: linear-gradient(160deg, #ebbb68, #b8853a);
+  }
+  button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  /* 每顆鈕兩個圖示疊在一起，切換時交叉淡入＋微轉 */
+  svg {
+    grid-area: 1 / 1;
+    width: 18px;
+    height: 18px;
+    transition: opacity 0.22s ease, transform 0.3s cubic-bezier(0.3, 1.5, 0.5, 1);
+  }
+  .off { opacity: 0; transform: scale(0.55) rotate(-20deg); }
+  button.alt .on { opacity: 0; transform: scale(0.55) rotate(20deg); }
+  button.alt .off { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pill, button, svg { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="pill" role="group" aria-label="桌面牆控制">
+    <button id="visBtn" type="button">
+      <!-- lucide「eye」：牆顯示中 -->
+      <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>
+      </svg>
+      <!-- lucide「eye-off」：牆藏起來了 -->
+      <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/>
+      </svg>
+    </button>
+    <button id="modeBtn" type="button">
+      <!-- lucide「pointer」：互動模式 -->
+      <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M22 14a8 8 0 0 1-8 8"/><path d="M18 11v-1a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v1"/><path d="M10 9.5V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v10"/><path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
+      </svg>
+      <!-- lucide「ghost」：穿透模式 -->
+      <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+<script>
+  const visBtn = document.getElementById('visBtn');
+  const modeBtn = document.getElementById('modeBtn');
+  const keyHint = (k) => (k ? `（${k}）` : '');
+
+  function label(btn, text) {
+    btn.title = text;
+    btn.setAttribute('aria-label', text);
+  }
+
+  window.dwControls.onState(({ mode, visible, keys = {} }) => {
+    // 顯示／隱藏：藏起來時換成「眼睛劃掉」並亮起來
+    visBtn.classList.toggle('alt', !visible);
+    visBtn.classList.toggle('lit', !visible);
+    label(visBtn, visible ? `隱藏桌面牆${keyHint(keys.visible)}` : `顯示桌面牆${keyHint(keys.visible)}`);
+
+    // 互動／穿透：互動模式亮起來；牆藏起來時停用（模式對看不見的牆沒有意義）
+    const interactive = mode === 'interactive';
+    modeBtn.classList.toggle('alt', !interactive);
+    modeBtn.classList.toggle('lit', interactive && visible);
+    modeBtn.disabled = !visible;
+    label(
+      modeBtn,
+      !visible
+        ? '牆目前隱藏中——先顯示牆才能切換互動／穿透'
+        : interactive
+          ? `互動模式（可以操作便利貼）——按一下切換成穿透${keyHint(keys.mode)}`
+          : `穿透模式（滑鼠穿過牆到桌面）——按一下切換成互動${keyHint(keys.mode)}`,
+    );
+  });
+
+  visBtn.addEventListener('click', () => window.dwControls.toggleVisible());
+  modeBtn.addEventListener('click', () => window.dwControls.toggleMode());
+</script>
+</body>
+</html>

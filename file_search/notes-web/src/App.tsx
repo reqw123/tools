@@ -35,6 +35,7 @@ import { useNotifications } from './hooks/useNotifications'
 import { ActivityTicker } from './components/ActivityTicker'
 import { DanmakuLayer } from './components/DanmakuLayer'
 import { ScrollButtons } from './components/ScrollButtons'
+import { FloatLimitDialog } from './components/FloatLimitDialog'
 import { downloadStickyNotesHtml } from './lib/exportHtml'
 import { downloadNotesJson } from './lib/exportJson'
 import { orderTags, tagRecency } from './lib/tagOrder'
@@ -55,6 +56,11 @@ function parseFloated(): Set<string> {
     return new Set()
   }
 }
+
+// 懸浮便利貼同時最多幾則（跟 wallpaper-app/main.js 的同名常數一致）。每個懸浮視窗都是
+// 一頁獨立網頁，太多會吃記憶體、也讓桌面亂掉；連線數的問題已經靠共用 SSE 解決
+// （見 hooks/useLiveSync.ts），這個上限是使用者要求的版面／資源規則。
+const MAX_FLOATING_NOTES = 5
 
 type DialogState = { kind: 'new' } | { kind: 'open'; note: Note } | null
 interface AiResult {
@@ -229,12 +235,26 @@ export function App() {
     })
   }, [canFloat, qc])
 
+  // 懸浮已達上限：Note 一開始拖就擋下來，改跳 FloatLimitDialog
+  const [floatLimitOpen, setFloatLimitOpen] = useState(false)
+  const floatBlocked = floatedIds.size >= MAX_FLOATING_NOTES
+  const openFloatLimit = useCallback(() => setFloatLimitOpen(true), [])
+  const closeFloatLimit = useCallback(() => setFloatLimitOpen(false), [])
+
   const onDragOut = useCallback((note: Note, rect: DOMRect) => {
-    window.desktopWall?.pinNote(
-      { id: note.id },
-      { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
-    )
     setFloatedIds((s) => new Set(s).add(note.id))
+    void window.desktopWall
+      ?.pinNote({ id: note.id }, { x: rect.left, y: rect.top, width: rect.width, height: rect.height })
+      .then((ok) => {
+        if (ok !== false) return
+        // 主行程判定已達上限（網頁這邊的計數跟實際視窗不同步時的保險）→ 放回牆上並跳警告
+        setFloatedIds((s) => {
+          const next = new Set(s)
+          next.delete(note.id)
+          return next
+        })
+        setFloatLimitOpen(true)
+      })
   }, [])
 
   const onCrop = useCallback((ids: string[], rect: { x: number; y: number; width: number; height: number }) => {
@@ -678,6 +698,8 @@ export function App() {
           onOpen={(n) => setDialog({ kind: 'open', note: n })}
           floatable={canFloat}
           onDragOut={onDragOut}
+          floatBlocked={floatBlocked}
+          onFloatBlocked={openFloatLimit}
           minColWidth={appSettings?.wall.minColWidth}
           masonry={wallMasonry}
           columnPerTag={groupByTag}
@@ -758,6 +780,15 @@ export function App() {
             setImportNotes(false)
             setAiResult(null) // 匯入可能新增便利貼，AI 搜尋命中清單就不保證對得上了
           }}
+        />
+      )}
+      {floatLimitOpen && (
+        <FloatLimitDialog
+          floated={[...floatedIds].map((id) => ({ id, note: list.find((n) => n.id === id) }))}
+          max={MAX_FLOATING_NOTES}
+          tagColors={tagColors}
+          onUnpin={window.desktopWall?.unpinNote}
+          onClose={closeFloatLimit}
         />
       )}
       {trashOpen && (

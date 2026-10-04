@@ -28,6 +28,8 @@ export function Note({
   onOpen,
   floatable,
   onDragOut,
+  floatBlocked,
+  onFloatBlocked,
   onGeometryChange,
 }: {
   note: NoteT
@@ -36,12 +38,17 @@ export function Note({
   /** 只有桌面牆（Electron）才有這個能力——一般瀏覽器完全不掛這組手勢。 */
   floatable?: boolean
   onDragOut?: (note: NoteT, rect: DOMRect) => void
+  /** 懸浮便利貼已達上限——一開始拖就停下來（卡片不離開牆），改呼叫 onFloatBlocked 跳警告。 */
+  floatBlocked?: boolean
+  onFloatBlocked?: () => void
   /** 拖曳結束後把 inline 定位樣式清掉了，通知牆重排（列 masonry 重新定位這張）。 */
   onGeometryChange?: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const drag = useRef<DragState | null>(null)
   const justDragged = useRef(false)
+  /** 因懸浮上限被擋下的這次拖曳——滑鼠放開前持續擋文字選取。 */
+  const blockedUntilUp = useRef(false)
 
   const { data: tagColors } = useTagColors()
   const { data: appSettings } = useAppSettings()
@@ -134,6 +141,18 @@ export function Note({
         ) {
           return
         }
+        if (floatBlocked) {
+          // 已達懸浮上限：不讓卡片被拎起來，直接結束這次拖曳並跳警告。
+          // justDragged 擋掉放開滑鼠時接著觸發的 click（不然會順便開啟這則）。
+          // 滑鼠還按著——放開之前照樣擋住文字選取，不然繼續移動會把整頁反白。
+          drag.current = null
+          justDragged.current = true
+          blockedUntilUp.current = true
+          setNoSelect(true)
+          window.getSelection?.()?.removeAllRanges()
+          onFloatBlocked?.()
+          return
+        }
         d.moved = true
         setNoSelect(true)
         window.getSelection?.()?.removeAllRanges() // 按下到現在可能已經起頭選了一點
@@ -155,6 +174,10 @@ export function Note({
     }
 
     const onUp = () => {
+      if (blockedUntilUp.current) {
+        blockedUntilUp.current = false
+        setNoSelect(false)
+      }
       if (drag.current) finish(false)
     }
 
@@ -165,11 +188,13 @@ export function Note({
       document.removeEventListener('mouseup', onUp)
       setNoSelect(false) // 拖到一半元件重掛/卸載也要還原
     }
-  }, [floatable, note, onDragOut, onGeometryChange])
+  }, [floatable, note, onDragOut, floatBlocked, onFloatBlocked, onGeometryChange])
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (!floatable || !onDragOut) return
     if (e.button !== 0) return // 只認左鍵拖曳
+    // 上一次拖曳若在卡片外放開，click 沒落在這張上、justDragged 會殘留——新的一次按下先歸零
+    justDragged.current = false
     const el = ref.current
     if (!el) return
     const r = el.getBoundingClientRect()

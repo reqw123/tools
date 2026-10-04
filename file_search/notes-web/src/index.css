@@ -3834,3 +3834,222 @@ select option {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ─── 懸浮便利貼上限警告（FloatLimitDialog）─────────────────────────
+   沿用 .sheet.plain 的面板；頂端一條黃銅細線、圓形徽章、五格容量條、
+   可直接「收回」的清單。收到上限以下（.ok）徽章轉綠、標題改成可以再拖。 */
+.sheet.float-limit {
+  width: min(27rem, 100%);
+  padding: 2.4rem 2rem 1.7rem;
+  text-align: center;
+  border-radius: 18px;
+  overflow: hidden;
+}
+.sheet.float-limit::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, var(--brass) 20%, var(--brass) 80%, transparent);
+  opacity: 0.85;
+}
+.float-limit h2 {
+  font-size: 1.55rem;
+  margin: 0.9rem 0 0.5rem;
+}
+.fl-badge {
+  --fl-accent: var(--brass);
+  width: 58px;
+  height: 58px;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--fl-accent);
+  background: color-mix(in srgb, var(--fl-accent) 15%, var(--panel));
+  box-shadow:
+    0 0 0 7px color-mix(in srgb, var(--fl-accent) 8%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  animation: fl-nudge 0.55s cubic-bezier(0.3, 1.6, 0.5, 1) 0.12s both;
+}
+.float-limit.ok .fl-badge {
+  --fl-accent: #3f9b6b;
+  animation: none;
+}
+@keyframes fl-nudge {
+  0% { transform: scale(0.6) rotate(-10deg); opacity: 0; }
+  60% { transform: scale(1.06) rotate(4deg); opacity: 1; }
+  100% { transform: none; }
+}
+.fl-lead {
+  margin: 0 auto;
+  max-width: 21rem;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.75;
+  text-wrap: pretty;
+}
+.fl-lead b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.fl-meter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 1.2rem 0 1.1rem;
+}
+.fl-slot {
+  width: 30px;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink-soft) 22%, transparent);
+  transition: background 0.25s, box-shadow 0.25s;
+}
+.fl-slot.on {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--brass) 80%, #fff), var(--brass));
+  box-shadow: 0 2px 6px -2px color-mix(in srgb, var(--brass) 70%, transparent);
+}
+.float-limit.ok .fl-slot.on {
+  background: linear-gradient(180deg, #6cc191, #3f9b6b);
+  box-shadow: 0 2px 6px -2px rgba(63, 155, 107, 0.6);
+}
+.fl-count {
+  margin-left: 0.45rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.fl-count em {
+  font-style: normal;
+  color: #c0392b;
+}
+:root[data-theme='dark'] .fl-count em {
+  color: #e8897f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .fl-count em {
+    color: #e8897f;
+  }
+}
+
+.fl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem;
+  max-height: 15.5rem;
+  overflow-y: auto;
+  text-align: left;
+  border-radius: 12px;
+  background: var(--panel-2);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.fl-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.5rem 0.45rem 0.55rem;
+  border-radius: 9px;
+  transition: background 0.15s;
+}
+.fl-list li:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.fl-swatch {
+  flex: none;
+  width: 10px;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--fl-chip);
+  filter: var(--paper-filter);
+  box-shadow: inset 0 0 0 1px var(--paper-edge);
+}
+.fl-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fl-name small {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fl-unpin {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.32rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--ink-soft) 40%, transparent);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+}
+.fl-unpin:hover {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: #fff;
+}
+.fl-unpin:active {
+  transform: scale(0.96);
+}
+.fl-unpin:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.fl-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.4rem;
+}
+.btn.fl-ok {
+  min-width: 9.5rem;
+  justify-content: center;
+  padding: 0.68rem 1.5rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--brass) 82%, #fff), var(--brass));
+  box-shadow:
+    0 8px 18px -8px color-mix(in srgb, var(--brass) 80%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transition: filter 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.btn.fl-ok:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 22px -10px color-mix(in srgb, var(--brass) 85%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.btn.fl-ok:active {
+  transform: translateY(0);
+}
+/* 暗色主題的黃銅比較亮，白字對比不夠——改用深色字。「跟隨系統」時沒有
+   data-theme 屬性，所以 :not([data-theme='light']) 要包在 media query 裡。 */
+:root[data-theme='dark'] .btn.fl-ok,
+:root[data-theme='dark'] .fl-unpin:hover {
+  color: var(--wall-deep);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .btn.fl-ok,
+  :root:not([data-theme='light']) .fl-unpin:hover {
+    color: var(--wall-deep);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-badge { animation: none; }
+  .btn.fl-ok, .fl-unpin { transition: none; }
+}
