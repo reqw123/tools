@@ -4053,3 +4053,178 @@ select option {
   .fl-badge { animation: none; }
   .btn.fl-ok, .fl-unpin { transition: none; }
 }
+
+/* ─── 待辦總表（TodoOverviewDialog）──────────────────────────────────
+   沿用 .sheet.plain.wide 面板；依便利貼分組，每組左邊一條分類色。剛勾掉的
+   劃線淡出但留在原位（勾錯還能取消），重新打開才會收起來。 */
+.todo-overview .todo-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.todo-overview .todo-head svg {
+  color: var(--brass);
+}
+.todo-stats {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.todo-stats b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.todo-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.9rem;
+}
+.todo-controls .bd-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.todo-tagpick {
+  flex: none;
+  max-width: 11rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+}
+.todo-showdone {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+}
+.todo-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  max-height: min(58vh, 34rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.15rem 0.3rem 0.15rem 0;
+}
+.todo-group {
+  position: relative;
+  border-radius: 12px;
+  background: var(--panel-2);
+  padding: 0.6rem 0.8rem 0.55rem 1.1rem;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.todo-group::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  border-radius: 12px 0 0 12px;
+  background: var(--todo-chip);
+  filter: var(--paper-filter);
+}
+.todo-group header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  margin-bottom: 0.3rem;
+}
+.todo-note {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.todo-note:hover {
+  color: var(--brass);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.todo-tag,
+.todo-count {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+.todo-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.todo-count.all-done {
+  color: #3f9b6b;
+}
+.todo-due {
+  font-size: 0.74rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink-soft) 14%, transparent);
+  color: var(--ink-soft);
+}
+.todo-due.soon {
+  background: color-mix(in srgb, #d99a1f 20%, transparent);
+  color: #a86e00;
+}
+.todo-due.overdue {
+  background: color-mix(in srgb, #c0392b 16%, transparent);
+  color: #c0392b;
+}
+.todo-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.todo-group li label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.28rem 0.3rem;
+  border-radius: 7px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.todo-group li label:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.todo-group li input[type='checkbox'] {
+  flex: none;
+  margin-top: 0.2rem;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--brass);
+  cursor: pointer;
+}
+.todo-group li.done span {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+  opacity: 0.7;
+  transition: opacity 0.4s, color 0.4s;
+}
+.todo-empty {
+  margin: 1.5rem 0;
+  text-align: center;
+  color: var(--ink-soft);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .todo-due.soon { color: #f0b54a; }
+  :root:not([data-theme='light']) .todo-due.overdue { color: #e8897f; }
+}
+:root[data-theme='dark'] .todo-due.soon { color: #f0b54a; }
+:root[data-theme='dark'] .todo-due.overdue { color: #e8897f; }

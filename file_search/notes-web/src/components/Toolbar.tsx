@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Activity, AlarmClock, ArrowDownUp, Bell, Bot, ChevronDown, ChevronUp, Columns3, CopyPlus,
-  CornerDownLeft, FileCode2, GraduationCap, HardDriveDownload, HardDriveUpload, History, Home,
+  CornerDownLeft, FileCode2, GraduationCap, HardDriveDownload, HardDriveUpload, History, Home, ListTodo,
   Plus, Recycle, Rows3, Search, Settings2, Sparkles, Sprout, Tags, Trash2, UserCheck,
 } from 'lucide-react'
 import { NOTE_SORTS, type NoteSort } from '../lib/noteSort'
@@ -56,6 +56,7 @@ export function Toolbar({
   onBatchDelete,
   onGenerateNotes,
   onTrash,
+  onTodo,
   onHistory,
   onActivity,
   onNotifications,
@@ -111,6 +112,8 @@ export function Toolbar({
   onBatchDelete: () => void
   onGenerateNotes: () => void
   onTrash: () => void
+  /** 待辦總表——所有便利貼裡的待辦集中成一張清單（TodoOverviewDialog）。 */
+  onTodo: () => void
   onHistory: () => void
   /** 「誰動了我的牆」動態列表——只有共用模式才顯示這顆鈕（見呼叫端）。 */
   onActivity?: () => void
@@ -338,6 +341,13 @@ export function Toolbar({
             title="只看指派給我的便利貼（比對目前顯示的名字）"
           >
             <UserCheck size={15} strokeWidth={2.2} aria-hidden />
+          </button>
+          <button
+            className="btn ghost icon"
+            onClick={onTodo}
+            title="待辦總表——所有便利貼裡還沒勾的待辦集中成一張清單，可以直接在這裡勾"
+          >
+            <ListTodo size={15} strokeWidth={2.2} aria-hidden />
           </button>
           <button
             className={`btn ghost icon${!tagAxisLocked && !masonryOn ? ' dim' : ''}`}

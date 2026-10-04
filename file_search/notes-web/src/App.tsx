@@ -28,6 +28,7 @@ import { GenerateNotesDialog } from './components/GenerateNotesDialog'
 import { ThesisSeedDialog } from './components/ThesisSeedDialog'
 import { ImportNotesDialog } from './components/ImportNotesDialog'
 import { TrashDialog } from './components/TrashDialog'
+import { TodoOverviewDialog } from './components/TodoOverviewDialog'
 import { HistoryDialog } from './components/HistoryDialog'
 import { ActivityDialog } from './components/ActivityDialog'
 import { NotificationsDialog } from './components/NotificationsDialog'
@@ -185,6 +186,7 @@ export function App() {
   const [thesisSeed, setThesisSeed] = useState(false)
   const [importNotes, setImportNotes] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
+  const [todoOpen, setTodoOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -512,7 +514,7 @@ export function App() {
 
   const anyDialogOpen =
     !!dialog || batchCreate || batchTag || batchDelete || generateNotes || thesisSeed || importNotes ||
-    trashOpen || historyOpen || activityOpen || notificationsOpen || settingsOpen !== null
+    trashOpen || todoOpen || historyOpen || activityOpen || notificationsOpen || settingsOpen !== null
   // 已經在裁切中就不能再拉一次框——先恢復完整畫面才能重新選——不然兩個裁切
   // 範圍疊在一起的語意會很奇怪。
   const cropActive = canFloat && !anyDialogOpen && !croppedIds
@@ -653,6 +655,7 @@ export function App() {
         onGenerateNotes={() => setGenerateNotes(true)}
         onThesisSeed={() => setThesisSeed(true)}
         onTrash={() => setTrashOpen(true)}
+        onTodo={() => setTodoOpen(true)}
         onHistory={() => setHistoryOpen(true)}
         onActivity={isShare ? () => setActivityOpen(true) : undefined}
         onNotifications={isShare ? () => setNotificationsOpen(true) : undefined}
@@ -789,6 +792,17 @@ export function App() {
           tagColors={tagColors}
           onUnpin={window.desktopWall?.unpinNote}
           onClose={closeFloatLimit}
+        />
+      )}
+      {todoOpen && (
+        <TodoOverviewDialog
+          notes={list}
+          tagColors={tagColors}
+          onOpenNote={(n) => {
+            setTodoOpen(false)
+            setDialog({ kind: 'open', note: n })
+          }}
+          onClose={() => setTodoOpen(false)}
         />
       )}
       {trashOpen && (
