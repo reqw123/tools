@@ -87,9 +87,11 @@ const R = e => { if (!e) return null; e.scrollIntoView({block: "nearest"}); cons
 function Find-Rect($target, [string]$expr) { Cdp-Eval $target "(() => { $($script:JSHELP) return R($expr); })()" }
 
 # 輪詢等到元素出現且位置穩定（對話框淡入時位置會動，連兩次一致才算數）
+# 逾時扣掉中途暫停的時間（F8 暫停、等使用者處理系統提示）——不然暫停久一點，回來正在等的步驟就直接判定逾時
+function Wait-Elapsed($t0, $p0) { ((Get-Date) - $t0).TotalMilliseconds - ($script:PausedMs - $p0) }
 function Wait-Rect([scriptblock]$getTarget, [string]$expr, [int]$timeoutMs = 10000) {
-  $t0 = Get-Date
-  while (((Get-Date) - $t0).TotalMilliseconds -lt $timeoutMs) {
+  $t0 = Get-Date; $p0 = $script:PausedMs
+  while ((Wait-Elapsed $t0 $p0) -lt $timeoutMs) {
     try {
       $t = & $getTarget
       if ($t) {
@@ -104,8 +106,8 @@ function Wait-Rect([scriptblock]$getTarget, [string]$expr, [int]$timeoutMs = 100
   throw "找不到元素（逾時 ${timeoutMs}ms）：$expr"
 }
 function Wait-Cond([scriptblock]$cond, [int]$timeoutMs = 10000, [string]$what = '條件') {
-  $t0 = Get-Date
-  while (((Get-Date) - $t0).TotalMilliseconds -lt $timeoutMs) { try { if (& $cond) { return } } catch { }; Check-User; Start-Sleep -Milliseconds 60 }
+  $t0 = Get-Date; $p0 = $script:PausedMs
+  while ((Wait-Elapsed $t0 $p0) -lt $timeoutMs) { try { if (& $cond) { return } } catch { }; Check-User; Start-Sleep -Milliseconds 60 }
   throw "等待逾時（${timeoutMs}ms）：$what"
 }
 

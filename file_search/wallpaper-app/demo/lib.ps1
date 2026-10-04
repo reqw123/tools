@@ -61,6 +61,9 @@ public static class DemoKeys {
   [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
   [DllImport("user32.dll")] static extern bool GetCursorPos(out PT p);
   [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern IntPtr FindWindow(string cls, string title);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  static volatile bool prompt;
   static readonly int[] watch = { 0x76, 0x77, 0x78, 0x7B };   // F7 F8 F9 F12
   static readonly int[] count = new int[256]; static readonly bool[] down = new bool[256];
   static int ex = int.MinValue, ey, px = int.MinValue, py, moved; static volatile bool armed;
@@ -73,6 +76,8 @@ public static class DemoKeys {
         bool nearE = ex != int.MinValue && Math.Abs(p.X - ex) <= 40 && Math.Abs(p.Y - ey) <= 40;
         bool nearP = px != int.MinValue && Math.Abs(p.X - px) <= 40 && Math.Abs(p.Y - py) <= 40;
         if (ex != int.MinValue && !nearE && !nearP) moved = 1; } }
+      // Windows 系統提示（例如換電腦第一次執行時的防火牆詢問「是否允許網路存取」）——它會搶走焦點，點擊打不進桌面牆
+      var hp = FindWindow("Shell_SystemDialogProxy", null); prompt = hp != IntPtr.Zero && IsWindowVisible(hp);
       Thread.Sleep(10); } });
     th.IsBackground = true; th.Start();
   }
@@ -81,6 +86,7 @@ public static class DemoKeys {
   public static bool TakeMoved() { return Interlocked.Exchange(ref moved, 0) == 1; }
   public static void Arm() { PT p; GetCursorPos(out p); lock (gate) { ex = p.X; ey = p.Y; px = ex; py = ey; moved = 0; } armed = true; }
   public static void Disarm() { armed = false; }
+  public static bool SystemPrompt() { return prompt; }
 }
 "@
 }

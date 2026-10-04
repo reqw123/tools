@@ -64,20 +64,38 @@ $script:Pace = 1 / $Speed                                                 # 停�
 # lib.ps1 的 Move-Mouse／Type-Text、cdp.ps1 的等待迴圈都會呼叫 Check-User，所以任何時候都反應得到。
 # 這幾個鍵展示本身都不會按（它只按 Shift／Ctrl／Enter／Esc／方向鍵／字母），不會誤觸。
 function Key-Pressed([int]$vk) { [DemoKeys]::Take($vk) -gt 0 }        # 上次檢查之後有沒有按過（背景執行緒記的，不會漏）
+$script:PausedMs = 0                                                      # 累計暫停了多久（等待逾時會扣掉，見 cdp.ps1 的 Wait-Elapsed）
+$script:LastCaption = @('準備中', '開啟桌面牆…', '桌面牆啟動中，請稍候。')   # 還沒到第一步就跳系統提示時，處理完換回這句
 function Pace-Hint { Caption-Hint ('F8 暫停　F7 慢／F9 快（{0:0.0#}×）　F12 或動滑鼠＝結束' -f (1 / $script:Pace)) }
 function Check-User {
   if ($script:Aborting) { return }
+  if ([DemoKeys]::SystemPrompt()) {
+    # Windows 跳出系統提示（換電腦第一次執行最常見：防火牆詢問是否允許網路存取）——它要使用者自己決定，腳本不替人按。
+    # 暫停、請使用者處理（這時可以自由動滑鼠），提示消失後自動繼續
+    $pt0 = Get-Date; [DemoKeys]::Disarm(); Log '  （Windows 跳出系統提示，暫停等使用者處理）'
+    Caption-Set '請先處理' 'Windows 跳出了系統提示' '例如第一次執行時的防火牆詢問：按「允許」或「取消」都可以——展示只用本機連線，不受影響。處理完會自動繼續。'
+    Caption-Hint '⏸ 等你處理 Windows 的提示…（F12 結束展示）'
+    while ([DemoKeys]::SystemPrompt()) {
+      if (Key-Pressed 0x7B) { $script:Aborting = $true; throw 'USER_ABORT：按了 F12' }
+      Start-Sleep -Milliseconds 200
+    }
+    Start-Sleep -Milliseconds 800                                         # 提示剛關掉，焦點還在移回來
+    $script:PausedMs += ((Get-Date) - $pt0).TotalMilliseconds
+    Caption-Set $script:LastCaption[0] $script:LastCaption[1] $script:LastCaption[2]; Pace-Hint
+    [DemoKeys]::Arm(); Log '  （系統提示已處理，繼續）'
+  }
   if ([DemoKeys]::TakeMoved()) { $script:Aborting = $true; throw 'USER_ABORT：偵測到滑鼠被移動' }
   if (Key-Pressed 0x7B) { $script:Aborting = $true; throw 'USER_ABORT：按了 F12' }
   if (Key-Pressed 0x76) { $script:Pace = [math]::Min(4, $script:Pace * 1.3); Pace-Hint; Log ('  （放慢：{0:0.0#}×）' -f (1 / $script:Pace)) }
   if (Key-Pressed 0x78) { $script:Pace = [math]::Max(0.25, $script:Pace / 1.3); Pace-Hint; Log ('  （加快：{0:0.0#}×）' -f (1 / $script:Pace)) }
   if (Key-Pressed 0x77) {
-    Log '  （暫停）'; Caption-Hint '⏸ 已暫停——按 F8 繼續，F12 結束（暫停時可以自由動滑鼠）'
+    $pt0 = Get-Date; Log '  （暫停）'; Caption-Hint '⏸ 已暫停——按 F8 繼續，F12 結束（暫停時可以自由動滑鼠）'
     [DemoKeys]::Disarm()                                                  # 暫停時動滑鼠是正常的，不算要結束
     while (-not (Key-Pressed 0x77)) {
       if (Key-Pressed 0x7B) { $script:Aborting = $true; throw 'USER_ABORT：按了 F12' }
       Start-Sleep -Milliseconds 50
     }
+    $script:PausedMs += ((Get-Date) - $pt0).TotalMilliseconds
     [DemoKeys]::Arm()                                                     # 從現在的游標位置接著偵測
     Log '  （繼續）'; Pace-Hint
   }
@@ -105,7 +123,8 @@ foreach ($chunk in ((Get-Content -LiteralPath $PSCommandPath -Raw -Encoding UTF8
 }
 function Step([string]$section, [string]$title, [string]$desc, [int]$read = 1500) {
   $script:StepNo++
-  Caption-Set ('{0} · {1} / {2}' -f $section, $script:StepNo, $script:StepTotal) $title $desc
+  $script:LastCaption = @(('{0} · {1} / {2}' -f $section, $script:StepNo, $script:StepTotal), $title, $desc)   # 系統提示暫停後要換回來
+  Caption-Set $script:LastCaption[0] $title $desc
   Log ('▶ [{0}/{1}] {2}｜{3}' -f $script:StepNo, $script:StepTotal, $section, $title)
   Hold $read                                                              # 先讓觀眾讀完字幕再動手
 }
