@@ -297,6 +297,33 @@ export const activity = {
     }),
 }
 
+/** 監看資料夾——資料夾裡出現新檔案就自動加進索引集（server/watch.ts）。 */
+export type WatchCategoryMode = 'none' | 'folder' | 'type' | 'fixed'
+export interface WatchFolder {
+  id: string
+  index: string
+  dir: string
+  recursive: boolean
+  categories: string[]
+  categoryMode: WatchCategoryMode
+  categoryText: string
+  createdAt: string
+  lastCheck: string
+  lastAdded: { path: string; at: string }[]
+  addedTotal: number
+  error: string
+  knownCount: number
+}
+export interface WatchInput {
+  index: string
+  dir: string
+  recursive: boolean
+  categories: string[]
+  categoryMode: WatchCategoryMode
+  categoryText: string
+  includeExisting: boolean
+}
+
 export const api = {
   indexes: () => req<{ indexes: string[] }>('/indexes').then((r) => r.indexes),
   index: (name: string) => req<IndexPayload>(`/indexes/${encodeURIComponent(name)}`),
@@ -428,6 +455,14 @@ export const api = {
   scanStatus: (id: string) => req<ScanJob>(`/scan/jobs/${encodeURIComponent(id)}`),
   scanCancel: (id: string) =>
     req<void>(`/scan/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // ── 監看資料夾（見 server/watch.ts）——只限本機 ──
+  listWatches: (index: string) =>
+    req<{ watches: WatchFolder[] }>(`/watch?index=${encodeURIComponent(index)}`).then((r) => r.watches),
+  addWatch: (body: WatchInput) =>
+    req<{ watch: WatchFolder; added: number }>('/watch', { method: 'POST', body: JSON.stringify(body) }),
+  removeWatch: (id: string) => req<{ ok: true }>(`/watch/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  runWatch: (id: string) =>
+    req<{ watch: WatchFolder; added: number }>(`/watch/${encodeURIComponent(id)}/run`, { method: 'POST' }),
   /** 批次匯入：整批共用一個分類，說明留空。回實際新增筆數（已收錄的會略過）。 */
   bulkAdd: (name: string, paths: string[], category: string) =>
     req<{ added: number }>(`/indexes/${encodeURIComponent(name)}/entries/bulk`, {

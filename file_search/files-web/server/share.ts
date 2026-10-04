@@ -302,6 +302,8 @@ export async function shareGuardHook(req: FastifyRequest, reply: FastifyReply): 
     path === '/api/browse' ||
     path === '/api/scan' ||
     path.startsWith('/api/scan/') || // 背景掃描工作（/scan/jobs…）
+    path === '/api/watch' ||
+    path.startsWith('/api/watch/') || // 監看資料夾：指定主機要監看哪個資料夾
     /^\/api\/indexes\/[^/]+\/edit$/.test(path)
   ) {
     return void reply.code(403).send({ error: '共用模式下這個功能只能在主機本機使用' })

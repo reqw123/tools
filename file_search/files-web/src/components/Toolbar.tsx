@@ -6,6 +6,7 @@ import {
   FilePlus2,
   FileX2,
   FolderPlus,
+  FolderSync,
   FolderTree,
   FolderUp,
   PencilLine,
@@ -55,6 +56,7 @@ export function Toolbar({
   checking,
   onAdd,
   onBatchImport,
+  onWatch,
   onUpload,
   onUploadFolder,
   onBatchDescribe,
@@ -100,6 +102,8 @@ export function Toolbar({
   /** 寫入動作——都需要選定一份索引集，否則停用。 */
   onAdd: () => void
   onBatchImport: () => void
+  /** 監看資料夾——資料夾出現新檔案就自動加進這份索引集（WatchFoldersDialog）。只限本機。 */
+  onWatch: () => void
   /** 上傳自己的檔案／資料夾——跟 onAdd/onBatchImport 不同，**不受
    *  `isRemoteShare` 限制**：不需要瀏覽主機硬碟，遠端使用者也能用，見
    *  UploadEntryDialog／UploadFolderDialog。 */
@@ -248,6 +252,18 @@ export function Toolbar({
             }
           >
             <FolderPlus size={14} strokeWidth={2.2} aria-hidden /> 匯入資料夾
+          </button>
+          <button
+            className="btn sm"
+            onClick={onWatch}
+            disabled={!index || isRemoteShare}
+            title={
+              isRemoteShare
+                ? '共用模式下這個功能只能在主機本機使用（會監看主機的資料夾）'
+                : '監看資料夾：資料夾裡出現新檔案，就自動加進這份索引集'
+            }
+          >
+            <FolderSync size={14} strokeWidth={2.2} aria-hidden /> 監看資料夾
           </button>
           <button
             className="btn sm"

@@ -20,6 +20,7 @@ import { Preamble } from './components/Preamble'
 import { DocView } from './components/DocView'
 import { EntryList } from './components/EntryList'
 import { AddEntryDialog } from './components/AddEntryDialog'
+import { WatchFoldersDialog } from './components/WatchFoldersDialog'
 import { UploadEntryDialog } from './components/UploadEntryDialog'
 import { UploadFolderDialog } from './components/UploadFolderDialog'
 import { BatchImportDialog } from './components/BatchImportDialog'
@@ -132,6 +133,7 @@ export function App() {
     | 'upload'
     | 'upload-folder'
     | 'import'
+    | 'watch'
     | 'describe'
     | 'category'
     | 'delete'
@@ -406,6 +408,7 @@ export function App() {
         checking={checking}
         onAdd={() => setDialog('add')}
         onBatchImport={() => setDialog('import')}
+        onWatch={() => setDialog('watch')}
         onUpload={() => setDialog('upload')}
         onUploadFolder={() => setDialog('upload-folder')}
         onBatchDescribe={() => setDialog('describe')}
@@ -481,6 +484,7 @@ export function App() {
         「開啟檔案／資料夾」「選檔視窗」由本機後端提供，只綁 localhost。
       </footer>
 
+      {dialog === 'watch' && index && <WatchFoldersDialog indexName={index} onClose={() => setDialog(null)} />}
       {dialog === 'add' && index && (
         <AddEntryDialog
           indexName={index}

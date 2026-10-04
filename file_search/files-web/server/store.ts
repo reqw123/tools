@@ -578,6 +578,12 @@ for (const c of EXT_CATEGORIES) for (const e of c.exts) KNOWN_EXTS.add(e)
 
 const OTHER_CATEGORY = { label: '其他', icon: '📦', color: '#64748b' } as const
 
+/** 副檔名（含點、小寫）→ 類別名稱（「文件」「圖片」…，都不是就「其他」）。監看資料夾的「依檔案類型」分類用。 */
+export function categoryLabelForExt(ext: string): string {
+  const e = ext.toLowerCase()
+  return EXT_CATEGORIES.find((c) => c.exts.has(e))?.label ?? OTHER_CATEGORY.label
+}
+
 // 遞迴掃描時整個略過的資料夾——產出物／依賴／版控內部，沒有值得收進索引的東西。
 const SCAN_SKIP_DIRS = new Set([
   '.git', 'node_modules', '__pycache__', '.venv', 'venv', 'env', '.mypy_cache',

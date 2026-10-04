@@ -20,6 +20,8 @@ import { eventsRoutes } from './events'
 import { activityRoutes } from './activity-routes'
 import { hostRoutes } from './host-routes'
 import { uploadRoutes } from './upload-routes'
+import { watchRoutes } from './watch-routes'
+import { startWatching } from './watch'
 
 // lan 模式但沒給（有效）SHARE_TOKEN → 啟動時就擋下來，不要開一個沒鎖的門。
 assertShareConfig()
@@ -64,6 +66,8 @@ await app.register(aiRoutes, { prefix: '/api' })
 // 上傳檔案加進索引——遠端使用者的「加入索引」替代路徑，見 upload-routes.ts
 // 開頭說明。跟其他項目增刪改端點一樣一視同仁註冊，不特別鎖共用模式。
 await app.register(uploadRoutes, { prefix: '/api' })
+await app.register(watchRoutes, { prefix: '/api' })
+startWatching() // 監看資料夾：先補掃一次關著程式期間新增的，之後每 30 秒掃一次（見 watch.ts）
 
 if (isProd) {
   const dist = join(projectRoot, 'dist')
