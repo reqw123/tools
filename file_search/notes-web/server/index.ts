@@ -23,6 +23,7 @@ import { filesRoutes } from './files-routes'
 import { eventsRoutes } from './events'
 import { activityRoutes } from './activity-routes'
 import { hostRoutes } from './host-routes'
+import { notifyRoutes } from './notify-routes'
 import {
   SHARE_MODE,
   SHARE_WALL_URL,
@@ -119,6 +120,7 @@ await app.register(eventsRoutes, { prefix: '/api' })
 // 也合法在用（尤其 /card 看板），不能鎖進 SHARE_MODE==='lan'，見上面說明。
 await app.register(activityRoutes, { prefix: '/api' })
 await app.register(notesRoutes, { prefix: '/api' })
+await app.register(notifyRoutes, { prefix: '/api' }) // Discord 通知設定——不論模式都掛、只認 loopback（見 notify-routes.ts）
 await app.register(notificationsRoutes, { prefix: '/api' })
 await app.register(noteImageRoutes, { prefix: '/api' })
 await app.register(aiRoutes, { prefix: '/api' })

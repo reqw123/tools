@@ -4,16 +4,19 @@ import { TagSortSettings } from './TagSortSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { ReminderSettings } from './ReminderSettings'
 import { TrashSettings } from './TrashSettings'
+import { DiscordSettings } from './DiscordSettings'
+import { useShareInfo } from '../hooks/useShareInfo'
 import { ThesisSettings } from './ThesisSettings'
 import { scrimClose } from '../lib/scrimClose'
 
-export type SettingsTab = 'ai' | 'tags' | 'appearance' | 'reminder' | 'trash' | 'thesis'
+export type SettingsTab = 'ai' | 'tags' | 'appearance' | 'reminder' | 'discord' | 'trash' | 'thesis'
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'ai', label: 'AI 請求' },
   { id: 'tags', label: '標籤排序' },
   { id: 'appearance', label: '外觀' },
   { id: 'reminder', label: '提醒' },
+  { id: 'discord', label: 'Discord 通知' },
   { id: 'trash', label: '垃圾桶' },
   { id: 'thesis', label: '研究生' },
 ]
@@ -36,6 +39,9 @@ export function GlobalSettingsDialog({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [tab, setTab] = useState<SettingsTab>(initialTab)
+  // Discord 通知分頁只給主機本機（webhook 等同密碼；後端 /host/* 本來就只認 loopback）
+  const share = useShareInfo()
+  const hostLocal = share.mode !== 'lan' || share.loopback
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -63,7 +69,7 @@ export function GlobalSettingsDialog({
         <h2>全域設定</h2>
 
         <div className="tab-row" role="tablist" aria-label="設定分類">
-          {TABS.map((t) => (
+          {TABS.filter((t) => t.id !== 'discord' || hostLocal).map((t) => (
             <button
               key={t.id}
               role="tab"
@@ -91,6 +97,11 @@ export function GlobalSettingsDialog({
         <div hidden={tab !== 'reminder'}>
           <ReminderSettings onClose={onClose} />
         </div>
+        {hostLocal && (
+          <div hidden={tab !== 'discord'}>
+            <DiscordSettings />
+          </div>
+        )}
         <div hidden={tab !== 'trash'}>
           <TrashSettings />
         </div>

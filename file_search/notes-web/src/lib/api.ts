@@ -352,8 +352,18 @@ export interface VisitEntry {
   author: string
   at: string
 }
+/** Discord 通知設定的狀態——只有遮罩後的網址，完整網址不會送到瀏覽器（見 server/notify-settings.ts）。 */
+export interface DiscordStatus {
+  configured: boolean
+  masked: string
+  updatedAt: string
+}
 export const host = {
   getState: () => req<HostState>('/host/state'),
+  getDiscord: () => req<DiscordStatus>('/host/discord'),
+  setDiscord: (webhook: string) =>
+    req<DiscordStatus>('/host/discord', { method: 'PUT', body: JSON.stringify({ webhook }) }),
+  testDiscord: () => req<{ ok: true }>('/host/discord/test', { method: 'POST' }),
   setOpenAccess: (open: boolean) =>
     req<{ openAccess: boolean }>('/host/open-access', {
       method: 'POST',

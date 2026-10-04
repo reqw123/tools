@@ -4228,3 +4228,43 @@ select option {
 }
 :root[data-theme='dark'] .todo-due.soon { color: #f0b54a; }
 :root[data-theme='dark'] .todo-due.overdue { color: #e8897f; }
+
+/* ─── 全域設定 → Discord 通知（DiscordSettings）──────────────────────── */
+.discord-current {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.2rem 0 0.9rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  background: var(--panel-2);
+  font-size: 0.88rem;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.discord-current code {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+.discord-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #a8a29e;
+}
+.discord-dot[data-on='1'] {
+  background: #3f9b6b;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #3f9b6b 22%, transparent);
+}
+.discord-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.discord-msg {
+  margin: 0.7rem 0 0;
+  font-size: 0.84rem;
+  color: #3f9b6b;
+}
